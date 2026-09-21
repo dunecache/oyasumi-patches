@@ -284,3 +284,18 @@ types) — NOT an alternate step source. Scan-and-win already shows the same
 remote-datasource + response-model shape (`scan_and_win_remote_datasource.dart`,
 `scan_qr_code_usecase.dart`, `scan_response_model.dart`) with server token
 verification (`verifyQrToken`).
+
+## Patch 1 — Walk-and-win step spoof (fixed 50000, committed)
+
+- Fingerprint (`patches/.../walkwin/Fingerprints.kt`): `onSensorChanged`
+  `(Landroid/hardware/SensorEvent;)V`, no defining class (R8-obfuscated),
+  filters in method order: `SensorEvent->values` iget (smali form),
+  `FLOAT_TO_INT`, `Integer.valueOf`, `EventSink.success`. Only 2 such
+  methods exist in all dex and only `Li5/b` has the int-conversion shape.
+- Edit (`StepSpoofPatch.kt`): insert `const v<reg>, 50000` immediately after
+  the `float-to-int` match (register read from the match), overwriting the
+  sensed value before boxing. No new registers, no field references.
+- Compatibility: `com.djezzy.internet` 3.0.9 XAPK only, default enabled.
+- NOT verified: no JDK/Gradle in this environment, so no compile check and
+  no apply-against-APK test — needs CI/device run. Server (`activate-reward`)
+  may reject the spoofed delta; device test decides.

@@ -19,6 +19,19 @@ object Constants {
         )
     )
 
+    // Reference file is an APKPure .xapk (base + config splits), so XAPK.
+    // Target 3.0.9 / version code 40076 only (see reference/NOTES.md).
+    val COMPATIBILITY_DJEZZY = Compatibility(
+        name = "Djezzy",
+        packageName = "com.djezzy.internet",
+        apkFileType = ApkFileType.XAPK,
+        targets = listOf(
+            AppTarget(
+                version = "3.0.9"
+            )
+        )
+    )
+
     val COMPATIBILITY_EXAMPLE = Compatibility(
         name = "XYZ app", // App name as it appears in the Android launcher.
         packageName = "com.example.app",
