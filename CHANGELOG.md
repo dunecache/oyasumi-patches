@@ -1,3 +1,9 @@
+## [0.2.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.1...v0.2.0-dev.2) (2026-09-21)
+
+### 🐛 Bug Fixes
+
+* anchor error-dialog fingerprint on LicenseActivity runOnUiThread ref ([c94d3b7](https://github.com/dunecache/oyasumi-patches/commit/c94d3b7615da8d2359b63a1006932f7575dd5183))
+
 ## [0.2.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.1.0...v0.2.0-dev.1) (2026-09-21)
 
 ### ✨ New Features
