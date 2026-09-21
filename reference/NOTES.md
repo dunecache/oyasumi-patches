@@ -285,14 +285,14 @@ remote-datasource + response-model shape (`scan_and_win_remote_datasource.dart`,
 `scan_qr_code_usecase.dart`, `scan_response_model.dart`) with server token
 verification (`verifyQrToken`).
 
-## Patch 1 — Walk-and-win step spoof (fixed 50000, committed)
+## Patch 1 — Walk-and-win step spoof (fixed 10000, committed)
 
 - Fingerprint (`patches/.../walkwin/Fingerprints.kt`): `onSensorChanged`
   `(Landroid/hardware/SensorEvent;)V`, no defining class (R8-obfuscated),
   filters in method order: `SensorEvent->values` iget (smali form),
   `FLOAT_TO_INT`, `Integer.valueOf`, `EventSink.success`. Only 2 such
   methods exist in all dex and only `Li5/b` has the int-conversion shape.
-- Edit (`StepSpoofPatch.kt`): insert `const v<reg>, 50000` immediately after
+- Edit (`StepSpoofPatch.kt`): insert `const v<reg>, 10000` immediately after
   the `float-to-int` match (register read from the match), overwriting the
   sensed value before boxing. No new registers, no field references.
 - Compatibility: `com.djezzy.internet` 3.0.9 XAPK only, default enabled.

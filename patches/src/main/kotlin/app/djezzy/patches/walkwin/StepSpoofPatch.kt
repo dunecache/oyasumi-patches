@@ -6,15 +6,15 @@ import app.morphe.patcher.patch.bytecodePatch
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 
 // Fixed step count reported to walk-and-win on every sensor event instead of
-// the real TYPE_STEP_COUNTER value. Note the Dart side diffs readings
-// (walk_and_win_last_pedometer_value), so a constant yields one jump then
-// flatlines until the stored baseline is reset.
-private const val SPOOFED_STEP_COUNT = 50000
+// the real TYPE_STEP_COUNTER value. The first reading after tapping Start
+// Walk lands as ~10000 (minus any stored baseline), then holds flat because
+// the Dart side diffs readings (walk_and_win_last_pedometer_value).
+private const val SPOOFED_STEP_COUNT = 10000
 
 @Suppress("unused")
 val stepSpoofPatch = bytecodePatch(
     name = "Walk-and-win step spoof",
-    description = "Report a fixed step count (50000) to walk-and-win instead " +
+    description = "Report a fixed step count (10000) to walk-and-win instead " +
         "of the real sensor value. Rewards are issued server-side and may " +
         "still require genuine activity.",
     default = true
