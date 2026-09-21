@@ -299,3 +299,11 @@ verification (`verifyQrToken`).
 - NOT verified: no JDK/Gradle in this environment, so no compile check and
   no apply-against-APK test — needs CI/device run. Server (`activate-reward`)
   may reject the spoofed delta; device test decides.
+- BUG FOUND ON DEVICE (stays at 0): the patch read the `float-to-int`
+  match as `OneRegisterInstruction`, but `float-to-int v2, v2` is a 23x
+  two-register instruction — the cast throws at apply time and the patch
+  never applies (app runs stock). Fixed to `TwoRegisterInstruction`
+  (registerA = destination). If it still shows 0 after this fix, the cause
+  is upstream of the patch: device without a step-counter sensor, denied
+  physical-activity permission, or the null-sensor error branch
+  (`sink.error("1", ...)`).

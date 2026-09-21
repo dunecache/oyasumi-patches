@@ -3,7 +3,7 @@ package app.djezzy.patches.walkwin
 import app.goodnight.patches.shared.Constants.COMPATIBILITY_DJEZZY
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.patch.bytecodePatch
-import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
 
 // Fixed step count reported to walk-and-win on every sensor event instead of
 // the real TYPE_STEP_COUNTER value. The first reading after tapping Start
@@ -26,8 +26,10 @@ val stepSpoofPatch = bytecodePatch(
             // float-to-int converts event.values[0]; overwrite the result
             // with the fixed count before Integer.valueOf boxes it for the
             // EventSink. Register is read from the match, not hardcoded.
+            // (float-to-int is a 23x two-register instruction, so the match
+            // must be read as TwoRegisterInstruction.)
             val conversion = it.instructionMatches[1]
-            val register = conversion.getInstruction<OneRegisterInstruction>().registerA
+            val register = conversion.getInstruction<TwoRegisterInstruction>().registerA
             it.method.addInstructions(
                 conversion.index + 1,
                 "const v$register, $SPOOFED_STEP_COUNT"
