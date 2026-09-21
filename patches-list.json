@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.2.0-dev.3",
+  "version": "0.2.0-dev.4",
   "patches": [
     {
       "name": "Example Patch",
@@ -94,7 +94,7 @@
     },
     {
       "name": "Walk-and-win step spoof",
-      "description": "Report a fixed step count (50000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity.",
+      "description": "Report a fixed step count (10000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity.",
       "default": true,
       "category": null,
       "dependencies": [],

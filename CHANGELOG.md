@@ -1,3 +1,10 @@
+## [0.2.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.3...v0.2.0-dev.4) (2026-09-21)
+
+### ✨ New Features
+
+* report fixed 10000 steps in walk-and-win spoof ([5a64d61](https://github.com/dunecache/oyasumi-patches/commit/5a64d613a2751969c490692712719964bc744d53))
+* skip PairIP native VM startup as well ([0fdbf43](https://github.com/dunecache/oyasumi-patches/commit/0fdbf43dc1ec454cc61b5bdba23be1522ce05ac0))
+
 ## [0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.2...v0.2.0-dev.3) (2026-09-21)
 
 ### ✨ New Features

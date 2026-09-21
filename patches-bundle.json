@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-21T12:38:12",
-  "description": "## [0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.2...v0.2.0-dev.3) (2026-09-21)\n\n### ✨ New Features\n\n* add walk-and-win fixed step spoof for com.djezzy.internet 3.0.9 ([051d5a1](https://github.com/dunecache/oyasumi-patches/commit/051d5a16406c39a68b80231da6684a8507927731))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.3/patches-0.2.0-dev.3.mpp",
+  "created_at": "2026-09-21T12:56:20",
+  "description": "## [0.2.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.3...v0.2.0-dev.4) (2026-09-21)\n\n### ✨ New Features\n\n* report fixed 10000 steps in walk-and-win spoof ([5a64d61](https://github.com/dunecache/oyasumi-patches/commit/5a64d613a2751969c490692712719964bc744d53))\n* skip PairIP native VM startup as well ([0fdbf43](https://github.com/dunecache/oyasumi-patches/commit/0fdbf43dc1ec454cc61b5bdba23be1522ce05ac0))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.4/patches-0.2.0-dev.4.mpp",
   "signature_download_url": "",
-  "version": "0.2.0-dev.3"
+  "version": "0.2.0-dev.4"
 }

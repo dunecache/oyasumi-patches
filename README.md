@@ -15,7 +15,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
+> **[v0.2.0-dev.4](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.4)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
 <details open>
 <summary>📦 XYZ app&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
@@ -58,7 +58,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Walk-and-win step spoof](#walk-and-win-step-spoof) | Report a fixed step count (50000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity. |  |
+| [Walk-and-win step spoof](#walk-and-win-step-spoof) | Report a fixed step count (10000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity. |  |
 
 </details>
 
