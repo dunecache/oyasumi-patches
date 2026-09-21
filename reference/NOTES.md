@@ -171,3 +171,116 @@ Cause: PairIP protection in `classes2.dex`, wired into the app entry point:
   template only shows `bytecodePatch`) or dex patches on the native ad-gate
   methods (e.g. no-op `show`/`loadInterstitialAd`), which give ad removal
   without touching JS.
+
+---
+
+# Djezzy 3.0.9 (version code 40076) — Phase 1: walk-and-win step path (recon)
+
+Source: `Djezzy_3.0.9_APKPure.xapk` (APKPure, XAPK: base
+`com.djezzy.internet.apk` 615 entries + `config.arm64_v8a/en/mdpi/zh`
+splits). XAPK `manifest.json`: `package_name: com.djezzy.internet`,
+`name: Djezzy`, `version_name: 3.0.9`, `version_code: 40076`,
+`min_sdk: 24`, `target_sdk: 36`. API host (from `libapp.so` strings):
+`https://apim.djezzy.dz/mobile-api`.
+
+Method: Python stdlib (`zipfile`, raw byte search) + androguard 4.1.4
+(class/method/instruction dumps). Full dumps kept OUT of the repo in
+`/data/data/com.termux/files/usr/tmp/opencode/djezzy_{registrant,pedometer,li5c,li5b}.txt`;
+only findings recorded here. Every identifier below is real output, never
+invented.
+
+## App shape (differs from Goodnight in every way that matters)
+
+- Flutter (Dart AOT), NOT React Native. `lib/arm64-v8a/libapp.so`
+  (~14.7MB) lives in the `config.arm64_v8a` split next to `libflutter.so`.
+  All product logic (34 `djezzy_app_implementation/features/*` folders) is
+  compiled Dart — Morphe `bytecodePatch` (dex) can only touch the thin
+  Java shell + plugins, never Dart logic directly.
+- Thin dex shell: `classes.dex` 11863 classes, `classes2.dex` 134,
+  `classes3.dex` 217. R8 full-mode obfuscated: plugin classes renamed to
+  single-letter names (`Li5/a`, `Lf7/a`, …); only some first-party
+  (`io.flutter.plugins.*`, `com.djezzy.internet.MainActivity`) kept names.
+- No ad-mediation SDKs in any dex (`applovin`/`UnityAds`/`ironsource`/
+  `vungle`/`mintegral`/`pangle`/`inmobi`/`chartboost` all x0; `admob` x5
+  only, Firebase-adjacent). No `billingclient`, no `BILLING` permission, no
+  PairIP/`SignatureCheck`/`LicenseClient` strings — Goodnight-style license
+  bypass has no target here.
+
+## Step pipeline (smali-confirmed, classes.dex)
+
+The `pedometer` Flutter plugin survived R8 as obfuscated `Li5/a` (proven by
+`GeneratedPluginRegistrant.registerWith`, which does
+`new-instance Li5/a` immediately before the catch block logging
+`"Error registering plugin pedometer, com.example.pedometer.PedometerPlugin"`):
+
+- `Li5/a.onAttachedToEngine`: creates EventChannel `"step_detection"`
+  (field `i`) and EventChannel `"step_count"` (field `j`); attaches
+  `Li5/c` stream handlers constructed with int selectors **18** and **19**
+  (= `Sensor.TYPE_STEP_DETECTOR` / `Sensor.TYPE_STEP_COUNTER`).
+  `onDetachedFromEngine` clears both handlers.
+- `Li5/c.<init>(binding, sensorType)`: `sensorType == 19` → sensorName
+  `"StepCount"`, else `"StepDetection"`; `getDefaultSensor(sensorType)`.
+  `onListen`: null sensor → `sink.error("1", "<name> is not available on
+  this device")`; else `registerListener(new Li5/b(sink), sensor, 0)`
+  (delay 0 = fastest). `onCancel`: `unregisterListener`.
+- `Li5/b.onSensorChanged` (THE emission point): `sink.success(
+  Integer.valueOf((int) event.values[0]))` — 10 instructions: null-check,
+  `iget event.values [F`, `aget 0`, `float-to-int`, `Integer.valueOf`,
+  `EventSink.success`. A spoof patch edits here (replace the sensed int
+  with a constant/increment before `valueOf`).
+
+## Fingerprint anchors (substring counts across all 3 dex, all x1 in classes.dex unless noted)
+
+| String | classes.dex | classes2 | classes3 | Lives in |
+|---|---|---|---|---|
+| `step_count` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` const |
+| `step_detection` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` const |
+| `StepCount` | 1 | 0 | 0 | `Li5/c.<init>` const |
+| `StepDetection` | 1 | 0 | 0 | `Li5/c.<init>` const |
+| `stepCountChannel` | 1 | 0 | 0 | `Li5/a` null-guard |
+| `stepDetectionChannel` | 1 | 0 | 0 | `Li5/a` null-guard |
+| `Error registering plugin pedometer, com.example.pedometer.PedometerPlugin` | 1 | 0 | 0 | `GeneratedPluginRegistrant.registerWith` catch |
+| `null cannot be cast to non-null type android.hardware.SensorManager` | 1 | 0 | 0 | `Li5/c.<init>` (also in sensors_plus `Lf7/a`; count is dex-wide so fingerprint must combine anchors) |
+| `flutterPluginBinding` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` |
+
+Note: `Li5/a` has only 3 methods (`<init>`, `onAttachedToEngine`,
+`onDetachedFromEngine`); `Li5/b` has 3 (`<init>`, `onAccuracyChanged`,
+`onSensorChanged`); `Li5/c` has 3 (`<init>`, `onCancel`, `onListen`).
+Fingerprint should anchor on the `step_count`/`step_detection` const-strings
++ `EventChannel.<init>` opcode shape, NOT on the obfuscated `Li5/*` names
+(R8 renames are version-fragile).
+
+## Dart side (libapp.so strings, all real paths)
+
+- 15 files under `features/walk_and_win/`: `data/services/pedometer_service.dart`,
+  `data/datasources/walk_and_win_remote_datasource.dart`,
+  `data/repositories/walk_and_win_repository_impl.dart`,
+  `data/models/waw_campaign_model.dart`,
+  `domain/entities/waw_campaign.dart`,
+  `presentation/bloc/walk_and_win_{bloc,event,state}.dart`, 5 widgets incl.
+  `walk_step_counter_card.dart`.
+- Storage keys (x1 each): `walk_and_win_current_steps`,
+  `walk_and_win_last_pedometer_value` — Dart keeps last sensor value and
+  computes deltas (TYPE_STEP_COUNTER is cumulative-since-boot, so the app
+  diffs readings). Spoof design must account for this: a fixed constant
+  yields ONE delta then zeroes; a steady trickle needs an incrementing
+  counter (static field) or scaled real values.
+- Server endpoints (path fragments, x1 each): `/services/walk/campaign/`,
+  `/services/walk/activate-reward/` (siblings: `/services/scan/activate-reward`,
+  `/services/mgm/activate-reward`). Rewards are server-issued: client
+  reports steps, backend decides. Spoofed steps can be rejected server-side
+  (e.g. implausible deltas) — device test decides.
+- Trust signals: NO `attest`/`SafetyNet`/`PlayIntegrity`/`cheat`/`fraud`/
+  `suspicious` strings; `verifyQrToken`/`verify_qr_token_usecase` belong to
+  scan-and-win (Phase 2); `checksum` hits are archive-lib internals;
+  `signature*` hits are all e-signature-pad UI widgets (unrelated). No
+  step-specific anti-tamper found — spoofable in principle at the sensor
+  layer.
+
+## Sibling note (Phase 2 input, not Phase 1 scope)
+
+`Lf7/a` = sensors_plus (accel/gyro/magnet/barometer channels only, no step
+types) — NOT an alternate step source. Scan-and-win already shows the same
+remote-datasource + response-model shape (`scan_and_win_remote_datasource.dart`,
+`scan_qr_code_usecase.dart`, `scan_response_model.dart`) with server token
+verification (`verifyQrToken`).
