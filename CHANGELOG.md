@@ -1,3 +1,9 @@
+## [0.0.1](https://github.com/dunecache/oyasumi-patches/compare/v0.0.0...v0.0.1) (2026-09-21)
+
+### 🐛 Bug Fixes
+
+* point patch source at oyasumi-patches ([523537b](https://github.com/dunecache/oyasumi-patches/commit/523537b0092a7629fba502eed791f82d38d5bcd2))
+
 ## 1.0.0 (2026-09-21)
 
 ### 🐛 Bug Fixes
