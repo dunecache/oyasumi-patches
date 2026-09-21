@@ -1,3 +1,9 @@
+## [0.2.0-dev.5](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.4...v0.2.0-dev.5) (2026-09-21)
+
+### 🐛 Bug Fixes
+
+* read float-to-int match as TwoRegisterInstruction in step spoof ([d289ba8](https://github.com/dunecache/oyasumi-patches/commit/d289ba8f46abaeebca6672f9b5545c0634fe3ae8))
+
 ## [0.2.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.3...v0.2.0-dev.4) (2026-09-21)
 
 ### ✨ New Features
