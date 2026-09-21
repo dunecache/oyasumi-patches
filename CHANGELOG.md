@@ -1,3 +1,9 @@
+## [0.2.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.1.0...v0.2.0-dev.1) (2026-09-21)
+
+### ✨ New Features
+
+* kill license redirect screen as well as the checks ([354d4ae](https://github.com/dunecache/oyasumi-patches/commit/354d4aed78b1a559f52b021906e82e72bc1a7d14))
+
 ## [0.1.0](https://github.com/dunecache/oyasumi-patches/compare/v0.0.1...v0.1.0) (2026-09-21)
 
 ### ✨ New Features
