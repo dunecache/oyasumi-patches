@@ -52,8 +52,10 @@ object ShowPaywallFingerprint : Fingerprint(
 
 // LicenseActivity.showErrorDialog: shows the "Something went wrong" dialog
 // whose only button closes the app. Body has no string constants of its own
-// (message lives in lambda$showErrorDialog$0), so anchored on the
-// runOnUiThread call; uniqueness comes from class + name + empty params.
+// (message lives in lambda$showErrorDialog$0), so anchored on its
+// runOnUiThread call — referenced as LicenseActivity->runOnUiThread in the
+// 1.345.0 dex, not Activity->runOnUiThread. Uniqueness comes from class +
+// name + empty params.
 object ShowErrorDialogFingerprint : Fingerprint(
     definingClass = "Lcom/pairip/licensecheck/LicenseActivity;",
     name = "showErrorDialog",
@@ -61,7 +63,7 @@ object ShowErrorDialogFingerprint : Fingerprint(
     parameters = listOf(),
     filters = listOf(
         methodCall(
-            definingClass = "Landroid/app/Activity;",
+            definingClass = "Lcom/pairip/licensecheck/LicenseActivity;",
             name = "runOnUiThread",
         ),
     )
