@@ -95,6 +95,39 @@ fingerprints still need smali-level confirmation before writing patches.
 `BILLING`, `CHECK_LICENSE`, `CAMERA`, `RECORD_AUDIO`, `ACCESS_FINE_LOCATION`,
 `SYSTEM_ALERT_WINDOW`, `RECEIVE_BOOT_COMPLETED`, `POST_NOTIFICATIONS`.
 
+## Patch 0 (prerequisite) — Play license bypass: gate mapped from real smali
+
+Symptom on device: patched app redirects to the Play Store and exits.
+Cause: PairIP protection in `classes2.dex`, wired into the app entry point:
+
+- `Lcom/pairip/application/Application;` extends `MainApplication`; its
+  `attachBaseContext` calls, in order: `VMRunner.setContext`,
+  `SignatureCheck.verifyIntegrity` (throws `SignatureTamperedException` when
+  the APK signature differs from Play — always true for patched APKs; allows
+  `expectedSignature` / `expectedLegacyUpgradedSignature` /
+  `expectedTestSignature` / hardcoded
+  `Vn3kj4pUblROi2S+QfRRL9nhsaO2uoHQg6+dpEtxdTE=`), then
+  `LicenseClient.checkLicense`.
+- `LicenseClient.checkLicense` → `performLocalInstallerCheck()Z`: SDK<30 or
+  no PackageManager bypasses (returns false); system/updated-system app
+  passes (returns true); otherwise requires installing package ==
+  `com.android.vending`, else "Local install check failed due to wrong
+  installer." On failure the LVL path runs and `LicenseActivity` opens the
+  Play paywall (`showPaywallAndCloseApp` via `paywallintent` PendingIntent,
+  `onStart` ordinal != 0) then `closeApp`/`exitApp` (`System.exit`).
+- Same `checkLicense` is also called from
+  `LicenseContentProvider.onCreate`, so patching the method itself (not the
+  call sites) covers both.
+- Patch (`patches/.../license/`): return-early `return-void` in
+  `SignatureCheck.verifyIntegrity(Landroid/content/Context;)V` (anchor strings
+  `SHA-256`, `Apk signature is invalid.`) and in
+  `LicenseClient.checkLicense(Landroid/content/Context;)V` (anchor strings
+  `Cannot check license with null context.`,
+  `Skipping license check in isolated process.`). All four strings and both
+  method signatures verified unique (x1) in 1.345.0 `classes2.dex`.
+- Open: PairIP `VMRunner`/`VmDecryptor` regions and any server-side license
+  re-checks; device test decides.
+
 ## TODO (needs smali)
 
 1. ~~Get smali for 1.345.0 (tooling decision pending)~~ DONE (option a):
