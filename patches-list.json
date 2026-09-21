@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.0.1",
+  "version": "0.1.0-dev.1",
   "patches": [
     {
       "name": "Example Patch",
@@ -28,6 +28,33 @@
             },
             {
               "version": "1.0.2",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Play license bypass",
+      "description": "Skip the Play Store install and signature checks so the patched app launches instead of redirecting to the Play Store.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.one.goodnight",
+          "name": "Goodnight",
+          "description": null,
+          "apkFileType": "XAPK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "1.345.0",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,
