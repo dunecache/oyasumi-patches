@@ -285,6 +285,70 @@ remote-datasource + response-model shape (`scan_and_win_remote_datasource.dart`,
 `scan_qr_code_usecase.dart`, `scan_response_model.dart`) with server token
 verification (`verifyQrToken`).
 
+---
+
+# Ninja Arashi 2 1.9.6 (version code 26) — unlimited-lives recon (NATIVE, indicative only)
+
+Source: `Ninja_Arashi_2-v1.9.6-patches-v1.46.0.apk` (155MB, Downloads) is
+PRE-PATCHED with third-party v1.46.0 patches — NOT a clean reference. All
+findings below are indicative and must be re-verified against a clean 1.9.6
+APK before any fingerprint/patch is written (per repo rule 1).
+Package `com.blackpanther.ninjaarashi2`, Unity IL2CPP
+(`lib/arm64-v8a/libil2cpp.so` ~52MB + `global-metadata.dat` ~8.6MB).
+Dex (6 files, ~28.5MB) contains ZERO `life`/`Lives` strings: lives logic is
+compiled C++ in libil2cpp.so, unreachable by Morphe `bytecodePatch`.
+
+Method: Python stdlib printable-run sweep of global-metadata.dat (86063
+runs) + raw search of libil2cpp.so. No disassembler available here
+(`pip install capstone` timed out; no objdump) — so method RVAs and exact
+byte patches are NOT resolved.
+
+## LivesManager (complete API, one contiguous string block, runs ~29950-29993)
+
+- Gate/decrement: `canPlay`, `canLooseLife`, `looseOneLife`.
+- Refill: `canRefillLives`, `refillOneLife`, `refillAllLives`,
+  `refillXLives(livesToAdd)`, `getRefillSecondsLeft`,
+  `getFullRefillSecondsLeft`.
+- Unlimited mode (game already has it, timed): `canGetUnlimitedLives`,
+  `getUnlimitedLives`, `isUnlimitedLives`, `setUnlimitedTimer`,
+  `checkUnlimitedTime`, `getUnlimitedSecondsLeft`, `UNLIMITED_LIVES_SECONDS`.
+- Slots: `canGetExtraLifeSlot`, `getExtraLifeSlot`, `getMaxNumberOfLives`,
+  `BASIC_LIFE_SLOTS`, `MAX_EXTRA_LIFE_SLOTS`.
+- Timers/state: `checkRegenerationTime`, `setLifeRegenerationTimer`,
+  `getCurrentTimeInSeconds`, `secondsToTimeFormatter`, `firstTimeInit`,
+  `reset`, `updateUserInterface`, `getCurrentLivesMsg`, `getTimeLeftMsg`.
+- Persisted fields + save keys: `currentLives` (`ID_CURRENT_LIVES`,
+  also seen as `lm_current_lives`), `extraLives` (`ID_EXTRA_LIVE_SLOTS` /
+  `lm_extra_slots`), `regenerationTimestamp` (`ID_REGENERATION_TIMESTAMP`),
+  `unlimitedTimestamp` (`ID_UNLIMITED_TIMESTAMP`), `ID_FIRST_TIME`,
+  `REFILL_LIFE_SECONDS`, `TEXT_FULL_LIVES`, `TEXT_HOURS_LEFT`.
+  Config block: `LMConfig`.
+
+## Native-patch options (ranked, all need disassembler + clean .so)
+
+1. `isUnlimitedLives` → return true (MOV W0,#1 + RET, ~8 bytes). Best:
+   uses the game's own unlimited mode; UI/timers already handle it.
+2. NOP `looseOneLife` body (RET) — lives never decrease.
+3. Freeze `getCurrentTimeInSeconds` — NOT recommended (breaks all timers).
+
+## Blockers (why no patch is written yet)
+
+1. No exact offsets: `libil2cpp.so` contains ZERO LivesManager strings
+   (names stripped; live only in metadata), so string-anchored targeting is
+   impossible — need metadata method-def → RVA resolution + ARM64
+   disassembly, unavailable in this environment.
+2. Delivery vehicle unverified: Morphe `bytecodePatch`/`resourcePatch`
+   target dex/resources, not native `.so` replacement (52MB). Unknown
+   whether Morphe can ship a patched libil2cpp.so at all.
+3. Dirty reference: everything above comes from a pre-patched APK.
+
+## Immediately actionable (no patch needed)
+
+Save editing: the `ID_*` / `lm_*` keys are Unity-PlayerPrefs-style save
+entries. With access to the app's save (root, or backup/restore),
+`currentLives` can be set high and `regenerationTimestamp` cleared —
+manual cheat, not a distributable patch.
+
 ## Patch 1 — Walk-and-win step spoof (fixed 10000, committed)
 
 - Fingerprint (`patches/.../walkwin/Fingerprints.kt`): `onSensorChanged`
