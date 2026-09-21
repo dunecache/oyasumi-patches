@@ -27,5 +27,16 @@ val licenseBypassPatch = bytecodePatch(
             0,
             "return-void"
         )
+        // Layer 2 (same behavior): whatever opens the redirect screen — dex
+        // or the native PairIP core via JNI — it can then show nothing and
+        // cannot reach closeApp/exitApp.
+        ShowPaywallFingerprint.method.addInstructions(
+            0,
+            "return-void"
+        )
+        ShowErrorDialogFingerprint.method.addInstructions(
+            0,
+            "return-void"
+        )
     }
 }

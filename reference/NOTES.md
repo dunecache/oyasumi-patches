@@ -127,6 +127,13 @@ Cause: PairIP protection in `classes2.dex`, wired into the app entry point:
   method signatures verified unique (x1) in 1.345.0 `classes2.dex`.
 - Open: PairIP `VMRunner`/`VmDecryptor` regions and any server-side license
   re-checks; device test decides.
+- Layer 2 (same patch): return-early `return-void` in
+  `LicenseActivity.showPaywallAndCloseApp()V` (anchors `paywallintent`,
+  `Paywall intent is not provided.`, both x1) and
+  `LicenseActivity.showErrorDialog()V` (anchor: `runOnUiThread` call;
+  uniqueness from class + name + empty params). Rationale: step-1 device
+  test (license-only patch) still redirected, so the verdict comes from the
+  native core; killing the effect covers dex and JNI triggers alike.
 
 ## TODO (needs smali)
 
