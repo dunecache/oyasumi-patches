@@ -1,3 +1,9 @@
+## [0.1.0](https://github.com/dunecache/oyasumi-patches/compare/v0.0.1...v0.1.0) (2026-09-21)
+
+### ✨ New Features
+
+* add Play license bypass for com.one.goodnight 1.345.0 ([9a338cf](https://github.com/dunecache/oyasumi-patches/commit/9a338cf3dd42811a7eb778ecebf9b16407435824))
+
 ## [0.1.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.0.1...v0.1.0-dev.1) (2026-09-21)
 
 ### ✨ New Features
