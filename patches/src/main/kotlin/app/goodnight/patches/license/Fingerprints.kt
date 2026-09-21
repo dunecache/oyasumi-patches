@@ -34,6 +34,25 @@ object LicenseCheckFingerprint : Fingerprint(
     )
 )
 
+// PairIP VM startup, invoked from the ComponentFactory <clinit> hooks
+// planted in classes2.dex (Landroid/app/AppComponentFactory and
+// androidx/core/app/CoreComponentFactory), i.e. before Application starts.
+// It runs the encrypted VM program (assets \x00IAP blobs) in the native
+// libpairipcore, which enforces signature/installer checks outside dex
+// reach. Skipping it disables the native verdict entirely — at the risk
+// that the VM also runs required init (device test decides).
+object StartupLauncherFingerprint : Fingerprint(
+    definingClass = "Lcom/pairip/StartupLauncher;",
+    name = "launch",
+    returnType = "V",
+    parameters = listOf(),
+    filters = listOf(
+        methodCall(
+            definingClass = "Lcom/pairip/VMRunner;",
+            name = "invoke",
+        ),
+    )
+)
 // LicenseActivity.showPaywallAndCloseApp: fires the Play Store paywall
 // PendingIntent ("paywallintent" extra) then closes the app. Anchored on its
 // two unique strings (see reference/NOTES.md). No-op'ing it (plus

@@ -38,5 +38,13 @@ val licenseBypassPatch = bytecodePatch(
             0,
             "return-void"
         )
+        // Layer 3 (same behavior): skip the native PairIP VM program, which
+        // enforces the checks from libpairipcore outside dex reach. If the VM
+        // also runs required init, the app will fail differently — that
+        // outcome itself decides the next step.
+        StartupLauncherFingerprint.method.addInstructions(
+            0,
+            "return-void"
+        )
     }
 }
