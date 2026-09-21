@@ -3,9 +3,9 @@ group = "app.goodnight"
 patches {
     // TODO: Update this section with your project details.
     about {
-        name = "Goodnight Patches"
+        name = "Oyasumi Patches"
         description = "Patches for Goodnight (com.one.goodnight)"
-        source = "git@github.com:UserXYZ/morphe-patches.git"
+        source = "git@github.com:dunecache/oyasumi-patches.git"
         author = "Awesome dev"
         contact = "na"
         website = "na"
