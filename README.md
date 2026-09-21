@@ -15,7 +15,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v0.2.0-dev.2](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.2)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+> **[v0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
 <details open>
 <summary>📦 XYZ app&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
@@ -44,6 +44,21 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 |----------|----------------|-----------|
 | [Play license bypass](#play-license-bypass) | Skip the Play Store install and signature checks so the patched app launches instead of redirecting to the Play Store. |  |
 | [Premium unlock](#premium-unlock) | Unlock premium-gated UI and the ad-free match flow. Features validated server-side may still require a subscription. |  |
+
+</details>
+
+<details open>
+<summary>📦 Djezzy&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 3.0.9 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Walk-and-win step spoof](#walk-and-win-step-spoof) | Report a fixed step count (50000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity. |  |
 
 </details>
 

@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-21T12:30:56",
-  "description": "## [0.2.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.1...v0.2.0-dev.2) (2026-09-21)\n\n### 🐛 Bug Fixes\n\n* anchor error-dialog fingerprint on LicenseActivity runOnUiThread ref ([c94d3b7](https://github.com/dunecache/oyasumi-patches/commit/c94d3b7615da8d2359b63a1006932f7575dd5183))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.2/patches-0.2.0-dev.2.mpp",
+  "created_at": "2026-09-21T12:38:12",
+  "description": "## [0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.2...v0.2.0-dev.3) (2026-09-21)\n\n### ✨ New Features\n\n* add walk-and-win fixed step spoof for com.djezzy.internet 3.0.9 ([051d5a1](https://github.com/dunecache/oyasumi-patches/commit/051d5a16406c39a68b80231da6684a8507927731))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.3/patches-0.2.0-dev.3.mpp",
   "signature_download_url": "",
-  "version": "0.2.0-dev.2"
+  "version": "0.2.0-dev.3"
 }

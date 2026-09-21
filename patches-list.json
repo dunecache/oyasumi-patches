@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.2.0-dev.2",
+  "version": "0.2.0-dev.3",
   "patches": [
     {
       "name": "Example Patch",
@@ -82,6 +82,33 @@
           "targets": [
             {
               "version": "1.345.0",
+              "versionCodes": null,
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Walk-and-win step spoof",
+      "description": "Report a fixed step count (50000) to walk-and-win instead of the real sensor value. Rewards are issued server-side and may still require genuine activity.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.djezzy.internet",
+          "name": "Djezzy",
+          "description": null,
+          "apkFileType": "XAPK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "3.0.9",
               "versionCodes": null,
               "isExperimental": false,
               "minSdk": null,

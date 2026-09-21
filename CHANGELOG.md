@@ -1,3 +1,9 @@
+## [0.2.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.2...v0.2.0-dev.3) (2026-09-21)
+
+### ✨ New Features
+
+* add walk-and-win fixed step spoof for com.djezzy.internet 3.0.9 ([051d5a1](https://github.com/dunecache/oyasumi-patches/commit/051d5a16406c39a68b80231da6684a8507927731))
+
 ## [0.2.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.1...v0.2.0-dev.2) (2026-09-21)
 
 ### 🐛 Bug Fixes
