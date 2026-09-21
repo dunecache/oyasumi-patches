@@ -15,7 +15,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 ## 🩹 Patches list
 
 <!-- PATCHES_START EXPANDED -->
-> **[v0.0.1](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.0.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;2 patches total
+> **[v0.1.0-dev.1](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.1.0-dev.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
 <summary>📦 XYZ app&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
@@ -32,7 +32,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 </details>
 
 <details open>
-<summary>📦 Goodnight&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<summary>📦 Goodnight&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -42,6 +42,7 @@ Click here to add these patches to Morphe: https://morphe.software/add-source?gi
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
+| [Play license bypass](#play-license-bypass) | Skip the Play Store install and signature checks so the patched app launches instead of redirecting to the Play Store. |  |
 | [Premium unlock](#premium-unlock) | Unlock premium-gated UI and the ad-free match flow. Features validated server-side may still require a subscription. |  |
 
 </details>
