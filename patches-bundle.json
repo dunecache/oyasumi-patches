@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-25T01:27:17",
-  "description": "## [0.2.0-dev.6](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.5...v0.2.0-dev.6) (2026-09-25)\n\n### ✨ New Features\n\n* add ADM ad and rating suppression patches ([284dc63](https://github.com/dunecache/oyasumi-patches/commit/284dc639a429eee68cfb7416d2c405c53b881e2a))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.6/patches-0.2.0-dev.6.mpp",
+  "created_at": "2026-09-25T09:42:57",
+  "description": "## [0.2.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.6...v0.2.0-dev.7) (2026-09-25)\n\n### 🐛 Bug Fixes\n\n* escape ADM inner class descriptor ([088a49f](https://github.com/dunecache/oyasumi-patches/commit/088a49f8a73a493c6c136a0579253583a7d3c90d))\n\n### ✨ New Features\n\n* increase ADM connection limits ([de2be1a](https://github.com/dunecache/oyasumi-patches/commit/de2be1a3a802a2eb339204d1dba0c14d445cac5e))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.7/patches-0.2.0-dev.7.mpp",
   "signature_download_url": "",
-  "version": "0.2.0-dev.6"
+  "version": "0.2.0-dev.7"
 }

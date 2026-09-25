@@ -1,3 +1,13 @@
+## [0.2.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.6...v0.2.0-dev.7) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* escape ADM inner class descriptor ([088a49f](https://github.com/dunecache/oyasumi-patches/commit/088a49f8a73a493c6c136a0579253583a7d3c90d))
+
+### ✨ New Features
+
+* increase ADM connection limits ([de2be1a](https://github.com/dunecache/oyasumi-patches/commit/de2be1a3a802a2eb339204d1dba0c14d445cac5e))
+
 ## [0.2.0-dev.6](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.5...v0.2.0-dev.6) (2026-09-25)
 
 ### ✨ New Features
