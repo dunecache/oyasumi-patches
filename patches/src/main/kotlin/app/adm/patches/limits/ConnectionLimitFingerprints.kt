@@ -6,10 +6,10 @@ import app.morphe.patcher.methodCall
 import app.morphe.patcher.string
 
 object DownloadSliderMaxFingerprint : Fingerprint(
-    definingClass = "Lcom/dv/get/Pref$o;",
+    definingClass = "Lcom/dv/get/Pref\$o;",
     name = "f",
     returnType = "V",
-    parameters = listOf("Lcom/dv/get/Pref$o;"),
+    parameters = listOf("Lcom/dv/get/Pref\$o;"),
     filters = listOf(
         literal(2131755635),
         literal(2131755637),
