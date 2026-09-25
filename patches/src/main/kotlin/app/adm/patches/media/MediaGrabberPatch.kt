@@ -76,7 +76,7 @@ val mediaGrabberPatch = bytecodePatch(
                     "Z"
                 )
             )
-            val continueLabel = method.implementation!!.newLabelForIndex(1)
+            val continueLabel = method.implementation!!.newLabelForIndex(5)
             method.addInstruction(1, BuilderInstruction11x(Opcode.MOVE_RESULT, 0))
             method.addInstruction(2, BuilderInstruction21t(Opcode.IF_EQZ, 0, continueLabel))
             method.addInstruction(3, BuilderInstruction11n(Opcode.CONST_4, 0, 1))

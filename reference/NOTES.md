@@ -107,6 +107,20 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - DEX recon resolves the existing direct-download intents in `C0` and `c1` to `Lcom/dv/get/AEditor;`; `Lcom/dv/adm/AEditor;` is a separate class and is not used by this phase.
 - The extension is packaged as `extensions/adm-media.mpe`. Static DEX anchors passed; Gradle compilation and device application are pending.
 
+### Verified menu and item-selection anchors
+
+- `Web.onCreateOptionsMenu(Menu)` has 18 registers and 412 instructions; `this` is `v16` and the `Menu` argument is `v17`. Return instructions are at indices `19, 60, 140, 293, 411` and all five are hooked.
+- In this build the DEX prototype for `Landroid/view/MenuItem;->setShowAsAction(I)` is `(I)V`. The public SDK method returns `MenuItem`, so a filter written from the SDK signature never matches; the fingerprint must declare `returnType = "V"`. `setIcon(I)` does return `Landroid/view/MenuItem;` in the same method, so the two cannot be assumed to agree.
+- `Web.onOptionsItemSelected(MenuItem)` has 18 registers, `this` is `v16` and the `MenuItem` argument is `v17`. `MenuItem.getItemId()` is called at index `2` and its result lands in `v1`; the item id is consumed by a `sparse-switch` at index `25`, whose payload values are resource ids such as `0x7f09003a`.
+- The extension's `MENU_ID` is `0x4D454449`, which is outside the resource-id range used by the switch, and the hook returns before the switch, so the injected item is never handled by ADM itself.
+- `onPageStarted` uses 7 registers with `this` in `v3`, so `(WebView,String)` is `v4,v5`; `shouldInterceptRequest` uses 6 registers with `this` in `v3`, so `(WebView,String)` is also `v4,v5`.
+- The `onOptionsItemSelected` hook inserts five instructions at indices `0..4`, so the continue label must reference final index `5`. `newLabelForIndex` is resolved against the assembled instruction list, as used by Morphe's own `addInstructionsWithLabels`, so an index captured before the remaining insertions point at `move-result` and loop.
+
+### Build environment
+
+- `openjdk-21` is installed at `/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk` and exported through `/data/data/com.termux/files/usr/etc/profile.d/openjdk.sh`.
+- A local Gradle build is not possible: `https://maven.pkg.github.com/MorpheApp/registry` returns `401` for the available `gh` token, which lacks the `read:packages` scope, so `app.morphe.patches` plugin `1.3.4` cannot be resolved. Compilation is delegated to CI.
+
 ## Browser and remote data
 
 - `Lcom/dv/get/Web;` owns the built-in browser.

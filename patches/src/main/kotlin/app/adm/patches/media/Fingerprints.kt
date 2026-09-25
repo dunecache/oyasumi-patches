@@ -71,7 +71,7 @@ object WebCreateOptionsMenuFingerprint : Fingerprint(
             definingClass = "Landroid/view/MenuItem;",
             name = "setShowAsAction",
             parameters = listOf("I"),
-            returnType = "Landroid/view/MenuItem;"
+            returnType = "V"
         )
     )
 )
