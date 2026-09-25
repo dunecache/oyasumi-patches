@@ -1,3 +1,13 @@
+## [0.2.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.9...v0.2.0-dev.10) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* correct media grabber hook types ([34cca96](https://github.com/dunecache/oyasumi-patches/commit/34cca96c4dd0a063859b81009bf0e60c66162d9d))
+
+### ✨ New Features
+
+* add ADM direct media grabber ([3b3098f](https://github.com/dunecache/oyasumi-patches/commit/3b3098fb3c6dbd8fd5fdbb3ee9ac0b704b7dc965))
+
 ## [0.2.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.8...v0.2.0-dev.9) (2026-09-25)
 
 ### ✨ New Features

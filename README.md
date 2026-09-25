@@ -60,9 +60,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.2.0-dev.9](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.9)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+> **[v0.2.0-dev.10](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.10)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
 <details open>
-<summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
+<summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;4 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -75,6 +75,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable ads](#disable-ads) | Skip ADM's app-level ad initialization, display routines, and Telegram join prompt. |  |
 | [Disable rating prompts](#disable-rating-prompts) | Skip ADM's rating dialog without changing service teardown. |  |
 | [Increase connection limits](#increase-connection-limits) | Raise the download slider ceiling to 64 and set torrent defaults to 500 global and 100 per torrent. |  |
+| [Media grabber (direct video and subtitles)](#media-grabber-direct-video-and-subtitles) | Capture direct video and subtitle URLs in ADM's browser and offer downloads. |  |
 
 </details>
 
