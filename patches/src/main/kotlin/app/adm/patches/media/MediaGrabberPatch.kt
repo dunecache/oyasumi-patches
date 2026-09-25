@@ -25,7 +25,7 @@ val mediaGrabberPatch = bytecodePatch(
             0,
             "invoke-static {p1, p2}, $EXTENSION_CLASS;->onRequest(Landroid/webkit/WebView;Ljava/lang/String;)V"
         )
-        WebCreateOptionsMenuFingerprint.method.let { fingerprint ->
+        WebCreateOptionsMenuFingerprint.let { fingerprint ->
             listOf(411, 293, 140, 60, 19).forEach { index ->
                 fingerprint.method.addInstructions(
                     index,

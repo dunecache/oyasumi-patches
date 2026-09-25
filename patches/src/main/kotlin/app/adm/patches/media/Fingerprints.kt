@@ -5,7 +5,7 @@ import app.morphe.patcher.methodCall
 import app.morphe.patcher.newInstance
 
 object WebPageStartedFingerprint : Fingerprint(
-    definingClass = "Lcom/dv/get/Web$i;",
+    definingClass = "Lcom/dv/get/Web" + '$' + "i;",
     name = "onPageStarted",
     returnType = "V",
     parameters = listOf(
@@ -24,7 +24,7 @@ object WebPageStartedFingerprint : Fingerprint(
 )
 
 object WebRequestFingerprint : Fingerprint(
-    definingClass = "Lcom/dv/get/Web$i;",
+    definingClass = "Lcom/dv/get/Web" + '$' + "i;",
     name = "shouldInterceptRequest",
     returnType = "Landroid/webkit/WebResourceResponse;",
     parameters = listOf(
