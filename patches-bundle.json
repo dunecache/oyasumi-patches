@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-25T19:45:37",
-  "description": "## [0.2.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.12...v0.2.0-dev.13) (2026-09-25)\n\n### 🐛 Bug Fixes\n\n* correct media menu fingerprint and item selection label ([5d8408d](https://github.com/dunecache/oyasumi-patches/commit/5d8408d6ebfb4d886470feba09dfba72969ef2d1))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.13/patches-0.2.0-dev.13.mpp",
+  "created_at": "2026-09-25T20:20:53",
+  "description": "## [0.2.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.13...v0.2.0-dev.14) (2026-09-25)\n\n### 🐛 Bug Fixes\n\n* revert onOptionsItemSelected label index to 1 ([ed890eb](https://github.com/dunecache/oyasumi-patches/commit/ed890eb713d56e80d297cc046c9d28beaa04c8d1))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.14/patches-0.2.0-dev.14.mpp",
   "signature_download_url": "",
-  "version": "0.2.0-dev.13"
+  "version": "0.2.0-dev.14"
 }

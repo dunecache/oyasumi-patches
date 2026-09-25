@@ -1,3 +1,9 @@
+## [0.2.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.13...v0.2.0-dev.14) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* revert onOptionsItemSelected label index to 1 ([ed890eb](https://github.com/dunecache/oyasumi-patches/commit/ed890eb713d56e80d297cc046c9d28beaa04c8d1))
+
 ## [0.2.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.12...v0.2.0-dev.13) (2026-09-25)
 
 ### 🐛 Bug Fixes
