@@ -56,7 +56,10 @@
 
 - Compatibility: `com.dv.adm`, version `14.0.27`, regular APK.
 - The patch returns early from the four app-owned ad entry points: `f3.c()` for AppBrain/Appodeal setup, `f3.i(Activity)` for Appodeal interstitial initialization, `f3.h()` for banner display, and `f3.j(MyActivity)` for interstitial display.
-- Fingerprints use the verified `main-toolend`, Appodeal key, and `AppoInterShow` strings plus exact method signatures. Each anchor occurs once in the reference DEX.
+- `Lcom/dv/get/Main;->s3()V` is the only automatic Telegram join-prompt inflation site. It reads `TELE1_KEY` and `TELE2_KEY`, then inflates the `Lh2/c;->s` `ViewStub` through `Lh2/u0;->a(View)` and `Lh2/u0;->b()`. The gate constant `const/4 v9, 2` is at instruction index 98.
+- The patch replaces that gate constant with `const/4 v9, 0`, causing the existing `if-ge v6, v9` at index 99 to skip the prompt block for the app-written counter values without changing instruction width.
+- The Telegram URL `https://t.me/adm_torrent` is also used by the explicit `Main.onOptionsItemSelected` menu item at index 105; that user-initiated link is intentionally left intact.
+- Fingerprints use the verified `main-toolend`, Appodeal key, `AppoInterShow`, and Telegram preference-key strings plus exact method signatures and ordered instruction anchors. Each anchor occurs once in the reference DEX.
 - The patch does not alter downloader, torrent, browser, billing, Huawei, or remote-configuration methods.
 - Static fingerprint validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
 
