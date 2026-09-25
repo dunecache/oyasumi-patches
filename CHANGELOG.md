@@ -1,3 +1,9 @@
+## [0.2.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.11...v0.2.0-dev.12) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* build media hooks without inline smali ([1224f2a](https://github.com/dunecache/oyasumi-patches/commit/1224f2a3fc3a5a3a8ffbc0869e65f85997528feb))
+
 ## [0.2.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.10...v0.2.0-dev.11) (2026-09-25)
 
 ### 🐛 Bug Fixes
