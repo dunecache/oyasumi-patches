@@ -1,3 +1,9 @@
+## [0.2.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.10...v0.2.0-dev.11) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* use explicit registers in media hooks ([f963b46](https://github.com/dunecache/oyasumi-patches/commit/f963b4621deea78a59373164c79ea9c1fe9a4876))
+
 ## [0.2.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.9...v0.2.0-dev.10) (2026-09-25)
 
 ### 🐛 Bug Fixes
