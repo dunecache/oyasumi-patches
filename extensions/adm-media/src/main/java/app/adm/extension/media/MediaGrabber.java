@@ -72,6 +72,9 @@ public final class MediaGrabber {
         }
         MenuItem item = menu.add(0, MENU_ID, 0, "Media grabber");
         item.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
+        if (host instanceof Activity) {
+            Toast.makeText((Activity) host, "Media grabber menu hook fired", Toast.LENGTH_SHORT).show();
+        }
     }
 
     public static boolean onOptionsItemSelected(Object host, MenuItem item) {
