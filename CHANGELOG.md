@@ -1,3 +1,9 @@
+## [0.2.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.8...v0.2.0-dev.9) (2026-09-25)
+
+### ✨ New Features
+
+* suppress ADM Telegram join prompt ([c820606](https://github.com/dunecache/oyasumi-patches/commit/c8206069185548b87f1d633d0327cbd3ad152fd5))
+
 ## [0.2.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.7...v0.2.0-dev.8) (2026-09-25)
 
 ### 🐛 Bug Fixes
