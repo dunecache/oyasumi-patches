@@ -1,10 +1,28 @@
 package app.adm.patches.media
 
 import app.adm.patches.shared.Constants.COMPATIBILITY_ADM
-import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
 import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11n
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction11x
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction21t
+import com.android.tools.smali.dexlib2.builder.instruction.BuilderInstruction3rc
+import com.android.tools.smali.dexlib2.immutable.reference.ImmutableMethodReference
 
 private const val EXTENSION_CLASS = "Lapp/adm/extension/media/MediaGrabber;"
+
+private fun invokeStaticRange(
+    startRegister: Int,
+    name: String,
+    parameters: List<String>,
+    returnType: String
+) = BuilderInstruction3rc(
+    Opcode.INVOKE_STATIC_RANGE,
+    startRegister,
+    2,
+    ImmutableMethodReference(EXTENSION_CLASS, name, parameters, returnType)
+)
 
 @Suppress("unused")
 val mediaGrabberPatch = bytecodePatch(
@@ -17,32 +35,52 @@ val mediaGrabberPatch = bytecodePatch(
     extendWith("extensions/adm-media.mpe")
 
     execute {
-        WebPageStartedFingerprint.method.addInstructions(
+        WebPageStartedFingerprint.method.addInstruction(
             0,
-            "invoke-static {v4, v5}, $EXTENSION_CLASS;->onPageStarted(Landroid/webkit/WebView;Ljava/lang/String;)V"
+            invokeStaticRange(
+                4,
+                "onPageStarted",
+                listOf("Landroid/webkit/WebView;", "Ljava/lang/String;"),
+                "V"
+            )
         )
-        WebRequestFingerprint.method.addInstructions(
+        WebRequestFingerprint.method.addInstruction(
             0,
-            "invoke-static {v4, v5}, $EXTENSION_CLASS;->onRequest(Landroid/webkit/WebView;Ljava/lang/String;)V"
+            invokeStaticRange(
+                4,
+                "onRequest",
+                listOf("Landroid/webkit/WebView;", "Ljava/lang/String;"),
+                "V"
+            )
         )
         WebCreateOptionsMenuFingerprint.let { fingerprint ->
             listOf(411, 293, 140, 60, 19).forEach { index ->
-                fingerprint.method.addInstructions(
+                fingerprint.method.addInstruction(
                     index,
-                    "invoke-static {v16, v17}, $EXTENSION_CLASS;->onCreateOptionsMenu(Ljava/lang/Object;Landroid/view/Menu;)V"
+                    invokeStaticRange(
+                        16,
+                        "onCreateOptionsMenu",
+                        listOf("Ljava/lang/Object;", "Landroid/view/Menu;"),
+                        "V"
+                    )
                 )
             }
         }
-        WebOptionsItemSelectedFingerprint.method.addInstructions(
-            0,
-            """
-                invoke-static {v16, v17}, $EXTENSION_CLASS;->onOptionsItemSelected(Ljava/lang/Object;Landroid/view/MenuItem;)Z
-                move-result v0
-                if-eqz v0, :morphe_media_continue
-                const/4 v0, 0x1
-                return v0
-                :morphe_media_continue
-            """.trimIndent()
-        )
+        WebOptionsItemSelectedFingerprint.method.let { method ->
+            method.addInstruction(
+                0,
+                invokeStaticRange(
+                    16,
+                    "onOptionsItemSelected",
+                    listOf("Ljava/lang/Object;", "Landroid/view/MenuItem;"),
+                    "Z"
+                )
+            )
+            val continueLabel = method.implementation!!.newLabelForIndex(1)
+            method.addInstruction(1, BuilderInstruction11x(Opcode.MOVE_RESULT, 0))
+            method.addInstruction(2, BuilderInstruction21t(Opcode.IF_EQZ, 0, continueLabel))
+            method.addInstruction(3, BuilderInstruction11n(Opcode.CONST_4, 0, 1))
+            method.addInstruction(4, BuilderInstruction11x(Opcode.RETURN, 0))
+        }
     }
 }
