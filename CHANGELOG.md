@@ -1,3 +1,9 @@
+## [0.2.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.12...v0.2.0-dev.13) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* correct media menu fingerprint and item selection label ([5d8408d](https://github.com/dunecache/oyasumi-patches/commit/5d8408d6ebfb4d886470feba09dfba72969ef2d1))
+
 ## [0.2.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.11...v0.2.0-dev.12) (2026-09-25)
 
 ### 🐛 Bug Fixes
