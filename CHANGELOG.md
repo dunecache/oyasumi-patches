@@ -1,3 +1,9 @@
+## [0.2.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.7...v0.2.0-dev.8) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* correct ADM torrent fingerprint order ([29c9994](https://github.com/dunecache/oyasumi-patches/commit/29c99949485ccd15f2594dc60339e987e7768d6c))
+
 ## [0.2.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.6...v0.2.0-dev.7) (2026-09-25)
 
 ### 🐛 Bug Fixes
