@@ -1,3 +1,9 @@
+## [0.2.0-dev.15](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.14...v0.2.0-dev.15) (2026-09-25)
+
+### 🐛 Bug Fixes
+
+* surface media menu hook diagnostic on device ([9e42bcb](https://github.com/dunecache/oyasumi-patches/commit/9e42bcb88ef2baf3d05acfc5ee83980664edea30))
+
 ## [0.2.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.13...v0.2.0-dev.14) (2026-09-25)
 
 ### 🐛 Bug Fixes
