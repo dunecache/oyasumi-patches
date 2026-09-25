@@ -1,373 +1,117 @@
-# Reference notes — com.one.goodnight 1.345.0 (version code 634)
+# ADM 14.0.27 reference notes
 
-Source: `Goodnight_ Voice Chat & Dating_1.345.0_APKPure.xapk` (APKPure, XAPK:
-base `com.one.goodnight.apk` ~134MB + `config.arm64_v8a/en/mdpi` splits).
-XAPK `manifest.json`: `package_name: com.one.goodnight`, `version_name: 1.345.0`,
-`version_code: 634`, `min_sdk: 24`, `target_sdk: 36`.
+## Source and target record
 
-Method: parsed with Python stdlib only (`zipfile` + `struct` dex `type_ids`
-walk + raw byte search). No apktool/jadx here (no Java in Termux), so there
-is NO smali yet — every identifier below is real (from dex/JS bytes), but
-fingerprints still need smali-level confirmation before writing patches.
+- Reference: `~/storage/downloads/1DM/Programs/com.dv.adm_14.0.27-140027_minAPI26(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk`
+- SHA-256: `6f1d3aee879fe58cbd77e8ef01b3ce6e4d3f77aadd3e8276ec8232d0bdf006c1`
+- Size: `58,716,075` bytes.
+- Format: regular APK/ZIP containing 2,190 entries, not a split APKM container.
+- Package: `com.dv.adm`.
+- Version name: `14.0.27`.
+- Version code: `140027`.
+- Minimum SDK: `26`.
+- Target SDK: `33`.
+- Launcher activity: `com.dv.get.Main`.
+- Application class: `com.dv.get.AApp`.
+- The reference is user-supplied and has not been independently verified as the original publisher build.
 
-## App shape
+## APK structure
 
-- React Native (plain, non-Hermes `assets/index.android.bundle`, ~15.7MB,
-  starts with `var __DEV__=false`). Most product logic is in this JS.
-- Thin native shell: `com.one.goodnight.MainActivity`, `MainApplication`,
-  heavily obfuscated single-letter classes (`Lcom/one/goodnight/a`..`z`,
-  `A`..`H`) in `classes7.dex`, plus named RN bridge modules (same dex).
-- `gatewayprotocol/v1` (~704 types, mostly `*OuterClass` protobuf) looks like
-  the ad-stack protocol (`AdDataRefresh*`, `AdFormat*`,
-  `AdOperationsConfiguration*`, `AdPlayerConfig*`). No VIP/user messages seen
-  in class basenames — entitlement is NOT obviously in this protocol.
-- 8 main dex files (`classes.dex`–`classes8.dex`, ~55MB total) + bundled
-  `assets/audience_network/classes*.dex` (Meta Audience Network).
+- DEX files: `classes.dex`, `classes2.dex`, `classes3.dex`, `classes4.dex`.
+- DEX class counts: 9,742; 6,082; 11,778; 7,198 respectively.
+- The app's own classes are concentrated in `classes2.dex`: 276 classes under `Lcom/dv/`.
+- `classes.dex` contains one app-named class, `Lcom/dv/adm/AEditor;`.
+- `classes3.dex` and `classes4.dex` contain no `Lcom/dv/` classes.
+- Native libraries are present for `arm64-v8a`, `armeabi-v7a`, `x86`, and `x86_64`.
+- Notable native libraries: `libjlibtorrent-1.2.19.0.so`, `libPglmetasec_ov.so`, `libEncryptorP.so`, `libapminsighta.so`, `libapminsightb.so`, `libsentry-android.so`, and `libsentry.so`.
+- The manifest declares 22 permissions, including internet access, external-storage access, boot completion, exact alarms, overlay windows, notifications, and Google Play billing.
 
-## Patch 1 — Premium/VIP unlock (root entitlement; server-driven)
+## Application surface
 
-- `membership` object fields (JS): `is_premium`, `is_premium_disco`,
-  `is_star_premium`, `is_match_premium`.
-- `isAnyPremium()` = OR of all four; `isPremium()` =
-  `membership.is_premium || membership.is_premium_disco`.
-- `updateUserMembership(membership)` sets `user.membership`, emits
-  `AppCenterUserChanged`.
-- Server endpoints (JS): `/api/me/vip_info` (`fetchVIPInfo`),
-  `/api/me/vip_badge_info_v2` (`fetchVIPInfoV2`). VIP state comes from backend.
-- Billing client-side = Google Play Billing (`com/android/billingclient/api/*`,
-  `queryPurchases`-era API present). `BILLING` + `CHECK_LICENSE` permissions.
-- Paywall analytics constants (JS): `paywall_viewed`, `purchase_initiated`,
-  `purchase_completed`, `purchase_canceled`, `purchase_failed`; product kinds:
-  `cans`, `disco`, `premium_disco`, `intro`, `spotlight`.
-- Consequence: client patch can flip `isPremium`/`membership`, but features
-  gated by server responses may still refuse. Device test decides per feature.
-  Smali target: the RN-bridge/JNI path that delivers `membership`, or the
-  `isPremium` getter if it exists natively (JS shows it as a JS getter, so the
-  native patch point is more likely the membership delivery / API parse).
+- `com.dv.get.Main` is the launcher and download-list UI.
+- `com.dv.get.AEditor` accepts `ACTION_SEND` and `ACTION_SEND_MULTIPLE` and also exposes start/stop actions.
+- `com.dv.get.Web` accepts shared `text/*` and other content through `ACTION_SEND`.
+- `com.dv.get.Back` is the persistent download/torrent service.
+- `com.dv.get.Deep` handles boot, widget, and exact-alarm permission events.
+- `com.dv.get.Pref` is the settings activity and accepts the quick-settings tile preference action.
+- Two quick-settings tile services are exported with `BIND_QUICK_SETTINGS_TILE`.
+- `com.dv.get.all.receiver.ReceiverStart`, `ReceiverStop`, `ReceiverOpen`, `ReceiverPlan`, and `ReceiverExit` provide broadcast-driven service and schedule controls.
 
-## Patch 2 — Blur removal (profile photos)
+## Billing and ad-free state
 
-- Blur is the "star" game mechanic, NOT an image transform flag. Locale
-  strings (JS): "Collect 7 stars to reveal the blurred photos of yourself and
-  the other user." / "As long as you chat once a day, you can earn one-star".
-- No `avatar_blur`/`unblur`/`mosaic` identifiers anywhere; `blur`×164 in JS is
-  almost all RN text-input blur. So the patch point is the star-count/reveal
-  gate (find: star count state, `playCountdown`, `notPlay`/`notPlayToday`
-  branches), not a blur filter.
-- Smali/JS target: star-balance getter or the reveal-condition check.
+- `Lcom/dv/get/f3;` is the central monetization and ad helper.
+- `f3.a:boolean` is initialized to `false` in `f3.<clinit>`.
+- `f3.B(List<Purchase>)` checks a purchase whose product list contains `ads_disable`; after acknowledgement it sets `f3.a` to `false` and persists `hua_voice=false`.
+- `Lcom/dv/get/e3;->c(BillingResult)` queries the `ads_disable` SKU and registers purchase callbacks.
+- `f3.l(MyActivity)` initializes billing and reads the stored ad-free state.
+- `t0.X2()` appends ` Pro` to the displayed version when `f3.a` is false. This confirms that the observed entitlement is an ad-free/Pro label, not evidence of a broader feature unlock.
+- `f3.i(Activity)` initializes Appodeal interstitials.
+- `f3.h()` shows the Appodeal banner only when `f3.a` is true.
+- `f3.j(MyActivity)` shows an Appodeal interstitial after a short delay.
+- `f3.n(MyActivity)` coordinates remote configuration, ad initialization, banner/interstitial scheduling, and Huawei prompts.
+- `f3.c()` creates an AppBrain banner, while the manifest also contains AppLovin, AdMob, Unity Ads, Vungle, Appodeal, Criteo, Pangle, Bigo, Mintegral, Fyber, and other ad SDK components.
+- `Back.onDestroy()` tracks `MAIN_ADS6`, `RATE_APP10`, and `RATE_ADS22` and increments rating/ad counters. This is a separate rating-prompt surface from the Appodeal calls.
 
-## Patch 3 — Chat unlock (chat without premium)
+## Patch 1 — Disable ads
 
-- No `chat_lock`/`message_limit`/`need_vip` strings. Currency = "cans"
-  (`consumeUserCoin`, "Not Enough Cans" dialogs, `free_cans_to_new_subscriber`
-  endpoint `/api/me/free_cans_to_new_subscriber`).
-- Matching gate: `dailyLimitUpgradeDialog_*` — "Purchase cans to get more
-  telepath tickets or upgrade to "Goodnight Disco" for unlimited matching!".
-- `who_views_you` ×14 (+`whoviewsyou` ×2) — "who views you" is a separate
-  gated surface, likely same membership flag.
-- Smali/JS target: telepath-ticket count check / cans-deduction check on
-  match/chat send. Standalone from patch 1 by design.
+- Compatibility: `com.dv.adm`, version `14.0.27`, regular APK.
+- The patch returns early from the four app-owned ad entry points: `f3.c()` for AppBrain/Appodeal setup, `f3.i(Activity)` for Appodeal interstitial initialization, `f3.h()` for banner display, and `f3.j(MyActivity)` for interstitial display.
+- Fingerprints use the verified `main-toolend`, Appodeal key, and `AppoInterShow` strings plus exact method signatures. Each anchor occurs once in the reference DEX.
+- The patch does not alter downloader, torrent, browser, billing, Huawei, or remote-configuration methods.
+- Static fingerprint validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
 
-## Patch 4 — Call timer (free-call limit)
+## Patch 2 — Disable rating prompts
 
-- Locale strings (JS): "Free calls are limited to 3 minutes, the user can
-  choose whether to extend the free time" (`angelCallInDialog_desc`);
-  `angelRadioFreeEndDialog_title: 'Free Trial Ended'`; "Listening to the call
-  requires at least {0} Cans" (`angelRadioNoCansDialog_desc`).
-- `calltime`/`calltimeout` dex hits are RN-framework `callTimers` internals —
-  NOT the app timeout. Real anchors are the dialog keys above + the free-time
-  countdown state behind them. Native voice = Agora (`io/agora` ~600 types,
-  `com.one.goodnight.AgoraService`, `AgoraModulesManager`).
-- Smali/JS target: free-call countdown / `angelRadioFreeEnd` trigger.
+- Compatibility: `com.dv.adm`, version `14.0.27`, regular APK.
+- The patch returns early from `Main.W(Main)`, the dedicated wrapper that calls `Main.Y1(7)` for the `RATE_APP10` rating dialog.
+- `Main.W(Main)` has one verified caller: the delayed `Lcom/dv/get/g0;` callback used by the rating flow. `Back.onDestroy()` is intentionally untouched so service cleanup and normal teardown continue.
+- The fingerprint uses the exact method signature, literal case value `7`, and the `Main.Y1` call.
+- Static fingerprint validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
 
-## Ads (context for later)
+## Downloader controls
 
-- Mediation: AppLovin MAX (~4k `applovin` refs), ironSource/LevelPlay
-  (`InterstitialAdModulesManager`, `RewardedAdModulesManager`,
-  `NativeBannerViewManager`, `VponBannerViewManager` — all real classes in
-  `com.one.goodnight`), AdMob, Vungle, Bigo (`sg/bigo` 2150 types, incl.
-  `RealtimeBlurLinearLayout`), Mintegral, Inmobi, Pangle, Chartboost, Unity.
-- `shouldShowAd` = `!adDisabled && !isAnyAngel()`; `shouldShowMatchAd` also
-  false when any premium flag set — i.e. patches 1 and ads interact.
+The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong candidates for narrowly scoped client-side patches:
 
-## Permissions of note
+- `DOWN_LOADS_3G`, `DOWN_LOADS_WF`, `DOWN_LOADS_3GWF`: simultaneous download limits by network profile.
+- `DOWN_THREADS_3G`, `DOWN_THREADS_WF`, `DOWN_THREADS_3GWF`: connection count per download.
+- `DOWN_MINSIZE_*`, `DOWN_ERRORS_*`, `DOWN_TIMEOUT_*`: minimum chunk size, retry count, and timeout.
+- `DOWN_ALGORITM_*` and `DOWN_USERAGENT_*`: download algorithm and user-agent profile.
+- `DOWN_DIRS`, `DOWN_FILENEW`, `DOWN_RESTART`, `DOWN_PROFILE`, and `DOWN_PROXY`: storage and transfer behavior.
+- `WIFI_FLAG`, `WIFI_AUTO`, `WIFI_AUTO_S`, `SERV_AUTO`, and `SERV_STOP_2`: network and background-service controls.
+- `TORR_*`: torrent enablement, sequential mode, trackers, connection and upload-slot limits, upload speed/time limits, watch folder, Wi-Fi/charging restrictions, and encryption mode.
+- `SCHD_FLAG`, `SCHD_START`, `SCHD_STOP`, `SCHD_WIFI`, `SCHD_MOBI`, `SCHD_REPE`, and `SCHD_ALARM`: scheduler behavior.
 
-`BILLING`, `CHECK_LICENSE`, `CAMERA`, `RECORD_AUDIO`, `ACCESS_FINE_LOCATION`,
-`SYSTEM_ALERT_WINDOW`, `RECEIVE_BOOT_COMPLETED`, `POST_NOTIFICATIONS`.
+`Back.onCreate()` registers a receiver for battery, power, Wi-Fi, widget, and exact-alarm changes. `t0.N()` checks the battery level against `Pref.C2`; `t0.W1()` opens the exact-alarm settings screen; `Deep.onReceive()` dispatches service and widget events.
 
-## Patch 0 (prerequisite) — Play license bypass: gate mapped from real smali
+## Browser and remote data
 
-Symptom on device: patched app redirects to the Play Store and exits.
-Cause: PairIP protection in `classes2.dex`, wired into the app entry point:
+- `Lcom/dv/get/Web;` owns the built-in browser.
+- `Web.onOptionsItemSelected()` toggles `BROW_ADSB` through `Pref.m5`.
+- The default resource table contains `alive_hosts` and an `https://adm.dimonvideo.ru/alive_hosts.txt` value, confirming a remote host/ad-block list path.
+- `Web` also manages cookies, history, JavaScript, image loading, dark mode, saved tabs, search engines, and the `file://` URL bridge.
+- `f3.g()` reads a remote response through resource ID `str07` and stores key/value pairs in the `xyz` shared-preference file. The resource table identifies the endpoint as `https://adm.dimonvideo.ru/data`; the request adds `?jack=927`.
+- `f3.E()`, `f3.F()`, and `f3.G()` read Huawei/AppGallery state and message data. `f3.p()` and `f3.q()` invoke Huawei/AppGallery-related paths.
 
-- `Lcom/pairip/application/Application;` extends `MainApplication`; its
-  `attachBaseContext` calls, in order: `VMRunner.setContext`,
-  `SignatureCheck.verifyIntegrity` (throws `SignatureTamperedException` when
-  the APK signature differs from Play — always true for patched APKs; allows
-  `expectedSignature` / `expectedLegacyUpgradedSignature` /
-  `expectedTestSignature` / hardcoded
-  `Vn3kj4pUblROi2S+QfRRL9nhsaO2uoHQg6+dpEtxdTE=`), then
-  `LicenseClient.checkLicense`.
-- `LicenseClient.checkLicense` → `performLocalInstallerCheck()Z`: SDK<30 or
-  no PackageManager bypasses (returns false); system/updated-system app
-  passes (returns true); otherwise requires installing package ==
-  `com.android.vending`, else "Local install check failed due to wrong
-  installer." On failure the LVL path runs and `LicenseActivity` opens the
-  Play paywall (`showPaywallAndCloseApp` via `paywallintent` PendingIntent,
-  `onStart` ordinal != 0) then `closeApp`/`exitApp` (`System.exit`).
-- Same `checkLicense` is also called from
-  `LicenseContentProvider.onCreate`, so patching the method itself (not the
-  call sites) covers both.
-- Patch (`patches/.../license/`): return-early `return-void` in
-  `SignatureCheck.verifyIntegrity(Landroid/content/Context;)V` (anchor strings
-  `SHA-256`, `Apk signature is invalid.`) and in
-  `LicenseClient.checkLicense(Landroid/content/Context;)V` (anchor strings
-  `Cannot check license with null context.`,
-  `Skipping license check in isolated process.`). All four strings and both
-  method signatures verified unique (x1) in 1.345.0 `classes2.dex`.
-- Open: PairIP `VMRunner`/`VmDecryptor` regions and any server-side license
-  re-checks; device test decides.
-- Layer 2 (same patch): return-early `return-void` in
-  `LicenseActivity.showPaywallAndCloseApp()V` (anchors `paywallintent`,
-  `Paywall intent is not provided.`, both x1) and
-  `LicenseActivity.showErrorDialog()V` (anchor: `runOnUiThread` call;
-  uniqueness from class + name + empty params). Rationale: step-1 device
-  test (license-only patch) still redirected, so the verdict comes from the
-  native core; killing the effect covers dex and JNI triggers alike.
+## Privacy and diagnostics
 
-## TODO (needs smali)
+- `AApp.onCreate()` installs a custom uncaught-exception handler in `Lf2/a;`, creates a `crash_reports` directory, and starts a `Lf2/b;` worker thread.
+- The package includes Sentry native libraries, APM Insight native crash libraries, Google data transport, AppBrain components, and advertising identifiers.
+- `t0.p2(Activity)` reads the `firebase.test.lab` system setting into `t0.n`; this is a verified control-flow path, not proof of a particular Firebase event.
 
-1. ~~Get smali for 1.345.0 (tooling decision pending)~~ DONE (option a):
-   androguard 4.1.4 installed via `pip install --no-deps` + `loguru`,
-   `apkInspector`, `pydot`, `networkx`, `pygments`, `click`, `asn1crypto`,
-   `mutf8`, `colorama` (system `python-lxml` reused). NOTE: full `pip install
-   androguard` fails here (`psutil` has no Android support); apt route
-   (apktool/openjdk) failed on mirror network errors. Helper:
-   `/data/data/com.termux/files/usr/tmp/opencode/dump_smali.py`
-   (kept OUT of the repo). Working dumps: `reference/smali/` (gitignored).
-2. ~~Map `membership` delivery path~~ DONE, with a twist (see below).
-3. Star-balance/reveal check — patch 2 hinge.
-4. Telepath-ticket/cans check on match/chat — patch 3 hinge.
-5. Free-call countdown trigger — patch 4 hinge.
+## Next implementation suggestions
 
-## Smali-confirmed (androguard, classes7.dex)
+1. **Disable Huawei/AppGallery prompts and remote configuration:** target the `HUA_*` branches in `f3` and the `f3.g()` remote-config read separately from ad removal.
+2. **Privacy mode:** disable the custom crash handler and diagnostic worker in `AApp.onCreate()`; assess Sentry/AppBrain separately because they are separate SDKs.
+3. **Download tuning:** change or expose the existing `DOWN_*` limits rather than inventing new downloader code; test against real servers because server-side limits still apply.
+4. **Torrent tuning:** adjust the existing `TORR_*` settings, but validate the native jlibtorrent boundary and do not assume a DEX-only edit changes native engine behavior.
+5. **Scheduler/background reliability:** inspect the `Back`, `Deep`, and `t0` battery/Wi-Fi/exact-alarm paths; this is feasible but device- and Android-version-sensitive.
+6. **Browser ad blocking:** force or repair the existing `BROW_ADSB`/hosts path instead of adding a new blocking engine.
 
-- `Lcom/one/goodnight/InterstitialAdModulesManager;`
-  (`ReactContextBaseJavaModule`): `loadInterstitialAd(String)`,
-  `show(String)` (posts `Lcom/one/goodnight/r;` runnable via
-  `UiThreadUtil.runOnUiThread`), `prepareAds(ReadableArray)`, `getName()`.
-  `reference/smali/InterstitialAdModulesManager.txt`.
-- `RewardedAdModulesManager` (+`$a/b/c`), `NativeBannerViewManager`,
-  `VponBannerViewManager`: `reference/smali/RewardedAdModulesManager.txt`,
-  `reference/smali/BannerManagers.txt`.
-- `Lcom/one/goodnight/i` (+`$a/b/c/d`) is CAMERA code (CameraDevice,
-  SurfaceTexture), not membership. Single-letter app classes are per-feature
-  natives; do not assume which is which.
-- NO native references to `membership` / `vip_info` / `is_premium` strings in
-  `classes2.dex` or `classes7.dex`: VIP/entitlement logic lives in the JS
-  bundle and crosses via the generic RN bridge. Consequence for patch 1: a
-  dex `bytecodePatch` cannot flip `isPremium()` directly — either a resource
-  patch on `assets/index.android.bundle` (check Morphe resource-patch DSL;
-  template only shows `bytecodePatch`) or dex patches on the native ad-gate
-  methods (e.g. no-op `show`/`loadInterstitialAd`), which give ad removal
-  without touching JS.
+## Unresolved risks
 
----
-
-# Djezzy 3.0.9 (version code 40076) — Phase 1: walk-and-win step path (recon)
-
-Source: `Djezzy_3.0.9_APKPure.xapk` (APKPure, XAPK: base
-`com.djezzy.internet.apk` 615 entries + `config.arm64_v8a/en/mdpi/zh`
-splits). XAPK `manifest.json`: `package_name: com.djezzy.internet`,
-`name: Djezzy`, `version_name: 3.0.9`, `version_code: 40076`,
-`min_sdk: 24`, `target_sdk: 36`. API host (from `libapp.so` strings):
-`https://apim.djezzy.dz/mobile-api`.
-
-Method: Python stdlib (`zipfile`, raw byte search) + androguard 4.1.4
-(class/method/instruction dumps). Full dumps kept OUT of the repo in
-`/data/data/com.termux/files/usr/tmp/opencode/djezzy_{registrant,pedometer,li5c,li5b}.txt`;
-only findings recorded here. Every identifier below is real output, never
-invented.
-
-## App shape (differs from Goodnight in every way that matters)
-
-- Flutter (Dart AOT), NOT React Native. `lib/arm64-v8a/libapp.so`
-  (~14.7MB) lives in the `config.arm64_v8a` split next to `libflutter.so`.
-  All product logic (34 `djezzy_app_implementation/features/*` folders) is
-  compiled Dart — Morphe `bytecodePatch` (dex) can only touch the thin
-  Java shell + plugins, never Dart logic directly.
-- Thin dex shell: `classes.dex` 11863 classes, `classes2.dex` 134,
-  `classes3.dex` 217. R8 full-mode obfuscated: plugin classes renamed to
-  single-letter names (`Li5/a`, `Lf7/a`, …); only some first-party
-  (`io.flutter.plugins.*`, `com.djezzy.internet.MainActivity`) kept names.
-- No ad-mediation SDKs in any dex (`applovin`/`UnityAds`/`ironsource`/
-  `vungle`/`mintegral`/`pangle`/`inmobi`/`chartboost` all x0; `admob` x5
-  only, Firebase-adjacent). No `billingclient`, no `BILLING` permission, no
-  PairIP/`SignatureCheck`/`LicenseClient` strings — Goodnight-style license
-  bypass has no target here.
-
-## Step pipeline (smali-confirmed, classes.dex)
-
-The `pedometer` Flutter plugin survived R8 as obfuscated `Li5/a` (proven by
-`GeneratedPluginRegistrant.registerWith`, which does
-`new-instance Li5/a` immediately before the catch block logging
-`"Error registering plugin pedometer, com.example.pedometer.PedometerPlugin"`):
-
-- `Li5/a.onAttachedToEngine`: creates EventChannel `"step_detection"`
-  (field `i`) and EventChannel `"step_count"` (field `j`); attaches
-  `Li5/c` stream handlers constructed with int selectors **18** and **19**
-  (= `Sensor.TYPE_STEP_DETECTOR` / `Sensor.TYPE_STEP_COUNTER`).
-  `onDetachedFromEngine` clears both handlers.
-- `Li5/c.<init>(binding, sensorType)`: `sensorType == 19` → sensorName
-  `"StepCount"`, else `"StepDetection"`; `getDefaultSensor(sensorType)`.
-  `onListen`: null sensor → `sink.error("1", "<name> is not available on
-  this device")`; else `registerListener(new Li5/b(sink), sensor, 0)`
-  (delay 0 = fastest). `onCancel`: `unregisterListener`.
-- `Li5/b.onSensorChanged` (THE emission point): `sink.success(
-  Integer.valueOf((int) event.values[0]))` — 10 instructions: null-check,
-  `iget event.values [F`, `aget 0`, `float-to-int`, `Integer.valueOf`,
-  `EventSink.success`. A spoof patch edits here (replace the sensed int
-  with a constant/increment before `valueOf`).
-
-## Fingerprint anchors (substring counts across all 3 dex, all x1 in classes.dex unless noted)
-
-| String | classes.dex | classes2 | classes3 | Lives in |
-|---|---|---|---|---|
-| `step_count` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` const |
-| `step_detection` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` const |
-| `StepCount` | 1 | 0 | 0 | `Li5/c.<init>` const |
-| `StepDetection` | 1 | 0 | 0 | `Li5/c.<init>` const |
-| `stepCountChannel` | 1 | 0 | 0 | `Li5/a` null-guard |
-| `stepDetectionChannel` | 1 | 0 | 0 | `Li5/a` null-guard |
-| `Error registering plugin pedometer, com.example.pedometer.PedometerPlugin` | 1 | 0 | 0 | `GeneratedPluginRegistrant.registerWith` catch |
-| `null cannot be cast to non-null type android.hardware.SensorManager` | 1 | 0 | 0 | `Li5/c.<init>` (also in sensors_plus `Lf7/a`; count is dex-wide so fingerprint must combine anchors) |
-| `flutterPluginBinding` | 1 | 0 | 0 | `Li5/a.onAttachedToEngine` |
-
-Note: `Li5/a` has only 3 methods (`<init>`, `onAttachedToEngine`,
-`onDetachedFromEngine`); `Li5/b` has 3 (`<init>`, `onAccuracyChanged`,
-`onSensorChanged`); `Li5/c` has 3 (`<init>`, `onCancel`, `onListen`).
-Fingerprint should anchor on the `step_count`/`step_detection` const-strings
-+ `EventChannel.<init>` opcode shape, NOT on the obfuscated `Li5/*` names
-(R8 renames are version-fragile).
-
-## Dart side (libapp.so strings, all real paths)
-
-- 15 files under `features/walk_and_win/`: `data/services/pedometer_service.dart`,
-  `data/datasources/walk_and_win_remote_datasource.dart`,
-  `data/repositories/walk_and_win_repository_impl.dart`,
-  `data/models/waw_campaign_model.dart`,
-  `domain/entities/waw_campaign.dart`,
-  `presentation/bloc/walk_and_win_{bloc,event,state}.dart`, 5 widgets incl.
-  `walk_step_counter_card.dart`.
-- Storage keys (x1 each): `walk_and_win_current_steps`,
-  `walk_and_win_last_pedometer_value` — Dart keeps last sensor value and
-  computes deltas (TYPE_STEP_COUNTER is cumulative-since-boot, so the app
-  diffs readings). Spoof design must account for this: a fixed constant
-  yields ONE delta then zeroes; a steady trickle needs an incrementing
-  counter (static field) or scaled real values.
-- Server endpoints (path fragments, x1 each): `/services/walk/campaign/`,
-  `/services/walk/activate-reward/` (siblings: `/services/scan/activate-reward`,
-  `/services/mgm/activate-reward`). Rewards are server-issued: client
-  reports steps, backend decides. Spoofed steps can be rejected server-side
-  (e.g. implausible deltas) — device test decides.
-- Trust signals: NO `attest`/`SafetyNet`/`PlayIntegrity`/`cheat`/`fraud`/
-  `suspicious` strings; `verifyQrToken`/`verify_qr_token_usecase` belong to
-  scan-and-win (Phase 2); `checksum` hits are archive-lib internals;
-  `signature*` hits are all e-signature-pad UI widgets (unrelated). No
-  step-specific anti-tamper found — spoofable in principle at the sensor
-  layer.
-
-## Sibling note (Phase 2 input, not Phase 1 scope)
-
-`Lf7/a` = sensors_plus (accel/gyro/magnet/barometer channels only, no step
-types) — NOT an alternate step source. Scan-and-win already shows the same
-remote-datasource + response-model shape (`scan_and_win_remote_datasource.dart`,
-`scan_qr_code_usecase.dart`, `scan_response_model.dart`) with server token
-verification (`verifyQrToken`).
-
----
-
-# Ninja Arashi 2 1.9.6 (version code 26) — unlimited-lives recon (NATIVE, indicative only)
-
-Source: `Ninja_Arashi_2-v1.9.6-patches-v1.46.0.apk` (155MB, Downloads) is
-PRE-PATCHED with third-party v1.46.0 patches — NOT a clean reference. All
-findings below are indicative and must be re-verified against a clean 1.9.6
-APK before any fingerprint/patch is written (per repo rule 1).
-Package `com.blackpanther.ninjaarashi2`, Unity IL2CPP
-(`lib/arm64-v8a/libil2cpp.so` ~52MB + `global-metadata.dat` ~8.6MB).
-Dex (6 files, ~28.5MB) contains ZERO `life`/`Lives` strings: lives logic is
-compiled C++ in libil2cpp.so, unreachable by Morphe `bytecodePatch`.
-
-Method: Python stdlib printable-run sweep of global-metadata.dat (86063
-runs) + raw search of libil2cpp.so. No disassembler available here
-(`pip install capstone` timed out; no objdump) — so method RVAs and exact
-byte patches are NOT resolved.
-
-## LivesManager (complete API, one contiguous string block, runs ~29950-29993)
-
-- Gate/decrement: `canPlay`, `canLooseLife`, `looseOneLife`.
-- Refill: `canRefillLives`, `refillOneLife`, `refillAllLives`,
-  `refillXLives(livesToAdd)`, `getRefillSecondsLeft`,
-  `getFullRefillSecondsLeft`.
-- Unlimited mode (game already has it, timed): `canGetUnlimitedLives`,
-  `getUnlimitedLives`, `isUnlimitedLives`, `setUnlimitedTimer`,
-  `checkUnlimitedTime`, `getUnlimitedSecondsLeft`, `UNLIMITED_LIVES_SECONDS`.
-- Slots: `canGetExtraLifeSlot`, `getExtraLifeSlot`, `getMaxNumberOfLives`,
-  `BASIC_LIFE_SLOTS`, `MAX_EXTRA_LIFE_SLOTS`.
-- Timers/state: `checkRegenerationTime`, `setLifeRegenerationTimer`,
-  `getCurrentTimeInSeconds`, `secondsToTimeFormatter`, `firstTimeInit`,
-  `reset`, `updateUserInterface`, `getCurrentLivesMsg`, `getTimeLeftMsg`.
-- Persisted fields + save keys: `currentLives` (`ID_CURRENT_LIVES`,
-  also seen as `lm_current_lives`), `extraLives` (`ID_EXTRA_LIVE_SLOTS` /
-  `lm_extra_slots`), `regenerationTimestamp` (`ID_REGENERATION_TIMESTAMP`),
-  `unlimitedTimestamp` (`ID_UNLIMITED_TIMESTAMP`), `ID_FIRST_TIME`,
-  `REFILL_LIFE_SECONDS`, `TEXT_FULL_LIVES`, `TEXT_HOURS_LEFT`.
-  Config block: `LMConfig`.
-
-## Native-patch options (ranked, all need disassembler + clean .so)
-
-1. `isUnlimitedLives` → return true (MOV W0,#1 + RET, ~8 bytes). Best:
-   uses the game's own unlimited mode; UI/timers already handle it.
-2. NOP `looseOneLife` body (RET) — lives never decrease.
-3. Freeze `getCurrentTimeInSeconds` — NOT recommended (breaks all timers).
-
-## Blockers (why no patch is written yet)
-
-1. No exact offsets: `libil2cpp.so` contains ZERO LivesManager strings
-   (names stripped; live only in metadata), so string-anchored targeting is
-   impossible — need metadata method-def → RVA resolution + ARM64
-   disassembly, unavailable in this environment.
-2. Delivery vehicle unverified: Morphe `bytecodePatch`/`resourcePatch`
-   target dex/resources, not native `.so` replacement (52MB). Unknown
-   whether Morphe can ship a patched libil2cpp.so at all.
-3. Dirty reference: everything above comes from a pre-patched APK.
-
-## Immediately actionable (no patch needed)
-
-Save editing: the `ID_*` / `lm_*` keys are Unity-PlayerPrefs-style save
-entries. With access to the app's save (root, or backup/restore),
-`currentLives` can be set high and `regenerationTimestamp` cleared —
-manual cheat, not a distributable patch.
-
-## Patch 1 — Walk-and-win step spoof (fixed 10000, committed)
-
-- Fingerprint (`patches/.../walkwin/Fingerprints.kt`): `onSensorChanged`
-  `(Landroid/hardware/SensorEvent;)V`, no defining class (R8-obfuscated),
-  filters in method order: `SensorEvent->values` iget (smali form),
-  `FLOAT_TO_INT`, `Integer.valueOf`, `EventSink.success`. Only 2 such
-  methods exist in all dex and only `Li5/b` has the int-conversion shape.
-- Edit (`StepSpoofPatch.kt`): insert `const v<reg>, 10000` immediately after
-  the `float-to-int` match (register read from the match), overwriting the
-  sensed value before boxing. No new registers, no field references.
-- Compatibility: `com.djezzy.internet` 3.0.9 XAPK only, default enabled.
-- NOT verified: no JDK/Gradle in this environment, so no compile check and
-  no apply-against-APK test — needs CI/device run. Server (`activate-reward`)
-  may reject the spoofed delta; device test decides.
-- BUG FOUND ON DEVICE (stays at 0): the patch read the `float-to-int`
-  match as `OneRegisterInstruction`, but `float-to-int v2, v2` is a 23x
-  two-register instruction — the cast throws at apply time and the patch
-  never applies (app runs stock). Fixed to `TwoRegisterInstruction`
-  (registerA = destination). If it still shows 0 after this fix, the cause
-  is upstream of the patch: device without a step-counter sensor, denied
-  physical-activity permission, or the null-sensor error branch
-  (`sink.error("1", ...)`).
+- The ADM compatibility declaration and first two patches are written, but not compiled or applied yet.
+- The native protection libraries may perform integrity or runtime checks outside the reach of a DEX patch.
+- SDK providers may still initialize independently even after the app-owned ad entry points are skipped.
+- The remote ad, Huawei, Firebase, and diagnostic paths may continue independently.
+- Download and torrent behavior is constrained by servers, network conditions, Android background execution, and native code.
+- A device-applied bundle test is still required for both patches and every later candidate.
