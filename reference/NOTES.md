@@ -83,6 +83,16 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 
 `Back.onCreate()` registers a receiver for battery, power, Wi-Fi, widget, and exact-alarm changes. `t0.N()` checks the battery level against `Pref.C2`; `t0.W1()` opens the exact-alarm settings screen; `Deep.onReceive()` dispatches service and widget events.
 
+## Patch 3 — Increase connection limits
+
+- Compatibility: `com.dv.adm`, version `14.0.27`, regular APK.
+- `Lcom/dv/get/Pref$o;->f(Lcom/dv/get/Pref$o;)V` is the single verified synthetic accessor for the `s213` (`Simultaneous downloads`) and `s215` (`Threads per download`) slider. Its `const/16 v1, 32` instruction at index 6 is the shared ceiling; replacing it with `const/16 v1, 64` raises both controls from 32 to 64. The lower bound remains 4.
+- `Lcom/dv/get/Pref;->G1(Landroid/app/Activity;)V` loads `TORR_MAXCONNECT` with the default string `210` at instruction index 1222 and `TORR_MAXCONNECTPER` with `70` at index 1227. The patch changes those defaults to `500` and `100` respectively.
+- The torrent dialog already installs `InputFilter.LengthFilter(9)`, so the torrent change is a default-value change rather than a new hard UI ceiling. Existing saved preferences are not overwritten.
+- Fingerprints use the exact synthetic accessor signature, the two resource IDs, the unique `32` literal, both preference keys/default strings, and the `Pref.E1(String,String)` call.
+- Selected values: download ceiling `64`; torrent global default `500`; torrent per-torrent default `100`.
+- Static DEX anchor validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
+
 ## Browser and remote data
 
 - `Lcom/dv/get/Web;` owns the built-in browser.
