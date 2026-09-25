@@ -24,12 +24,14 @@ object TorrentConnectionDefaultsFingerprint : Fingerprint(
     parameters = listOf("Landroid/app/Activity;"),
     filters = listOf(
         string("TORR_MAXCONNECT"),
-        string("TORR_MAXCONNECTPER"),
         string("210"),
-        string("70"),
         methodCall(
             definingClass = "Lcom/dv/get/Pref;",
-            name = "E1"
-        )
+            name = "E1",
+            parameters = listOf("Ljava/lang/String;", "Ljava/lang/String;"),
+            returnType = "I"
+        ),
+        string("TORR_MAXCONNECTPER"),
+        string("70")
     )
 )

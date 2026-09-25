@@ -14,7 +14,12 @@ val increaseConnectionLimitsPatch = bytecodePatch(
 
     execute {
         DownloadSliderMaxFingerprint.method.replaceInstruction(6, "const/16 v1, 64")
-        TorrentConnectionDefaultsFingerprint.method.replaceInstruction(1222, "const-string v8, \"500\"")
-        TorrentConnectionDefaultsFingerprint.method.replaceInstruction(1227, "const-string v8, \"100\"")
+        TorrentConnectionDefaultsFingerprint.let { fingerprint ->
+            val globalDefaultIndex = fingerprint.instructionMatches[1].index
+            val perTorrentDefaultIndex = fingerprint.instructionMatches[4].index
+
+            fingerprint.method.replaceInstruction(perTorrentDefaultIndex, "const-string v8, \"100\"")
+            fingerprint.method.replaceInstruction(globalDefaultIndex, "const-string v8, \"500\"")
+        }
     }
 }
