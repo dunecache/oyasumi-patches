@@ -60,7 +60,23 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-Patch metadata is generated from the compiled bundle during release.
+> **[v0.2.0-dev.6](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.6)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;2 patches total
+<details open>
+<summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 14.0.27 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Disable ads](#disable-ads) | Skip ADM's app-level ad initialization and display routines. |  |
+| [Disable rating prompts](#disable-rating-prompts) | Skip ADM's rating dialog without changing service teardown. |  |
+
+</details>
+
 <!-- PATCHES_END -->
 
 ## Further documentation
