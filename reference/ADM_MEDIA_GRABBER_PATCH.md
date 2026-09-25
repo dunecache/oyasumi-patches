@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document describes a design for a future Morphe patch targeting the verified ADM 14.0.27 reference APK. It is not an implemented patch and does not claim that every site can be captured.
+This document describes the media-grabber design targeting the verified ADM 14.0.27 reference APK. Phase 1 implements a per-page observer and direct media candidate action; HLS/DASH resolution, remuxing, and raw elementary-stream downloading remain future work. It does not claim that every site can be captured.
 
 Reference:
 
@@ -211,7 +211,7 @@ Add the playlist resolver and segmented subtitle writer. Test master playlists, 
 
 ### Phase F: release patch
 
-Only then add the user-facing Morphe patch declaration, extension packaging, and release metadata. Keep the observer disabled by default until device validation is complete if the capture surface is not yet stable.
+Phase 1 now declares a default-off `Media grabber (direct video and subtitles)` patch and packages `extensions/adm-media.mpe`. Keep the patch disabled by default until device validation confirms that candidate capture and direct downloads do not regress browsing. HLS/DASH resolution, remuxing, and adaptive size estimation remain follow-up work.
 
 ## Format support matrix
 

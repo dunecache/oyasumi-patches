@@ -96,6 +96,17 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - Selected values: download ceiling `64`; torrent global default `500`; torrent per-torrent default `100`.
 - Static DEX anchor validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
 
+## Media grabber — Phase 1 observer
+
+- Compatibility: `com.dv.adm`, version `14.0.27`, version code `140027`, regular APK.
+- The patch hooks `Lcom/dv/get/Web$i;->onPageStarted(WebView,String,Bitmap)` to clear per-page state and `shouldInterceptRequest(WebView,String)` to observe URLs without changing the existing response path.
+- Browser menu hooks are `Lcom/dv/get/Web;->onCreateOptionsMenu(Menu)` and `onOptionsItemSelected(MenuItem)`. The extension adds a non-colliding `Media grabber` item and shows per-page candidates.
+- Phase 1 queues direct HTTP(S) video, audio, WebVTT, and SubRip URLs through Android `DownloadManager`, retaining WebView cookies and user agent in memory only for the selected request.
+- HLS (`.m3u8`), DASH (`.mpd`), and raw elementary candidates are recorded as metadata only; resolver, remux, DRM rejection, and adaptive size estimation are not yet implemented.
+- Candidate sizes are shown as unknown in this phase; no HEAD or range probe is performed.
+- DEX recon resolves the existing direct-download intents in `C0` and `c1` to `Lcom/dv/get/AEditor;`; `Lcom/dv/adm/AEditor;` is a separate class and is not used by this phase.
+- The extension is packaged as `extensions/adm-media.mpe`. Static DEX anchors passed; Gradle compilation and device application are pending.
+
 ## Browser and remote data
 
 - `Lcom/dv/get/Web;` owns the built-in browser.
