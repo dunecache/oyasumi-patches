@@ -8,7 +8,6 @@ import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Environment;
-import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
 import android.widget.PopupMenu;
@@ -46,6 +45,24 @@ public final class MediaGrabber {
             state.candidates.clear();
         }
         lastWebView = new WeakReference<WebView>(webView);
+        Activity activity = activityOf(webView.getContext());
+        if (activity != null) {
+            pendingActivity = new WeakReference<Activity>(activity);
+        }
+    }
+
+    private static Activity activityOf(Context context) {
+        while (context instanceof ContextWrapper) {
+            if (context instanceof Activity) {
+                return (Activity) context;
+            }
+            Context base = ((ContextWrapper) context).getBaseContext();
+            if (base == null || base == context) {
+                break;
+            }
+            context = base;
+        }
+        return null;
     }
 
     public static void onRequest(WebView webView, String url) {
@@ -80,9 +97,8 @@ public final class MediaGrabber {
         }
         MenuItem item = menu.add(0, MENU_ID, 0, "Media grabber");
         item.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
-        Activity activity = activityFor(host);
+        Activity activity = pendingActivity.get();
         if (activity != null) {
-            pendingActivity = new WeakReference<Activity>(activity);
             Toast.makeText(activity, "Media grabber menu hook fired", Toast.LENGTH_SHORT).show();
         }
     }
@@ -91,42 +107,12 @@ public final class MediaGrabber {
         if (item == null || item.getItemId() != MENU_ID) {
             return false;
         }
-        Activity activity = activityFor(host);
-        if (activity == null) {
-            activity = pendingActivity.get();
-        }
+        Activity activity = pendingActivity.get();
         if (activity == null) {
             return true;
         }
         showCandidates(activity);
         return true;
-    }
-
-    private static Activity activityFor(Object host) {
-        if (host instanceof Activity) {
-            return (Activity) host;
-        }
-        if (host instanceof PopupMenu) {
-            View anchor = ((PopupMenu) host).getAnchorView();
-            Context context = anchor == null ? null : anchor.getContext();
-            if (context instanceof Activity) {
-                return (Activity) context;
-            }
-            if (context instanceof ContextWrapper) {
-                Context wrapper = context;
-                while (wrapper instanceof ContextWrapper) {
-                    if (wrapper instanceof Activity) {
-                        return (Activity) wrapper;
-                    }
-                    Context base = ((ContextWrapper) wrapper).getBaseContext();
-                    if (base == null) {
-                        break;
-                    }
-                    wrapper = base;
-                }
-            }
-        }
-        return null;
     }
 
     private static PageState stateFor(WebView webView) {

@@ -78,7 +78,7 @@ object PopupItemClickFingerprint : Fingerprint(
     parameters = listOf("Landroid/view/MenuItem;"),
     filters = listOf(
         methodCall(
-            definingClass = "Lb2/f$b;",
+            definingClass = "Lb2/f" + '$' + "b;",
             name = "b",
             parameters = listOf("Landroid/view/MenuItem;"),
             returnType = "V"
