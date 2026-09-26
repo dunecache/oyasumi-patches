@@ -1,3 +1,10 @@
+## [0.2.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.15...v0.2.0-dev.16) (2026-09-26)
+
+### 🐛 Bug Fixes
+
+* correct popup fingerprint class name and activity resolution ([1c4f620](https://github.com/dunecache/oyasumi-patches/commit/1c4f620761eea501151e9cbd1f6ada3a2453ae62))
+* hook the real browser popup menu instead of the dead options menu ([4073237](https://github.com/dunecache/oyasumi-patches/commit/4073237e387215970828ec5a3d270c42e0d2d8af))
+
 ## [0.2.0-dev.15](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.14...v0.2.0-dev.15) (2026-09-25)
 
 ### 🐛 Bug Fixes
