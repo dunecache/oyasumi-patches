@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-26T13:22:18",
-  "description": "## [0.2.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.15...v0.2.0-dev.16) (2026-09-26)\n\n### 🐛 Bug Fixes\n\n* correct popup fingerprint class name and activity resolution ([1c4f620](https://github.com/dunecache/oyasumi-patches/commit/1c4f620761eea501151e9cbd1f6ada3a2453ae62))\n* hook the real browser popup menu instead of the dead options menu ([4073237](https://github.com/dunecache/oyasumi-patches/commit/4073237e387215970828ec5a3d270c42e0d2d8af))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.16/patches-0.2.0-dev.16.mpp",
+  "created_at": "2026-09-26T13:29:50",
+  "description": "## [0.2.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.16...v0.2.0-dev.17) (2026-09-26)\n\n### 🐛 Bug Fixes\n\n* derive invoke range register count from parameter count ([6b360b6](https://github.com/dunecache/oyasumi-patches/commit/6b360b6c0c888c7421768dd4b5db1af9ee09fe4b))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.0-dev.17/patches-0.2.0-dev.17.mpp",
   "signature_download_url": "",
-  "version": "0.2.0-dev.16"
+  "version": "0.2.0-dev.17"
 }

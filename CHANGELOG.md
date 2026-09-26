@@ -1,3 +1,9 @@
+## [0.2.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.16...v0.2.0-dev.17) (2026-09-26)
+
+### 🐛 Bug Fixes
+
+* derive invoke range register count from parameter count ([6b360b6](https://github.com/dunecache/oyasumi-patches/commit/6b360b6c0c888c7421768dd4b5db1af9ee09fe4b))
+
 ## [0.2.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.15...v0.2.0-dev.16) (2026-09-26)
 
 ### 🐛 Bug Fixes
