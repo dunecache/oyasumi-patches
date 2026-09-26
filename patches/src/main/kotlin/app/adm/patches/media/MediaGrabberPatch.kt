@@ -20,7 +20,7 @@ private fun invokeStaticRange(
 ) = BuilderInstruction3rc(
     Opcode.INVOKE_STATIC_RANGE,
     startRegister,
-    2,
+    parameters.size,
     ImmutableMethodReference(EXTENSION_CLASS, name, parameters, returnType)
 )
 
