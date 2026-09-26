@@ -53,25 +53,25 @@ val mediaGrabberPatch = bytecodePatch(
                 "V"
             )
         )
-        WebCreateOptionsMenuFingerprint.let { fingerprint ->
-            listOf(411, 293, 140, 60, 19).forEach { index ->
-                fingerprint.method.addInstruction(
+        PopupShowFingerprint.method.let { method ->
+            listOf(7, 4).forEach { index ->
+                method.addInstruction(
                     index,
                     invokeStaticRange(
-                        16,
-                        "onCreateOptionsMenu",
-                        listOf("Ljava/lang/Object;", "Landroid/view/Menu;"),
+                        0,
+                        "onPopupShown",
+                        listOf("Ljava/lang/Object;"),
                         "V"
                     )
                 )
             }
         }
-        WebOptionsItemSelectedFingerprint.method.let { method ->
+        PopupItemClickFingerprint.method.let { method ->
             method.addInstruction(
                 0,
                 invokeStaticRange(
-                    16,
-                    "onOptionsItemSelected",
+                    1,
+                    "onPopupItemClick",
                     listOf("Ljava/lang/Object;", "Landroid/view/MenuItem;"),
                     "Z"
                 )

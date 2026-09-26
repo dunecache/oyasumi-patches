@@ -51,40 +51,37 @@ object WebRequestFingerprint : Fingerprint(
     )
 )
 
-object WebCreateOptionsMenuFingerprint : Fingerprint(
-    definingClass = "Lcom/dv/get/Web;",
-    name = "onCreateOptionsMenu",
-    returnType = "Z",
-    parameters = listOf("Landroid/view/Menu;"),
+object PopupShowFingerprint : Fingerprint(
+    definingClass = "Lb2/f;",
+    name = "e",
+    returnType = "V",
+    parameters = emptyList(),
     filters = listOf(
         methodCall(
-            definingClass = "Landroid/view/Menu;",
-            name = "clear"
+            definingClass = "Landroidx/appcompat/widget/d0;",
+            name = "e",
+            parameters = listOf("Landroid/widget/PopupMenu;"),
+            returnType = "V"
         ),
         methodCall(
-            definingClass = "Landroid/view/Menu;",
-            name = "add",
-            parameters = listOf("I", "I", "I", "I"),
-            returnType = "Landroid/view/MenuItem;"
-        ),
-        methodCall(
-            definingClass = "Landroid/view/MenuItem;",
-            name = "setShowAsAction",
-            parameters = listOf("I"),
+            definingClass = "Landroid/widget/PopupMenu;",
+            name = "show",
             returnType = "V"
         )
     )
 )
 
-object WebOptionsItemSelectedFingerprint : Fingerprint(
-    definingClass = "Lcom/dv/get/Web;",
-    name = "onOptionsItemSelected",
+object PopupItemClickFingerprint : Fingerprint(
+    definingClass = "Lb2/e;",
+    name = "onMenuItemClick",
     returnType = "Z",
     parameters = listOf("Landroid/view/MenuItem;"),
     filters = listOf(
         methodCall(
-            definingClass = "Landroid/view/MenuItem;",
-            name = "getItemId"
+            definingClass = "Lb2/f$b;",
+            name = "b",
+            parameters = listOf("Landroid/view/MenuItem;"),
+            returnType = "V"
         )
     )
 )

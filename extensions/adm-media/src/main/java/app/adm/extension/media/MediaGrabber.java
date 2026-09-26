@@ -4,11 +4,14 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.net.Uri;
 import android.os.Environment;
+import android.view.View;
 import android.webkit.CookieManager;
 import android.webkit.WebView;
+import android.widget.PopupMenu;
 import android.widget.Toast;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -28,6 +31,7 @@ public final class MediaGrabber {
     private static final Map<WebView, PageState> STATES =
             Collections.synchronizedMap(new WeakHashMap<WebView, PageState>());
     private static volatile WeakReference<WebView> lastWebView = new WeakReference<WebView>(null);
+    private static volatile WeakReference<Activity> pendingActivity = new WeakReference<Activity>(null);
 
     private MediaGrabber() {
     }
@@ -66,26 +70,63 @@ public final class MediaGrabber {
         }
     }
 
-    public static void onCreateOptionsMenu(Object host, Menu menu) {
+    public static void onPopupShown(Object host) {
+        if (!(host instanceof PopupMenu)) {
+            return;
+        }
+        Menu menu = ((PopupMenu) host).getMenu();
         if (menu == null || menu.findItem(MENU_ID) != null) {
             return;
         }
         MenuItem item = menu.add(0, MENU_ID, 0, "Media grabber");
         item.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER);
-        if (host instanceof Activity) {
-            Toast.makeText((Activity) host, "Media grabber menu hook fired", Toast.LENGTH_SHORT).show();
+        Activity activity = activityFor(host);
+        if (activity != null) {
+            pendingActivity = new WeakReference<Activity>(activity);
+            Toast.makeText(activity, "Media grabber menu hook fired", Toast.LENGTH_SHORT).show();
         }
     }
 
-    public static boolean onOptionsItemSelected(Object host, MenuItem item) {
+    public static boolean onPopupItemClick(Object host, MenuItem item) {
         if (item == null || item.getItemId() != MENU_ID) {
             return false;
         }
-        if (!(host instanceof Activity)) {
+        Activity activity = activityFor(host);
+        if (activity == null) {
+            activity = pendingActivity.get();
+        }
+        if (activity == null) {
             return true;
         }
-        showCandidates((Activity) host);
+        showCandidates(activity);
         return true;
+    }
+
+    private static Activity activityFor(Object host) {
+        if (host instanceof Activity) {
+            return (Activity) host;
+        }
+        if (host instanceof PopupMenu) {
+            View anchor = ((PopupMenu) host).getAnchorView();
+            Context context = anchor == null ? null : anchor.getContext();
+            if (context instanceof Activity) {
+                return (Activity) context;
+            }
+            if (context instanceof ContextWrapper) {
+                Context wrapper = context;
+                while (wrapper instanceof ContextWrapper) {
+                    if (wrapper instanceof Activity) {
+                        return (Activity) wrapper;
+                    }
+                    Context base = ((ContextWrapper) wrapper).getBaseContext();
+                    if (base == null) {
+                        break;
+                    }
+                    wrapper = base;
+                }
+            }
+        }
+        return null;
     }
 
     private static PageState stateFor(WebView webView) {
