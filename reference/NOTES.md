@@ -96,44 +96,28 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - Selected values: download ceiling `64`; torrent global default `500`; torrent per-torrent default `100`.
 - Static DEX anchor validation passed. Gradle compilation and device application are pending because Java is unavailable in the current environment.
 
-## Media grabber — Phase 1 observer
+## Patcher pitfalls
 
-- Compatibility: `com.dv.adm`, version `14.0.27`, version code `140027`, regular APK.
-- The patch hooks `Lcom/dv/get/Web$i;->onPageStarted(WebView,String,Bitmap)` to clear per-page state and `shouldInterceptRequest(WebView,String)` to observe URLs without changing the existing response path.
-- Browser menu handling does **not** use the framework options menu. `Web.onCreateOptionsMenu(Menu)` is called only from `Web.o3()` and its return value is discarded, so the `Menu` it fills is never displayed. The visible browser overflow is a `PopupMenu` wrapped by `Lb2/f;`, created inside `Web.onOptionsItemSelected(MenuItem)`, filled through `Lb2/f;->d()Landroid/view/Menu;`, and shown by `Lb2/f;->e()V`. Item clicks are delivered to the `Lb2/f$b;` callback installed by `Lb2/f;->c(Lb2/f$b;)V`.
-- Consequently the earlier `onCreateOptionsMenu` and `onOptionsItemSelected` hooks were both inert for the visible menu. They have been replaced by two hooks on the real popup path, verified against the DEX:
-  - `Lb2/f;->e()V` is the single show funnel for every browser popup; it has 8 registers with `this` in `v7` and loads the `PopupMenu` into `v0` at original indices 3 and 6 before the two `SDK_INT >= 29` branches. The hook is inserted at indices 7 and 4 (descending) so `v0` is the `PopupMenu` on both branches, and the extension adds the item via `PopupMenu.getMenu()`.
-  - `Lb2/e;->onMenuItemClick(MenuItem)` wraps every popup click; it has 3 registers with `this` in `v1` and the item in `v2`, and delegates to `Lb2/f$b;->b(MenuItem)` at index 1. The hook intercepts `MENU_ID` and otherwise falls through to the original delegation, with the continue label bound via `newLabelForIndex(1)`.
-- `Lb2/f;` has a single private field `a` of type `Landroid/widget/PopupMenu;`, and `Lb2/f;->d()Landroid/view/Menu;` simply returns `a.getMenu()`. The show hook reads the `PopupMenu` that `e()` already placed in `v0`, so no reflection is required.
-- Because the click hook's `host` argument is the `Lb2/e;` wrapper rather than an `Activity`, the extension resolves the `Activity` once from the `WebView` context in `onPageStarted` and caches it in a `WeakReference`; no reflection into `PopupWindow` internals is used, because `android.widget.PopupMenu` exposes no `getAnchorView()`.
-- `BuilderInstruction3rc` encodes an `invoke-*/range` register count that must equal the referenced method's parameter count, otherwise ART rejects the class. A shared helper originally hardcoded `2`, which was correct for the four two-argument hooks but wrong for `onPopupShown(Object)` and made the browser activity close as soon as a popup was shown. The helper now derives the count from `parameters.size` so the two cannot drift apart.
-- Verified register windows: `Lb2/f;->e()` uses `v0` only (the `PopupMenu`); `Lb2/e;->onMenuItemClick` uses `v1,v2` (`this`, item); `Web$i->onPageStarted` uses `v4,v5`; `Web$i->shouldInterceptRequest` uses `v4,v5`.
-- Phase 1 queues direct HTTP(S) video, audio, WebVTT, and SubRip URLs through Android `DownloadManager`, retaining WebView cookies and user agent in memory only for the selected request.
-- HLS (`.m3u8`), DASH (`.mpd`), and raw elementary candidates are recorded as metadata only; resolver, remux, DRM rejection, and adaptive size estimation are not yet implemented.
-- Candidate sizes are shown as unknown in this phase; no HEAD or range probe is performed.
-- DEX recon resolves the existing direct-download intents in `C0` and `c1` to `Lcom/dv/get/AEditor;`; `Lcom/dv/adm/AEditor;` is a separate class and is not used by this phase.
-- The extension is packaged as `extensions/adm-media.mpe`. Static DEX anchors passed; Gradle compilation and device application are pending.
+- `BuilderInstruction3rc` encodes an `invoke-*/range` register count that must equal the referenced method's parameter count, otherwise ART rejects the class. A shared helper that hardcodes a literal count silently breaks for any hook with a different arity, so derive it from `parameters.size`.
+- `newLabelForIndex` attaches a label to the instruction object occupying that index when the call is made, and that object keeps its identity as later insertions shift it. When several instructions are inserted at indices `0..n`, bind the continue label to `1`, not to the post-insertion final index, or the false branch skips the injected block and leaves later registers undefined, which surfaces as a `VerifyError` when the class loads.
+- The DEX prototype for `Landroid/view/MenuItem;->setShowAsAction(I)` in this build is `(I)V`, while the public SDK method returns `MenuItem`, so a fingerprint written from the SDK signature never matches and must declare `returnType = "V"`. `setIcon(I)` does return `Landroid/view/MenuItem;` in the same method, so the two cannot be assumed to agree.
 
-### Verified menu and item-selection anchors
-
-- `Web.onCreateOptionsMenu(Menu)` has 18 registers and 412 instructions; `this` is `v16` and the `Menu` argument is `v17`. Return instructions are at indices `19, 60, 140, 293, 411` and all five are hooked.
-- In this build the DEX prototype for `Landroid/view/MenuItem;->setShowAsAction(I)` is `(I)V`. The public SDK method returns `MenuItem`, so a filter written from the SDK signature never matches; the fingerprint must declare `returnType = "V"`. `setIcon(I)` does return `Landroid/view/MenuItem;` in the same method, so the two cannot be assumed to agree.
-- `Web.onOptionsItemSelected(MenuItem)` has 18 registers, `this` is `v16` and the `MenuItem` argument is `v17`. `MenuItem.getItemId()` is called at index `2` and its result lands in `v1`; the item id is consumed by a `sparse-switch` at index `25`, whose payload values are resource ids such as `0x7f09003a`.
-- The extension's `MENU_ID` is `0x4D454449`, which is outside the resource-id range used by the switch, and the hook returns before the switch, so the injected item is never handled by ADM itself.
-- `onPageStarted` uses 7 registers with `this` in `v3`, so `(WebView,String)` is `v4,v5`; `shouldInterceptRequest` uses 6 registers with `this` in `v3`, so `(WebView,String)` is also `v4,v5`.
-- The `onOptionsItemSelected` hook inserts the invoke at index 0 and then four more at indices `1..4`, so the continue label must be bound with `newLabelForIndex(1)`. `newLabelForIndex` attaches the label to the instruction object occupying that index when the call is made, and that object keeps its identity as later insertions shift it. Passing the post-insertion final index `5` binds the label to `orig[4]` (`goto +3h`) instead of `orig[0]`, so the false branch skips `orig[0..3]`, leaves `v1` undefined at the `sparse-switch v1` at original index 25, and produces a `VerifyError` that kills the app as soon as the browser activity class loads.
-
-### Build environment
+## Build environment
 
 - `openjdk-21` is installed at `/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk` and exported through `/data/data/com.termux/files/usr/etc/profile.d/openjdk.sh`.
 - A local Gradle build is not possible: `https://maven.pkg.github.com/MorpheApp/registry` returns `401` for the available `gh` token, which lacks the `read:packages` scope, so `app.morphe.patches` plugin `1.3.4` cannot be resolved. Compilation is delegated to CI.
 
 ## Browser and remote data
 
-- `Lcom/dv/get/Web;` owns the built-in browser.
+- `Lcom/dv/get/Web;` owns the built-in browser and creates its WebView in `S2()Landroid/webkit/WebView;`, which installs `Web$h;` as the `WebChromeClient`, `Web$i;` as the `WebViewClient`, `La2/m4;` as the long-click listener, and `La2/o4;` as the `DownloadListener`.
 - `Web.onOptionsItemSelected()` toggles `BROW_ADSB` through `Pref.m5`.
+- Browser menu handling does **not** use the framework options menu. `Web.onCreateOptionsMenu(Menu)` is called only from `Web.o3()` and its return value is discarded, so the `Menu` it fills is never displayed. The visible browser overflow is a `PopupMenu` wrapped by `Lb2/f;`, created inside `Web.onOptionsItemSelected(MenuItem)`, filled through `Lb2/f;->d()Landroid/view/Menu;`, and shown by `Lb2/f;->e()V`. Item clicks reach the `Lb2/f$b;` callback installed by `Lb2/f;->c(Lb2/f$b;)V` through `Lb2/e;->onMenuItemClick(MenuItem)`.
+- Register windows: `Lb2/f;->e()V` has 8 registers with `this` in `v7` and the `PopupMenu` in `v0` at original indices 3 and 6 before the two `SDK_INT >= 29` branches. `Lb2/e;->onMenuItemClick` has 3 registers with `this` in `v1` and the item in `v2`, delegating to `Lb2/f$b;->b(MenuItem)` at index 1. `Web$i;->onPageStarted` and `Web$i;->shouldInterceptRequest` both place `this` in `v3`, so `(WebView,String)` is `v4,v5`.
+- `Web.onCreateOptionsMenu(Menu)` has 18 registers and 412 instructions; `this` is `v16` and the `Menu` argument is `v17`, and the returns sit at indices `19, 60, 140, 293, 411`. `Web.onOptionsItemSelected(MenuItem)` has the same register layout, calls `MenuItem.getItemId()` at index `2` into `v1`, and consumes the id with a `sparse-switch` at index `25` whose payloads are resource ids such as `0x7f09003a`.
+- `Lb2/f;` has a single private field `a` of type `Landroid/widget/PopupMenu;`, and `d()Landroid/view/Menu;` simply returns `a.getMenu()`. `android.widget.PopupMenu` exposes no `getAnchorView()`, so a hook needing the host `Activity` has to capture it from the `WebView` context earlier and cache it, for example in a `WeakReference`; the click path's `host` is the `Lb2/e;` wrapper, not an `Activity`.
 - The default resource table contains `alive_hosts` and an `https://adm.dimonvideo.ru/alive_hosts.txt` value, confirming a remote host/ad-block list path.
 - `Web` also manages cookies, history, JavaScript, image loading, dark mode, saved tabs, search engines, and the `file://` URL bridge.
+- DEX recon resolves the existing direct-download intents in `C0` and `c1` to `Lcom/dv/get/AEditor;`; `Lcom/dv/adm/AEditor;` is a separate class.
 - `f3.g()` reads a remote response through resource ID `str07` and stores key/value pairs in the `xyz` shared-preference file. The resource table identifies the endpoint as `https://adm.dimonvideo.ru/data`; the request adds `?jack=927`.
 - `f3.E()`, `f3.F()`, and `f3.G()` read Huawei/AppGallery state and message data. `f3.p()` and `f3.q()` invoke Huawei/AppGallery-related paths.
 

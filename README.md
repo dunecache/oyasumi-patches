@@ -1,6 +1,6 @@
 # Morphe Patches Template
 
-This repository is a reusable starting point for writing Morphe patches. It currently contains no app compatibility declarations, patch implementations, or released patch bundle.
+This repository is a reusable starting point for writing Morphe patches. It currently ships the ADM patch set listed below, built and verified against a single pinned ADM build.
 
 ## Implementing a patch
 
@@ -29,13 +29,12 @@ For bytecode changes, confirm register types and instruction width before insert
 
 ## Extensions
 
-Extensions are appropriate for logic that is too large or stateful for an inline patch. Keep extension APIs small, inject only what the patch needs, and verify that the extension artifact is built with the patch bundle. Do not add an extension for a simple return-early edit or constant replacement.
+Extensions are appropriate for logic that is too large or stateful for an inline patch. Keep extension APIs small, inject only what the patch needs, and verify that the extension artifact is built with the patch bundle. Do not add an extension for a simple return-early edit or constant replacement. No patch in this repository currently ships an extension, so the `extensions/` directory is absent until one is needed.
 
 ## Repository layout
 
 ```text
 patches/       Kotlin patch definitions and fingerprints
-extensions/    Optional Java/Kotlin code injected into patched apps
 reference/     Small, non-sensitive reverse-engineering notes
 AGENTS.md      Agent and maintenance rules
 ```
@@ -60,9 +59,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.2.0-dev.17](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.17)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
+> **[v0.2.0-dev.17](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0-dev.17)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
-<summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;4 patches</summary>
+<summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -75,7 +74,6 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable ads](#disable-ads) | Skip ADM's app-level ad initialization, display routines, and Telegram join prompt. |  |
 | [Disable rating prompts](#disable-rating-prompts) | Skip ADM's rating dialog without changing service teardown. |  |
 | [Increase connection limits](#increase-connection-limits) | Raise the download slider ceiling to 64 and set torrent defaults to 500 global and 100 per torrent. |  |
-| [Media grabber (direct video and subtitles)](#media-grabber-direct-video-and-subtitles) | Capture direct video and subtitle URLs in ADM's browser and offer downloads. |  |
 
 </details>
 
