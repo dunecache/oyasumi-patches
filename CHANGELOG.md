@@ -1,3 +1,9 @@
+## [0.2.0-dev.18](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.17...v0.2.0-dev.18) (2026-09-28)
+
+### 🐛 Bug Fixes
+
+* remove the media grabber patch ([d3755ab](https://github.com/dunecache/oyasumi-patches/commit/d3755ab3cdf26d80cda5c3986c46452ca9c69eea))
+
 ## [0.2.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0-dev.16...v0.2.0-dev.17) (2026-09-26)
 
 ### 🐛 Bug Fixes
