@@ -1,6 +1,6 @@
-# Morphe Patches Template
+# Oyasumi Patches
 
-This repository is a reusable starting point for writing Morphe patches. It currently ships the ADM patch set listed below, built and verified against a single pinned ADM build.
+Morphe patches for ADM. Ships the patch set listed below, built and verified against a single pinned ADM build.
 
 ## Implementing a patch
 

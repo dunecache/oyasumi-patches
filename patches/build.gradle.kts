@@ -2,12 +2,12 @@ group = "app.morphe.patches"
 
 patches {
     about {
-        name = "Morphe Patches Template"
-        description = "Reusable Morphe patch definitions"
+        name = "Oyasumi Patches"
+        description = "Patches for ADM"
         source = "git@github.com:dunecache/oyasumi-patches.git"
-        author = "Awesome dev"
-        contact = "na"
-        website = "na"
+        author = "karim"
+        contact = "https://github.com/dunecache"
+        website = "https://github.com/dunecache/oyasumi-patches"
         license = "GPLv3"
     }
 }
