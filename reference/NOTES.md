@@ -213,3 +213,93 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - Verified on device: the `0.2.1-dev.2` bundle applies cleanly to 14.0.39 on Android 15 with all three patches enabled, so every fingerprint resolves and every generated smali instruction assembles.
 - Still unverified on device: the runtime effect of each patch. Applying successfully proves the fingerprints and encodings, not that ads are gone, that the sliders show the new bounds, or that no layout gap is left where the AppBrain container used to sit. Those need a manual pass.
 
+# 1DM 18.2 reference notes
+
+## Source and target record
+
+- Reference: `/storage/emulated/0/Download/idm.internet.download.manager_18.2-30249_4arch_7dpi_85518970fbabdebca09caf183d786bde_apkmirror.com.apkm`
+- SHA-256 of the APKM: `09e36d9356c8013c1eab3f0132b869ff3919f6194d1807d4c71f6bba2a581c7d`
+- Size: `82,244,030` bytes. Format: APKM bundle (universal, 4 architectures, 7 densities), 18 entries.
+- Package: `idm.internet.download.manager`. Version name: `18.2`. Version code: `30249`.
+- Minimum SDK: `24`. Target SDK: `34`.
+- Launcher activity: `idm.internet.download.manager.MainActivity` (also `LEANBACK_LAUNCHER`).
+- Application class: `acr.browser.lightning.app.BrowserApp`. 1DM is a fork of the Lightning browser, so the shared view layer lives under `Lacr/browser/lightning/`.
+- The manifest declares 32 permissions, including `AD_ID`, `ACCESS_ADSERVICES_TOPICS`, `ACCESS_ADSERVICES_ATTRIBUTION`, `ACCESS_ADSERVICES_AD_ID`, `com.applovin.array.apphub.permission.BIND_APPHUB_SERVICE`, `com.android.vending.BILLING`, `SYSTEM_ALERT_WINDOW`, and `QUERY_ALL_PACKAGES`.
+- Own services: `DownloadService`, `MediaScannerService`, `CheckAppVersion`, `IDMFirebaseMessagingService`, `TempFilesDeletionService`, `LogcatCaptureService`, and four quick-settings tile services.
+- Bundled mediation stack: AdMob, AppLovin MAX, Unity Ads, IronSource, Chartboost, Vungle, Pangle, BidMachine, Moloco, MobileFuse, Smaato, InMobi, Bigo, MyTarget, PubMatic, Fyber, Verve, Mintegral, plus the Amazon APS banner (`com.amazon.device.ads`).
+- The reference is user-supplied and has not been independently verified as the original publisher build.
+
+## The reference file is damaged, and what that allowed
+
+- The APKM is a corrupt download. `unzip` and `zipfile` both fail on the `base.apk` entry with `zlib.error: invalid distance code` after 68,812,800 of 90,777,380 bytes, and `split_config.armeabi_v7a.apk` fails with `invalid block type`. Every other entry inflates cleanly, so the container is intact and only two member streams are damaged.
+- The `base.apk` deflate stream was decompressed manually up to the failure point (compressed offset 27,262,976 of 35,799,044), and the surviving prefix was walked entry by entry. Because deflate is a stream, everything decoded before the error is intact.
+- Recovered from that prefix: `AndroidManifest.xml` (912,896 bytes, binary XML with an embedded resource table) and eight DEX files — `classes.dex`, `classes2.dex` through `classes7.dex`, and `classes10.dex`. Each recovered DEX matches the `file_size` in its own header and verifies against its embedded SHA-1 signature and Adler-32, so they are byte-exact copies, not approximations.
+- Lost: `classes8.dex` (truncated at the damage point), `classes9.dex` (never reached), all `res/` layout and drawable XML, and every other entry stored after that offset in the ZIP.
+- Consequence for this patch: **all** classes under `Lidm/internet/download/manager/` live in the two missing DEX files. The eight recovered DEX files contain 916 classes under `Lacr/browser/lightning/` and zero under `Lidm/`. `MainActivity`, the layout that hosts the banner, `Lidm/internet/download/manager/d` (the ad-configuration provider) and `Lidm/internet/download/manager/amazon/AmazonService` could not be read. Anything below that is inference, and is marked as such.
+
+## DEX inventory (recovered only)
+
+| DEX | bytes | classes | `Lacr/browser/lightning/` | `Li/*` |
+| --- | --- | --- | --- | --- |
+| `classes.dex` | 10,713,976 | 9,200 | 916 | 1,002 |
+| `classes2.dex` | 182,952 | 137 | 0 | 0 |
+| `classes3.dex` | 9,621,188 | 9,703 | 0 | 1,976 |
+| `classes4.dex` | 8,227,912 | 7,609 | 0 | 631 |
+| `classes5.dex` | 8,565,268 | 7,393 | 0 | 422 |
+| `classes6.dex` | 8,499,332 | 10,434 | 0 | 929 |
+| `classes7.dex` | 9,635,900 | 10,070 | 0 | 511 |
+| `classes10.dex` | 7,434,716 | 8,555 | 0 | 1,625 |
+
+- `Li/nu2;` (the settings/preferences class, 657 methods), `Li/ru;` (the banner model, 69 methods), `Li/x17;` (static helpers, 709 methods) and `Li/kk;` (the main-thread dispatcher) are in `classes4.dex`.
+- `Lacr/browser/lightning/view/BannerManager;`, `Lacr/browser/lightning/view/BannerView;`, `Lacr/browser/lightning/view/BannerCallback;`, `Lacr/browser/lightning/view/DefaultBannerCallback;` and `Lacr/browser/lightning/view/BannerManager$1;` are in `classes.dex`. These names are unobfuscated, which is what makes them usable as fingerprint anchors.
+
+## The home screen banner
+
+- `Lacr/browser/lightning/view/BannerManager;` is a singleton (`INSTANCE`) with `mDisabled` and `mLoaded` (`AtomicBoolean`), `bannerInfoList` (`List`), `currentBannerInfo` (`Li/ru;`), `mTimer` (`Timer`) and `networkAdShowing` (`ConcurrentHashMap`). All field and method names in this class are unobfuscated.
+- `BannerManager.load(Z)V` is `public synchronized`, 3 registers, 37 instructions, 2 try blocks. With its argument `true` it clears `mDisabled`, then fills `bannerInfoList` from `Lidm/internet.download/manager/d;->ۦۙۢ()Ljava/util/List;` and, when that list is empty, appends `Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;`, and finally sets `mLoaded` to `true`. It is the only writer of `bannerInfoList` other than `disable()`.
+- `BannerManager.disable()V` is the app's own no-ads state: it sets `mDisabled` and `mLoaded` to `true`, clears `bannerInfoList`, nulls `currentBannerInfo`, and cancels `mTimer`.
+- `BannerManager.resume()V` returns immediately when `mDisabled` is set, and also returns when `mLoaded` is false or `bannerInfoList` is empty. Otherwise it schedules `BannerManager$1` on a `Timer` with a 500 ms period. `MyAppCompatActivity.onResume()`/`onPause()` call `resume()`/`pause()`, so the timer restarts on every activity resume.
+- `BrowserApp.lambda$initApp$2(Context)` is the only caller of `load()`: when `Li/x17;->ۦۤ۟(context)->Li/nu2;->ۦ۫ۗ()` is true it calls `disable()`, otherwise it calls `load(true)`. `BrowserApp.lambda$initApp$1()` calls `resume()`. A cross-DEX scan of all eight recovered files found no other caller of `load`, `disable`, `getCurrentAd` or `setAd`; the only other users of the class are `BannerView` itself, the `Li/bv;` click listener, and the two `Li/su;`/`Li/tu;` timer runnables.
+- `BannerManager.postAd()` pushes the current ad to the main thread through `Li/tu;` → `BannerManager.ۦۖۨ` → `lambda$postAd$1`, which ends at `BannerView.onAdReceived(DefaultBannerCallback)` → `setAd`. `setNetworkAdShowingAndNotify(Activity, boolean)` publishes the same `DefaultBannerCallback` on the event bus, so a banner can also arrive from a caller in the missing DEX files.
+- `BannerView` is a custom view (the app passes it as a `Landroid/view/View;` to its own `setVisibilityIfChanged`) that holds five children looked up by id: `icon` (`ImageView`, 2131362838), `title` (`TextView`, 2131364059), `action` (`Button`, 2131361850), `aps_banner` (`ViewGroup`, 2131362193) and `default_banner` (`View`, 2131362506). `onFinishInflate()` calls `setupAdView()`, which reads the current ad and calls `setAd(null, it)`.
+- `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is `private`, 8 registers (`this` in `v5`, the activity hash `Integer` in `v6`, the ad in `v7`), 210 instructions, 1 try block. Resolved control flow, with instruction indices:
+
+| index | instruction | effect |
+| --- | --- | --- |
+| 0, 2, 4 | `iget-object` of `icon`, `title`, `action` | return if a child is missing |
+| 10–13 | `Li/nu2;->ۥۡ()Z` | return immediately when the app's ads-disabled flag is set |
+| 20, 23 | `BannerManager.isNetworkAdShowing(Activity)` | hide the banner when a network ad is on screen |
+| 24–36 | activity hash comparison | hide unless this ad belongs to the current activity |
+| 37 | `if-eqz v7` | return when there is no ad |
+| 38–46 | `AmazonService.isInitialized()` and `getBannerBackfillAd("any")` | Amazon APS banner branch |
+| 52–58 | `aps_banner` revealed, `default_banner` hidden | APS branch |
+| 93–96 | `aps_banner` hidden, `default_banner` revealed | custom banner branch |
+| 115, 124, 149, 199 | `setImageBitmap`, `title`, `action` populated from the ad | custom banner content |
+| 202 | `View.setOnClickListener` | click target installed |
+| 203 | `setVisibilityIfChanged(this, VISIBLE)` | the banner is revealed |
+| 205 | `setVisibilityIfChanged(this, GONE)` | the app's own hide path |
+
+- `GONE` is `8`, which `const/4` cannot encode, so the app itself loads it with `const/16 v2, 8` (index 22). A patch that writes the constant must use `const/16` too.
+
+## Disable home screen ads (1DM 18.2)
+
+- Compatibility: `idm.internet.download.manager`, version `18.2`, `ApkFileType.APKM` (non-required, so the plain APK is accepted too).
+- `BannerManager.load(Z)V` is redirected to `BannerManager.disable()V`, which is the exact state 1DM enters when its ad configuration reports the banner as disabled. Consequences: `bannerInfoList` is never populated, `currentBannerInfo` stays null, and `resume()` returns at its `mDisabled` check, so the 500 ms rotation timer never starts and nothing is ever published to the banner view. Nothing else in the ad path is changed.
+- The inserted call runs before the method's own `monitor-enter`, so `disable()` is not executed under the method's monitor. That is safe because after the patch every entry into the list and the current ad goes through `disable()`, and the two fields it writes with `AtomicBoolean.set` are the ones `resume()` reads. `disable()` has its own try/catch around the `Timer` access.
+- `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
+- Fingerprints, both resolved against the recovered `classes.dex` with a re-implementation of Morphe's matcher:
+  - `BannerManagerLoadFingerprint` → `load(Z)V`, 37 instructions, `public synchronized`, filter indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
+  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 210 instructions, `private`, filter indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
+  - Both fingerprints declare the defining class with a trailing `;`, which Morphe's type comparison resolves to an exact class match, so each is pinned to a single method by construction.
+- The `Li/ru;` parameter in `setAd`'s signature and the `Lidm/internet/download/manager/amazon/AmazonService;` call are release-specific, as documented for every obfuscated name in this file. Both are acceptable only because the compatibility declaration is pinned to 18.2/30249.
+- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, the `Lidm/` ad configuration, billing, or the download service.
+
+## Unverified risks for 1DM 18.2
+
+- **Layout.** `res/` was not recoverable, so the layout that hosts `BannerView` could not be read. If the banner sits inside a container with a fixed height rather than a `wrap_content` parent, `setVisibility(GONE)` will leave an empty strip where the banner was. This is the same unconfirmed item that the ADM AppBrain change carries.
+- **Other ad surfaces are out of scope and unexamined.** The interstitial, rewarded, and "network ad" show paths are driven from `Lidm/internet/download/manager/` classes that live in `classes8.dex`/`classes9.dex`, which were not recovered. `BannerManager.setNetworkAdShowingAndNotify(Activity, boolean)` is the visible trace of that path; callers of it could not be read. This patch claims the banner only.
+- **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved locally: `maven.pkg.github.com` returns `401` for the configured `gh` token, whose scopes are `gist`, `read:org`, `repo` and do not include `read:packages`. Compilation and bundle application are delegated to CI, as with the ADM patches.
+- **No device test.** Nothing has been applied to 18.2. The fingerprints resolve and the inserted smali is width-correct and register-safe by inspection, but the runtime effect is unconfirmed.
+- **A complete `base.apk` is needed** before adding any further 1DM patch that touches the app's own classes.
+
+
