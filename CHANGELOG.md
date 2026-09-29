@@ -1,3 +1,9 @@
+## [0.3.1](https://github.com/dunecache/oyasumi-patches/compare/v0.3.0...v0.3.1) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* brace the register list in the 1DM inserted invokes ([bff38e9](https://github.com/dunecache/oyasumi-patches/commit/bff38e96bd9956f235ff6b6e09b94ee7d9618f4b))
+
 ## [0.3.0](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1...v0.3.0) (2026-09-29)
 
 ### 🐛 Bug Fixes
