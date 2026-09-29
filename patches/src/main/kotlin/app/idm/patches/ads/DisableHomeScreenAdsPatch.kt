@@ -34,18 +34,20 @@ val disableHomeScreenAdsPatch = bytecodePatch(
         // `monitor-enter` that opens the method rather than hardcoded, because the method
         // is `synchronized` and the inserted call runs before the lock is taken.
         //
-        // The braces around the register are mandatory: smali's grammar requires
-        // `OPEN_BRACE register_list CLOSE_BRACE` for a 35c invoke, so the unbraced
-        // `invoke-virtual v1, ...` fails to parse. `addInstructions` builds a dummy
-        // method from the matched method's own parameters and register count, so the
-        // register numbers written here are the ones the target method already uses.
+        // The braces around the register are mandatory, and so is the register's `v`
+        // prefix: smali's grammar requires
+        // `OPEN_BRACE register_list CLOSE_BRACE` for a 35c invoke, and a register list
+        // holds register names, not bare numbers. So this renders `{v1}` and not `{1}`.
+        // `addInstructions` builds the dummy method from the matched method's own
+        // parameters and register count, so the register numbers written here are the
+        // ones the target method already uses.
         BannerManagerLoadFingerprint.let { fingerprint ->
             val entry = fingerprint.instructionMatches[0]
             val receiver = entry.getInstruction<OneRegisterInstruction>().getRegisterA()
 
             fingerprint.method.addInstructions(
                 0,
-                "invoke-virtual {$receiver}, Lacr/browser/lightning/view/BannerManager;->disable()V\n" +
+                "invoke-virtual {v$receiver}, Lacr/browser/lightning/view/BannerManager;->disable()V\n" +
                     "return-void"
             )
         }
@@ -64,7 +66,7 @@ val disableHomeScreenAdsPatch = bytecodePatch(
             fingerprint.method.addInstructions(
                 0,
                 "const/16 $VISIBILITY_REGISTER, $GONE\n" +
-                    "invoke-virtual {$receiver}, Landroid/view/View;->setVisibility(I)V\n" +
+                    "invoke-virtual {v$receiver}, Landroid/view/View;->setVisibility(I)V\n" +
                     "return-void"
             )
         }
