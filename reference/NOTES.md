@@ -138,12 +138,12 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 
 ## Unresolved risks
 
-- The ADM compatibility declaration and first two patches are written, but not compiled or applied yet.
 - The native protection libraries may perform integrity or runtime checks outside the reach of a DEX patch.
 - SDK providers may still initialize independently even after the app-owned ad entry points are skipped.
 - The remote ad, Huawei, Firebase, and diagnostic paths may continue independently.
 - Download and torrent behavior is constrained by servers, network conditions, Android background execution, and native code.
-- A device-applied bundle test is still required for both patches and every later candidate.
+- The three patches compile and apply, but their runtime effect is still unconfirmed on a device.
+- The 14.0.27 fingerprints were removed when the patches were retargeted, so 14.0.27 is no longer declared as a target. Declaring it would advertise support that fails with a fingerprint error, because every fingerprint is 14.0.39-only. Re-adding it means either re-deriving the 14.0.27 fingerprints or selecting between two fingerprint sets per patch, which is a larger change than the retarget.
 
 # ADM 14.0.39 reference notes
 
@@ -209,6 +209,7 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - Every replacement instruction was chosen to keep the source register. Five of the eight replacements are exactly width-preserving, so the two rewritten methods that contain a `packed-switch` payload (`Lv2/e3;->run()` at byte `0x052c` and `Lv2/p1;->run()` at byte `0x0c60`) keep that payload at its original 4-byte-aligned address. The width changes are confined to `Pref.U()`, which has no switch or array payload, where only branch offsets move and `MutableMethodImplementation.replaceInstruction` re-fixes them.
 - `Pref.U()` was additionally checked by a register liveness pass and by simulating the patched instruction stream. The simulation confirms all six download controls receive the intended bounds, the three chunk-size controls keep minimum 16 and maximum 961, and the patch introduces no uninitialised read and no int/object type violation on any instruction it writes. The four findings the simulation reports exist identically before and after patching and are in untouched app code, where a linear pass cannot model per-merge-point register typing.
 - Note for future work: androguard's `Instruction.get_length()` returns a nibble count, not code units, so instruction addresses derived from it are wrong. The widths used above come from the DEX instruction format table instead.
-- Not verified: Gradle compilation, which cannot resolve `app.morphe.patches` plugin `1.3.4` in this environment, and device application of the bundle.
-- Unverified on device: that the AppBrain container is not left as a visible empty gap, and that no other ad SDK initialises independently.
+- Verified in CI: the patch project compiles and the bundle builds and publishes as a release asset.
+- Verified on device: the `0.2.1-dev.2` bundle applies cleanly to 14.0.39 on Android 15 with all three patches enabled, so every fingerprint resolves and every generated smali instruction assembles.
+- Still unverified on device: the runtime effect of each patch. Applying successfully proves the fingerprints and encodings, not that ads are gone, that the sliders show the new bounds, or that no layout gap is left where the AppBrain container used to sit. Those need a manual pass.
 
