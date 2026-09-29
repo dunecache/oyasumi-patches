@@ -1,6 +1,8 @@
-# Morphe Patches Template
+# Oyasumi Patches
 
-This repository is a reusable starting point for writing Morphe patches. It currently ships the ADM patch set listed below, built and verified against a single pinned ADM build.
+Morphe patches for ADM (`com.dv.adm`), a torrent and download manager for Android. The patch set listed below is pinned to specific ADM versions, and every fingerprint is derived from the exact build it targets. See [`reference/NOTES.md`](reference/NOTES.md) for the recorded method names, strings, and instruction indices behind each patch.
+
+Adding support for a new ADM release means re-deriving every fingerprint: each release renames the app's obfuscated classes and methods, so a patch that matched one version will not match the next.
 
 ## Implementing a patch
 
@@ -59,21 +61,21 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.2.0](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+> **[v0.2.1-dev.3](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.1-dev.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
 
 **🎯 Supported versions:**
 
-| 14.0.27 |
+| 14.0.39 |
 | :---: |
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Disable ads](#disable-ads) | Skip ADM's app-level ad initialization, display routines, and Telegram join prompt. |  |
-| [Disable rating prompts](#disable-rating-prompts) | Skip ADM's rating dialog without changing service teardown. |  |
-| [Increase connection limits](#increase-connection-limits) | Raise the download slider ceiling to 64 and set torrent defaults to 500 global and 100 per torrent. |  |
+| [Disable ads](#disable-ads) | Skip ADM's Appodeal and AppBrain ad setup and display routines, and the Telegram join prompt. |  |
+| [Disable rating prompts](#disable-rating-prompts) | Skip ADM's automatic rating prompt. The menu item that opens the same dialog on request is left intact. |  |
+| [Increase connection limits](#increase-connection-limits) | Raise the download ceilings to 32 simultaneous downloads and 64 connections per download, and set torrent defaults to 500 global and 100 per torrent. |  |
 
 </details>
 
