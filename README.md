@@ -1,6 +1,8 @@
 # Oyasumi Patches
 
-Morphe patches for ADM. Ships the patch set listed below, built and verified against a single pinned ADM build.
+Morphe patches for ADM (`com.dv.adm`), a torrent and download manager for Android. The patch set listed below is pinned to specific ADM versions, and every fingerprint is derived from the exact build it targets. See [`reference/NOTES.md`](reference/NOTES.md) for the recorded method names, strings, and instruction indices behind each patch.
+
+Adding support for a new ADM release means re-deriving every fingerprint: each release renames the app's obfuscated classes and methods, so a patch that matched one version will not match the next.
 
 ## Implementing a patch
 
