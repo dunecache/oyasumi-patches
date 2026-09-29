@@ -4,6 +4,10 @@ import app.adm.patches.shared.Constants.COMPATIBILITY_ADM
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstructions
 import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.TwoRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 
 /** `v5` is assigned four times in `Pref.U()` and never read, so it is dead. */
 private const val SCRATCH_REGISTER = "v5"
@@ -27,9 +31,9 @@ val increaseConnectionLimitsPatch = bytecodePatch(
         // payload, and the patcher recomputes every branch offset afterwards.
         DownloadCeilingFingerprint.let { fingerprint ->
             val ceiling = fingerprint.instructionMatches[0]
-            val register = ceiling.instruction.output().substringBefore(',').trim()
+            val register = ceiling.getInstruction<OneRegisterInstruction>().getRegisterA()
 
-            fingerprint.method.replaceInstruction(ceiling.index, "const/16 $register, $MAX_DOWNLOADS")
+            fingerprint.method.replaceInstruction(ceiling.index, "const/16 v$register, $MAX_DOWNLOADS")
         }
 
         // The per-download ceiling cannot be raised through its source register, because
@@ -38,12 +42,13 @@ val increaseConnectionLimitsPatch = bytecodePatch(
         // changes and the chunk-size minimum is left alone.
         ThreadCeilingFingerprint.let { fingerprint ->
             val maximum = fingerprint.instructionMatches[3]
-            val operands = maximum.instruction.output().split(",").map { it.trim() }
+            val target = maximum.getInstruction<TwoRegisterInstruction>().getRegisterC()
+            val field = maximum.getInstruction<ReferenceInstruction>().getReference() as FieldReference
 
             fingerprint.method.replaceInstructions(
                 maximum.index,
                 "const/16 $SCRATCH_REGISTER, $MAX_THREADS\n" +
-                    "iput $SCRATCH_REGISTER, ${operands[1]}, ${operands[2]}"
+                    "iput $SCRATCH_REGISTER, v$target, ${field.definingClass}->${field.name} ${field.type}"
             )
         }
 
@@ -53,14 +58,16 @@ val increaseConnectionLimitsPatch = bytecodePatch(
         TorrentConnectionDefaultsFingerprint.let { fingerprint ->
             val globalDefault = fingerprint.instructionMatches[1]
             val perTorrentDefault = fingerprint.instructionMatches[4]
+            val globalRegister = globalDefault.getInstruction<OneRegisterInstruction>().getRegisterA()
+            val perTorrentRegister = perTorrentDefault.getInstruction<OneRegisterInstruction>().getRegisterA()
 
             fingerprint.method.replaceInstruction(
                 perTorrentDefault.index,
-                "const-string ${perTorrentDefault.instruction.output().substringBefore(',').trim()}, \"100\""
+                "const-string v$perTorrentRegister, \"100\""
             )
             fingerprint.method.replaceInstruction(
                 globalDefault.index,
-                "const-string ${globalDefault.instruction.output().substringBefore(',').trim()}, \"500\""
+                "const-string v$globalRegister, \"500\""
             )
         }
     }
