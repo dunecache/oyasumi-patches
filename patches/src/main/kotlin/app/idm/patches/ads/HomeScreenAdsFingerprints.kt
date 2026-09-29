@@ -157,7 +157,7 @@ object BannerViewSetAdFingerprint : Fingerprint(
         methodCall(
             definingClass = "Landroid/view/View;",
             name = "setOnClickListener",
-            parameters = listOf("Landroid/view/View$OnClickListener;"),
+            parameters = listOf("Landroid/view/View\$OnClickListener;"),
             returnType = "V"
         )
     )
