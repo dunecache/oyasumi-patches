@@ -1,3 +1,9 @@
+## [0.3.2](https://github.com/dunecache/oyasumi-patches/compare/v0.3.1...v0.3.2) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* give the interpolated invoke registers their v prefix ([86e5755](https://github.com/dunecache/oyasumi-patches/commit/86e575584aedb6cfb36b8c2a1f19cb384ca6da01))
+
 ## [0.3.1](https://github.com/dunecache/oyasumi-patches/compare/v0.3.0...v0.3.1) (2026-09-29)
 
 ### 🐛 Bug Fixes
