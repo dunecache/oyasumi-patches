@@ -1,8 +1,8 @@
 # Oyasumi Patches
 
-Morphe patches for ADM (`com.dv.adm`), a torrent and download manager for Android. The patch set listed below is pinned to specific ADM versions, and every fingerprint is derived from the exact build it targets. See [`reference/NOTES.md`](reference/NOTES.md) for the recorded method names, strings, and instruction indices behind each patch.
+Morphe patches for a small set of Android apps. Every patch is declared against the exact package and version it was derived from, and every fingerprint comes from that build's own decompiled output. See [`reference/NOTES.md`](reference/NOTES.md) for the recorded package, class, method, string, and instruction details behind each patch.
 
-Adding support for a new ADM release means re-deriving every fingerprint: each release renames the app's obfuscated classes and methods, so a patch that matched one version will not match the next.
+Adding support for a new app release means re-deriving its fingerprints: releases rename the obfuscated classes and methods an app ships, so a patch that matched one version will not match the next.
 
 ## Implementing a patch
 
@@ -19,7 +19,7 @@ Follow this workflow for every new patch:
 
 ## Patch structure
 
-Place each patch and its fingerprints in a small feature package under `patches/src/main/kotlin`. Keep shared compatibility metadata in a dedicated object only when more than one patch uses it. A patch should contain:
+Place each patch and its fingerprints in a small feature package under `patches/src/main/kotlin/app/<app>/patches/<feature>/`, so patches for different apps never share a package. Keep shared compatibility metadata in a dedicated object per app, only when more than one patch uses it. A patch should contain:
 
 - A `bytecodePatch` or `resourcePatch` declaration.
 - A `compatibleWith` declaration tied to the verified target.
