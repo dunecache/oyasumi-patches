@@ -1,3 +1,9 @@
+## [0.2.1-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1-dev.1...v0.2.1-dev.2) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* use smali's colon in the field reference ([b7b336e](https://github.com/dunecache/oyasumi-patches/commit/b7b336ed5bdb21e5066db18f4cd5edc5c5de43e3))
+
 ## [0.2.1-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0...v0.2.1-dev.1) (2026-09-29)
 
 ### 🐛 Bug Fixes
