@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.2.1](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.2.1)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;3 patches total
+> **[v0.3.0](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.3.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -76,6 +76,21 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable ads](#disable-ads) | Skip ADM's Appodeal and AppBrain ad setup and display routines, and the Telegram join prompt. |  |
 | [Disable rating prompts](#disable-rating-prompts) | Skip ADM's automatic rating prompt. The menu item that opens the same dialog on request is left intact. |  |
 | [Increase connection limits](#increase-connection-limits) | Raise the download ceilings to 32 simultaneous downloads and 64 connections per download, and set torrent defaults to 500 global and 100 per torrent. |  |
+
+</details>
+
+<details open>
+<summary>📦 1DM&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 18.2 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering. |  |
 
 </details>
 

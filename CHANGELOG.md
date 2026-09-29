@@ -1,3 +1,13 @@
+## [0.3.0](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1...v0.3.0) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* escape the click listener type in the 1DM banner fingerprint ([3f3d261](https://github.com/dunecache/oyasumi-patches/commit/3f3d2616be1388d204537eb7ed3b2eb18b79b2a0))
+
+### ✨ New Features
+
+* add the 1DM 18.2 home screen ads patch ([0ad111b](https://github.com/dunecache/oyasumi-patches/commit/0ad111b68177914352c1ac1a572703a358e0b3d8))
+
 ## [0.2.1](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0...v0.2.1) (2026-09-29)
 
 ### 🐛 Bug Fixes
