@@ -42,7 +42,8 @@ val increaseConnectionLimitsPatch = bytecodePatch(
         // changes and the chunk-size minimum is left alone.
         ThreadCeilingFingerprint.let { fingerprint ->
             val maximum = fingerprint.instructionMatches[3]
-            val target = maximum.getInstruction<TwoRegisterInstruction>().getRegisterC()
+            // A 22c store names its two registers A (the value) and B (the target object).
+            val target = maximum.getInstruction<TwoRegisterInstruction>().getRegisterB()
             val field = maximum.getInstruction<ReferenceInstruction>().getReference() as FieldReference
 
             fingerprint.method.replaceInstructions(
