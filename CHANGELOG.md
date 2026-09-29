@@ -1,3 +1,9 @@
+## [0.2.1-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1-dev.2...v0.2.1-dev.3) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* declare only ADM 14.0.39 as a supported target ([40307b4](https://github.com/dunecache/oyasumi-patches/commit/40307b49002e88e11fbec914be1ca1a3a1e8a3f8))
+
 ## [0.2.1-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1-dev.1...v0.2.1-dev.2) (2026-09-29)
 
 ### 🐛 Bug Fixes
