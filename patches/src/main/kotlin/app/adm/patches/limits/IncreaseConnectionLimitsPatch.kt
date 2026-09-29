@@ -49,7 +49,8 @@ val increaseConnectionLimitsPatch = bytecodePatch(
             fingerprint.method.replaceInstructions(
                 maximum.index,
                 "const/16 $SCRATCH_REGISTER, $MAX_THREADS\n" +
-                    "iput $SCRATCH_REGISTER, v$target, ${field.definingClass}->${field.name} ${field.type}"
+                    // smali writes a field reference as ->name:TYPE, not ->name TYPE.
+                    "iput $SCRATCH_REGISTER, v$target, ${field.definingClass}->${field.name}:${field.type}"
             )
         }
 
