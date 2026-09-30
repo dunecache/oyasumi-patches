@@ -3,7 +3,7 @@ package app.idm.patches.ads
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.InstructionLocation
 import app.morphe.patcher.fieldAccess
-import app.morphe.patcher.methodCall
+import app.morphe.patcher.literal
 import app.morphe.patcher.opcode
 import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.Opcode
@@ -164,67 +164,58 @@ object BannerViewSetAdFingerprint : Fingerprint(
 )
 
 /**
- * `Lidm/internet/download/manager/BannerView;->ۦۖۤ()V` builds the app's own "install
- * 1DM+" strip, and is the one thing on the home screen that the ad-SDK patches above
- * cannot reach.
+ * `Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;` is the single source of the "install
+ * 1DM+" banner ad, and it is a static factory that builds the `Li/ru;` ad object from
+ * literals: a base64 PNG icon, the copy "Install <b>1DM+</b> for an Ad free experience
+ * and support developement of the app", the label "Install", the Play Store package
+ * `idm.internet.download.manager.plus`, a `utm_` campaign tag, the accent colour
+ * `#43A047`, and a 30 000 ms click-through delay.
  *
- * This is not an ad. It is a house upsell for the paid edition, with the text
- * `1DM+: Fastest download manager (<b>$1.99</b>)` and an `INSTALL` button baked into
- * `res/layout/banner_view.xml` as literals, inflated by this app's own
- * `onFinishInflate()`. It lives in a different class from the ad banner
- * (`Lacr/browser/lightning/view/BannerView;`) and a different dex (`classes9.dex`),
- * never consults the ad configuration, and is started by a 250 ms `Timer` rather than
- * by the ad rotation. That is why redirecting `BannerManager.load()` to `disable()`
- * and hiding the container from `setAd()` both leave it on screen, and why the prompt
- * survives the whole "Disable home screen ads" patch.
+ * It is worth being precise about what this is not, because the first attempt at this
+ * patched the wrong class and did nothing. 1DM has four app-owned banner classes, and
+ * the one on the home screen is `manager/NewBannerView`, not
+ * `Lacr/browser/lightning/view/BannerView` and not
+ * `Lidm/internet/download/manager/BannerView`. All of them end up drawing whatever
+ * `Li/ru;` they are handed, and this factory is what hands it over.
  *
- * The method is identified by the upsell text it feeds to `Html.fromHtml()` and
- * `TextView.setText()`, and by the `Timer.schedule()` that drives the click-through, so
- * the chain does not depend on the obfuscated member names `ۦۖ۠`/`ۦۖۡ`/`ۦۖۦ`/`ۦۖۧ` or on
- * the view ids, all of which are release-specific.
+ * Suppressing the factory rather than any one renderer is what makes this complete: the
+ * promo reaches the screen through four separate call sites --
+ * `BannerManager.load(Z)V` and `BannerManager.getNewBannerInfo(...)`, which feed the ad
+ * rotation, and `Li/s82;->ۦۖۢ(...)V` and `Li/s82;->ۦۖۦ(...)Z`, which reach
+ * `manager.NewBannerView` directly. Redirecting `BannerManager.load()` to `disable()`
+ * leaves the other three, which is why the prompt survived it.
+ *
+ * All four call sites null-check the result and skip the banner when it is null, so
+ * returning null here is the behaviour the app already has a path for. The method is
+ * `static` with `.registers 3`, so `v0` is the return slot and the replacement is
+ * `const/4 v0, 0` followed by `return-object v0` -- `return-void` is not legal on a
+ * method that returns a reference.
+ *
+ * The chain identifies the method by its own literals: the `PlayStore` package name is
+ * unique to this factory, and the copy, the label and the click-through delay sit either
+ * side of it. None of the obfuscated member names are used.
  */
-object BannerViewUpsellFingerprint : Fingerprint(
-    definingClass = "Lidm/internet/download/manager/BannerView;",
-    name = "ۦۖۤ",
-    returnType = "V",
+object IdmPlusBannerFingerprint : Fingerprint(
+    definingClass = "Lidm/internet/download/manager/d;",
+    name = "ۦۜۡ",
+    returnType = "Li/ru;",
     parameters = listOf(),
     filters = listOf(
+        // The cached singleton this factory fills in and hands back.
         fieldAccess(
-            definingClass = "this",
-            name = "ۦۖۚ",
-            type = "Z",
-            opcode = Opcode.IGET_BOOLEAN
+            definingClass = "Lidm/internet/download/manager/d;",
+            name = "ۦۗۥ",
+            type = "Li/ru;",
+            opcode = Opcode.SGET_OBJECT
         ),
-        // The upsell copy is the only string this class ever loads through `Html`.
-        methodCall(
-            definingClass = "Landroid/text/Html;",
-            name = "fromHtml",
-            parameters = listOf("Ljava/lang/String;"),
-            returnType = "Landroid/text/Spanned;"
-        ),
-        methodCall(
-            definingClass = "Landroid/widget/TextView;",
-            name = "setText",
-            parameters = listOf("Ljava/lang/CharSequence;"),
-            returnType = "V"
-        ),
-        fieldAccess(
-            definingClass = "this",
-            name = "ۦۖۚ",
-            type = "Z",
-            opcode = Opcode.IPUT_BOOLEAN
-        ),
-        methodCall(
-            definingClass = "Ljava/util/Timer;",
-            name = "schedule",
-            parameters = listOf(
-                "Ljava/util/TimerTask;",
-                "J",
-                "J"
-            ),
-            // `Timer.schedule` returns void. Declaring a reference here made the filter
-            // match nothing, and the whole fingerprint failed on a live 18.2 build.
-            returnType = "V"
-        )
+        string("Install <b>1DM+</b> for an Ad free experience and support developement of the app"),
+        string("Install"),
+        // The 30 s click-through delay. It is written *before* the Play Store id in the
+        // method body, so the chain has to visit it here; filters match in increasing
+        // instruction order, and putting it last would leave it unreachable.
+        literal(30000, listOf(Opcode.CONST_16)),
+        // The Play Store id of the paid edition. Unique to this method in the app.
+        string("idm.internet.download.manager.plus"),
+        string("utm_source=1DM&utm_medium=App&utm_campaign=DefaultBanner")
     )
 )

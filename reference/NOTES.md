@@ -611,6 +611,57 @@ Two gaps remain, and both are stated in the checks' README rather than papered o
   register holding a reference where an integer is required, which is what the original
   three `VerifyError`s turned on. Only a real verifier catches it.
 
+## The 1DM+ banner is an ad object, not a view (v0.4.0 – v0.4.1 were ineffective)
+
+v0.4.0 and v0.4.1 did apply cleanly and the prompt still appeared. Both patched the
+wrong thing, and the reason is that 1DM has **four** app-owned banner classes:
+
+| class | dex | role |
+| --- | --- | --- |
+| `Lacr/browser/lightning/view/BannerView;` | `classes.dex` | ad SDK banner, hidden by `setAd` |
+| `Lidm/internet/download/manager/BannerView;` | `classes9.dex` | a literal upsell strip in `banner_view.xml`, hidden by v0.4.0 |
+| `Lidm/internet/download/manager/manager/NewBannerView;` | `classes9.dex` | **the class actually on the home screen** |
+| `Lidm/internet/download/manager/AppodealBannerView;` | `classes9.dex` | Appodeal container |
+
+v0.4.0 hid the second of those, which is a real view with real layout, but it is not the
+one being drawn.
+
+The prompt is a banner **ad**, built by a static factory:
+
+```
+Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;      // .registers 3, static, 35 instructions
+```
+
+It constructs the `Li/ru;` ad object from literals: a base64 PNG icon, the copy
+`Install <b>1DM+</b> for an Ad free experience and support developement of the app`, the
+label `Install`, the Play Store package `idm.internet.download.manager.plus`, a
+`utm_source=1DM&utm_medium=App&utm_campaign=DefaultBanner` campaign tag, the accent
+colour `#43A047`, and a `const/16 v1, 30000` 30-second click-through. That is why it is
+tappable and opens the Play Store listing — those are the ad object's own fields.
+
+`manager/NewBannerView.ۦۖۦ(Li/ru;)V` (122 instructions) is what paints it, reading the
+same `Li/ru;` accessors (`ۦۖۥ` for the icon and sizes, `ۦۖۘ` for the text, `ۦۖۢ` for the
+click url).
+
+The factory has four callers, and redirecting `BannerManager.load()` to `disable()`
+covers only one:
+
+- `BannerManager.load(Z)V` and `BannerManager.getNewBannerInfo(AtomicBoolean)Li/ru;` —
+  the ad rotation
+- `Li/s82;->ۦۖۢ(MyAppCompatActivity, Li/m15;)V` and `Li/s82;->ۦۖۦ(MyAppCompatActivity;)Z`
+  — reach `manager/NewBannerView` directly
+
+All four null-check the result and skip the banner when it is null, so the fix is to make
+the factory return null rather than to hide any view. `IdmPlusBannerFingerprint` prepends
+`const/4 v0, 0` and `return-object v0`; `return-void` would be illegal on a
+reference-returning method. The chain resolves at indices 0, 11, 14, 17, 20 and 23, and
+its filters are the factory's own literals, none of the obfuscated member names.
+
+Note the order matters: the `30000` click-through is written at index 17, *before* the
+Play Store id at 20, and filters match in increasing instruction order, so listing the
+literal last would leave it permanently unreachable. That was caught by replaying the
+chain against the DEX rather than by reading it.
+
 ## Unverified risks for 1DM 18.2
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
