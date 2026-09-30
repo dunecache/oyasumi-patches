@@ -1,3 +1,9 @@
+## [0.5.2](https://github.com/dunecache/oyasumi-patches/compare/v0.5.1...v0.5.2) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* stop naming classes in the preference fingerprints ([673c2ba](https://github.com/dunecache/oyasumi-patches/commit/673c2ba3e7cbcb1d97bb3f6090721c7d04849bc7))
+
 ## [0.5.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.0...v0.5.1) (2026-09-30)
 
 ### 🐛 Bug Fixes
