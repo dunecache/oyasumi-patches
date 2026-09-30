@@ -1,3 +1,14 @@
+## [0.5.0](https://github.com/dunecache/oyasumi-patches/compare/v0.4.2...v0.5.0) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* escape the dollar in EventChannel$EventSink ([e26c147](https://github.com/dunecache/oyasumi-patches/commit/e26c14774bb80f27c5f8f79c1f7e078c7c02bad0))
+* make invoke-static and wide args arity-correct ([e6580f9](https://github.com/dunecache/oyasumi-patches/commit/e6580f97ba87acad8ec419297069243c548bb19b))
+
+### ✨ New Features
+
+* force Djezzy Walk & Win steps to 10000 ([f7cd27d](https://github.com/dunecache/oyasumi-patches/commit/f7cd27d2359eb033be869c9b7c25f8de7f32da85))
+
 ## [0.4.2](https://github.com/dunecache/oyasumi-patches/compare/v0.4.1...v0.4.2) (2026-09-30)
 
 ### 🐛 Bug Fixes
