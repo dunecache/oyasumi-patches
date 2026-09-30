@@ -687,3 +687,214 @@ chain against the DEX rather than by reading it.
 
 
 
+
+# Djezzy 3.0.9 reference notes
+
+## Source and target record
+
+- Reference: `~/storage/0/Documents/VInstall/Backups/com.djezzy.internet_3.0.9.apkv`
+- The reference is a VInstall APKV container, not a plain APK. Its `manifest.json` reports
+  `"format": "apkv"`, `"isSplit": true`, and lists six members.
+- SHA-256 of the APKV as stored: not computed for the container; the members are recorded below.
+- `base.apk` SHA-256: `f36dab7f20448f05287b5d480178a1a87f6b82a0dcef3557412470707e3ce9ee`, 12,500,283 bytes.
+- `split_config.arm64_v8a.apk` SHA-256: `0e29e143baa7157831ec884b9d8d4f51aed249e599e23918fe1620a0556d4201`, 26,100,466 bytes.
+- Package: `com.djezzy.internet`. Version name `3.0.9`. Version code `40076`.
+- Minimum SDK `24`, target SDK `36`.
+- Label "Djezzy". Declares `ACTIVITY_RECOGNITION` plus the camera, contacts, phone-state and
+  biometric permissions, which is consistent with a loyalty feature that counts steps.
+- The reference is user-supplied and has not been independently verified as the original
+  publisher build.
+
+## Where the app's own code lives
+
+This is a Flutter application. The application logic is Dart, AOT-compiled into
+`lib/arm64-v8a/libapp.so` (14,681,008 bytes) inside the `arm64_v8a` split; the
+`assets/flutter_assets/` tree in `base.apk` holds only fonts, SVG/PNG art and a few
+JSON blobs, no Dart source. Nothing in the Dart layer can be read as source text and
+nothing in it is reachable by a Dalvik-level patch.
+
+The step number is nonetheless produced by ordinary Java/Kotlin in `classes.dex`, because
+Flutter's `pedometer` package is a platform plugin. That is what makes the feature
+patchable at all, and it means the patch is architecture-independent: it edits
+`base.apk`, which is shared by all four ABI splits, so no `libapp.so` work is needed
+and one patch covers every ABI.
+
+`classes.dex` holds 11,863 classes; `classes2.dex` and `classes3.dex` hold 134 and 217
+and contain no app classes. Only one app class exists in the whole set:
+`Lcom/djezzy/internet/MainActivity;`.
+
+## Walk & Win: the step data flow
+
+The feature is a loyalty "walk and win" campaign. Dart-side evidence, all read out of
+`libapp.so` as canonical strings:
+
+- `package:djezzy_app_implementation/features/walk_and_win/` holds the whole feature:
+  `presentation/bloc/walk_and_win_bloc.dart` with `WalkAndWinBloc`, `WalkAndWinState`,
+  `WalkAndWinLoaded`, `WalkAndWinError`; `data/services/pedometer_service.dart` with
+  `PedometerService`; `data/datasources/walk_and_win_remote_datasource.dart`;
+  `data/models/waw_campaign_model.dart` with `WawCampaignDataModel.fromJson` and
+  `WawLevelModel.fromJson`; and the widgets `walk_step_counter_card.dart`,
+  `walk_progress_bar.dart`, `walk_and_win_modal.dart`, `walk_dual_action_buttons.dart`.
+- `package:pedometer/pedometer.dart` supplies `Pedometer.stepCountStream`. The sibling
+  `stepDetectionStream` is **absent** from the binary, so only the count channel is consumed.
+- Persisted keys, all `SharedPreferences` strings: `walk_and_win_current_steps`,
+  `walk_and_win_last_pedometer_value`, `walk_and_win_is_walking`,
+  `walk_and_win_accumulated_minutes`, `walk_and_win_session_start_time`.
+- Network: `GET /services/walk/campaign/` loads the campaign, and
+  `POST /services/walk/activate-reward/` claims the reward. User-visible strings include
+  `Walk & Win`, `Start Walk`, `Steps`, `Insufficient Steps`,
+  `You need more steps to convert to a reward.`, `Claiming reward...`,
+  `Reward claimed successfully`, and `Steps taken: `.
+
+The producer is the `pedometer` plugin, registered as
+`com.example.pedometer.PedometerPlugin` and obfuscated to three classes. The registrant
+string in `Lio/flutter/plugins/GeneratedPluginRegistrant;->registerWith` reads
+`Error registering plugin pedometer, com.example.pedometer.PedometerPlugin`, and
+`new-instance Li5/a;` is the class constructed beside it. That is a known pub package
+whose published source matches the disassembly below instruction for instruction.
+
+- `Li5/a;` is the `FlutterPlugin`. `onAttachedToEngine` builds two `EventChannel`s and
+  names them in the DEX: `step_detection` and `step_count`. It constructs `Li5/c;` twice,
+  with sensor type `18` and sensor type `19`.
+- `Li5/c;` is the `EventChannel$StreamHandler`. Its constructor reads the sensor type and
+  stores the name `"StepCount"` for 19 and `"StepDetection"` for 18 in field `l`, then
+  calls `SensorManager.getDefaultSensor(type)` and keeps the result in field `k`. Its
+  `onListen` registers the listener and returns; **it never pushes an initial value**.
+- `Li5/b;` is the `SensorEventListener`, holding the sink in field `a`.
+  `onSensorChanged` is the single point where a step number enters the app.
+
+`Li5/b;->onSensorChanged(Landroid/hardware/SensorEvent;)V` disassembles to eleven
+instructions with `.registers 3` and one declared parameter:
+
+```smali
+const-string          v0, "event"
+invoke-static         {v2, v0}, Lkotlin/jvm/internal/i;->e(Ljava/lang/Object;Ljava/lang/String;)V
+iget-object           v2, v2, Landroid/hardware/SensorEvent;->values:[F
+const/4               v0, 0
+aget                  v2, v2, v0
+float-to-int          v2, v2
+invoke-static         {v2}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
+move-result-object    v2
+iget-object           v0, v1, Li5/b;->a:Lio/flutter/plugin/common/EventChannel$EventSink;
+invoke-interface      {v0, v2}, Lio/flutter/plugin/common/EventChannel$EventSink;->success(Ljava/lang/Object;)V
+return-void
+```
+
+Instruction `5` is the conversion that is replaced. The parameters occupy the highest
+registers (`v1` is the event, `v0` is `this` after the frame is accounted for), which is
+the standard Dalvik layout; `addInstructions` builds its dummy method from this method's
+own register count, so the register numbers written in the patch are these numbers.
+
+A second `SensorEventListener` exists and is **not** a valid match target: `Lf7/b;` is
+`dev.fluttercommunity.plus.sensors.SensorsPlugin` (accelerometer, gyroscope,
+magnetometer, barometer, user_accel). It copies the float values into a `double[]`,
+appends a timestamp, and calls `success([D)` — it never calls `Integer.valueOf` and
+never reads `SensorEvent.values` as the payload. The `methodCall` filter on
+`Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;` therefore separates the two cleanly.
+
+## Why two edits are required
+
+Sensor type `19` is `Sensor.TYPE_STEP_COUNTER`. Two properties of that sensor drive the
+design, and both are Android platform behaviour rather than anything read from the app:
+
+1. **It is cumulative since boot, not per-step.** A single sample is "total steps since
+   the device was last booted", which is why the Dart layer persists
+   `walk_and_win_last_pedometer_value` and subtracts a baseline.
+2. **It only fires when a step is actually detected.** Standing still produces no events
+   at all.
+
+Consequence 2 is the one that breaks the obvious patch. Overriding the value in
+`onSensorChanged` alone would still emit nothing while the user is stationary, because
+the method is never called. The patch therefore also pushes a value from
+`Li5/c;->onListen`, immediately after the listener is registered, so the stream carries a
+number as soon as Dart subscribes.
+
+## Patch — Force Walk & Win steps to 10000
+
+- `onSensorChanged`: instruction `5` (`float-to-int v2, v2`) is replaced with
+  `const/16 v2, 0x2710`. `0x2710` is 10000 and fits a signed `const/16`. The
+  `values[0]` read above it still executes and is discarded. The boxing and the
+  `success` call below are untouched and already accept an int, so nothing downstream
+  changes shape.
+- `onListen`: twelve instructions are inserted at index 22, immediately after the store
+  into the plugin's listener field, pushing the same constant through `Integer.valueOf`
+  and `success` and logging what it pushed.
+
+  **The insert index is the whole difficulty in this method, and the natural choice is
+  wrong.** The `EventSink` arrives in parameter register `v4` (`.registers 5`, three
+  declared parameters, so `v2` is `this`, `v3` the `Object` argument and `v4` the sink).
+  Three instructions after the listener store, index 22, the method loads the
+  `SensorManager` into `v4`, and from there on `v4` is a `SensorManager`. An insert placed
+  at the tail — before the closing `return-void`, which is where a tail insert naturally
+  goes and where this patch was first written — would therefore hand a `SensorManager` to
+  `EventSink.success`, and the verifier would reject the class when the app loads. The
+  store into the listener field is the last instruction before `v4` is reused, so
+  `instructionMatches[0].index + 1` is the only index in this method where the sink is
+  provably still live. `v0` and `v1` are the two locals; both are reloaded or reassigned by
+  the instructions that follow, so nothing the insert writes is read back.
+
+  This was caught by decoding the raw Dalvik and tracking the sink register, not by reading
+  the patch. It is recorded here because the same trap will apply to any future patch that
+  inserts into a Flutter plugin's `onListen`.
+- Both sites additionally `Log.i` under the tag `djezzy-waw`, so a device run shows the
+  raw sensor value, the value substituted, and the value pushed on subscribe. The tag is
+  filtered out of release builds only if the user removes the patch; it is intentionally
+  left in, because without it a device test cannot distinguish "patch applied and the
+  Dart layer clamped the number" from "patch applied and the number is wrong".
+
+## Unresolved risks for Djezzy 3.0.9
+
+- **The Dart delta is not confirmed.** `walk_and_win_last_pedometer_value` and
+  `walk_and_win_current_steps` being persisted implies the Dart layer computes
+  `current += (newValue - lastStored)`. If a baseline above 10000 is already stored, the
+  first delta is negative. This is inferred from the key names, not read from compiled
+  Dart. The logcat output is what settles it: if the app shows a number below 10000 while
+  the log reports a push of 10000, that is the cause. The fix is to also reset the stored
+  pair on subscribe, which is a two-instruction addition to the `onListen` insert.
+- **The reward is server-gated.** `/services/walk/activate-reward/` decides the payout and
+  the campaign's target comes from `/services/walk/campaign/`. This patch changes what the
+  client displays and sends. If the backend recomputes the step count itself, it will
+  still refuse the claim, and no client-side patch can change that. The request body has
+  not been captured.
+- **Whether the displayed number is client-side or server-driven is unknown.** The widget
+  set includes both a local counter card and a progress bar, and `WawCampaignDataModel`
+  may carry a server-supplied step count. A screenshot of the screen is needed to tell
+  them apart.
+- **`Li5/a/b/c;` are R8-obfuscated and will churn on the next release.** This matches the
+  ADM patches, which also key on obfuscated names, but it means the fingerprint is pinned
+  to 3.0.9. The framework-level parts (`onSensorChanged`, the descriptor, the
+  `EventSink.success` and `Integer.valueOf` calls) carry most of the matching weight.
+- **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved from this device:
+  `maven.pkg.github.com` needs a token with `read:packages` and the local Gradle cache is
+  empty. Compilation is delegated to CI, as with the ADM and 1DM patches. What was checked
+  offline instead: brace and paren balance on all three new sources, and every Morphe and
+  dexlib2 symbol against `morphe-patcher` v1.13.0 source and the real
+  `smali-dexlib2.jar` (`Opcode.IGET_OBJECT`, `FLOAT_TO_INT` and `IPUT_OBJECT` all exist,
+  and `fieldAccess` takes `type:` and not `returnType:`).
+- **The smali is verified by assembly, and the verifier is known to be honest about it.**
+  `.scratch/check_walk_smali.py` renders both smali strings the way the Kotlin template
+  would and assembles them through a Java program that mirrors `InlineSmaliCompiler` v1.13.0
+  exactly: the same `METHOD_TEMPLATE`, the same parser/lexer error thresholds, the same tree
+  walk into a `DexBuilder`. The JitPack smali fork at commit `d856bad65f` and the Maven
+  dependencies listed in the 1DM notes are enough to run it with no Morphe artifacts. The
+  check is only meaningful because it was negative-controlled: the two defects this
+  repository has already shipped were fed back in and reproduced with the same error counts
+  reported at the time (a missing 35c brace gives 2 parser errors, a bare register number
+  inside braces gives 1). Both new strings assemble, at `.registers 3` and `.registers 5`.
+- **No device test.** Nothing has been applied to 3.0.9. The fingerprints were replayed
+  against the real DEX and resolve to the expected indices, and the register allocation was
+  read out of the raw bytecode, but the runtime effect is unconfirmed.
+
+## Patcher pitfalls (Djezzy 3.0.9)
+
+- **`fingerprint.method.getInstructions().size - 1` is not a safe tail anchor.** The count
+  is right but the reasoning is not: in a method whose parameters are reused as locals, the
+  last index is past the point where a parameter still holds its incoming type. Anchoring
+  on a *named instruction match* and using `index + 1` is what makes the insert position
+  survive a rebuild, because it ties the anchor to the plugin's own structure rather than
+  to a count.
+- **Decoding the DEX is not optional when a patch touches register allocation.** Androguard
+  is sufficient for reading a method, but it does not surface which register a parameter
+  *still* holds at a given index. The raw Dalvik does, and it is the only way to catch the
+  `v4` sink/SensorManager reuse described above. The decoder used is
+  `.scratch/dexdump.py`, which is throwaway but is the thing that found the bug.
