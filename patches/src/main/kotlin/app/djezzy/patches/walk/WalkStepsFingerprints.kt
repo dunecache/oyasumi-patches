@@ -5,6 +5,7 @@ import app.morphe.patcher.InstructionLocation
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
+import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.Opcode
 
 /**
@@ -98,5 +99,88 @@ object PedometerStreamHostFingerprint : Fingerprint(
             ),
             returnType = "Z"
         )
+    )
+)
+
+/**
+ * `shared_preferences_android` ships two completely separate read paths, and which one
+ * Dart calls is not readable from the AOT snapshot. Both are fingerprinted here so the
+ * patch works either way and, more importantly, so a device run says which one fired.
+ *
+ * This is the legacy one. `LegacySharedPreferencesPlugin` has **no** per-type getters at
+ * all — its only reads are `getAllPrefs`, `getAll` and `getKeys`, all of which funnel
+ * through `getAllPrefs`, and Dart picks the key out of the returned map itself. Patching
+ * any single getter is therefore impossible; the map has to be amended before it leaves.
+ *
+ * `startsWith`, `transformPref` and the `HashMap.put` are what make this the map builder
+ * rather than a same-named helper elsewhere. `transformPref` is the plugin's own
+ * per-entry encoder, so it also proves the loop is the pref-copying loop.
+ */
+object LegacyPreferenceMapFingerprint : Fingerprint(
+    definingClass = "Lio/flutter/plugins/sharedpreferences/LegacySharedPreferencesPlugin;",
+    name = "getAllPrefs",
+    returnType = "Ljava/util/Map;",
+    parameters = listOf("Ljava/lang/String;", "Ljava/util/Set;"),
+    filters = listOf(
+        fieldAccess(
+            definingClass = "Lio/flutter/plugins/sharedpreferences/LegacySharedPreferencesPlugin;",
+            name = "preferences",
+            type = "Landroid/content/SharedPreferences;",
+            opcode = Opcode.IGET_OBJECT
+        ),
+        methodCall(
+            definingClass = "Landroid/content/SharedPreferences;",
+            name = "getAll",
+            parameters = emptyList(),
+            returnType = "Ljava/util/Map;"
+        ),
+        methodCall(
+            definingClass = "Ljava/util/String;",
+            name = "startsWith",
+            parameters = listOf("Ljava/lang/String;"),
+            returnType = "Z"
+        ),
+        methodCall(
+            definingClass = "Lio/flutter/plugins/sharedpreferences/LegacySharedPreferencesPlugin;",
+            name = "transformPref",
+            parameters = listOf("Ljava/lang/String;", "Ljava/lang/Object;"),
+            returnType = "Ljava/lang/Object;"
+        ),
+        methodCall(
+            definingClass = "Ljava/util/HashMap;",
+            name = "put",
+            parameters = listOf("Ljava/lang/Object;", "Ljava/lang/Object;"),
+            returnType = "Ljava/lang/Object;"
+        ),
+        opcode(Opcode.RETURN_OBJECT)
+    )
+)
+
+/**
+ * The async half of the same split. This plugin version stores through DataStore, so its
+ * `getInt` never touches `android.content.SharedPreferences.getInt` and needs its own hook.
+ *
+ * `getInt` is a suspend function, so the body is only a null-check pair, a coroutine start
+ * and a return; the real read happens in `$getInt$1.invokeSuspend`. Hooking the wrapper is
+ * still correct, and much narrower, because the key argument arrives there in a register
+ * and the value can be returned before the coroutine is ever started.
+ *
+ * The two `const-string`s are Kotlin's parameter-name null-check messages, which the
+ * compiler emits from the declared parameter names and which R8 has no reason to change.
+ * They pin this to the two-parameter overload: `options` is unique to it, and it is the
+ * only string in the method that contains a `k`.
+ */
+object AsyncIntPreferenceFingerprint : Fingerprint(
+    definingClass = "Lio/flutter/plugins/sharedpreferences/SharedPreferencesPlugin;",
+    name = "getInt",
+    returnType = "Ljava/lang/Long;",
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Lio/flutter/plugins/sharedpreferences/SharedPreferencesPigeonOptions;"
+    ),
+    filters = listOf(
+        string("key"),
+        string("options"),
+        opcode(Opcode.RETURN_OBJECT)
     )
 )

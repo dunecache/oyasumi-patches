@@ -842,6 +842,210 @@ number as soon as Dart subscribes.
   left in, because without it a device test cannot distinguish "patch applied and the
   Dart layer clamped the number" from "patch applied and the number is wrong".
 
+## The v0.5.0 patch fires but the counter reads 0 (device evidence)
+
+A device run with the v0.5.0 patch produced exactly one relevant line:
+
+```
+I flutter : GET https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I djezzy-waw: walk: pushing 10000
+```
+
+The tag proves the patch applied and the `onListen` insert executed, so the forced value
+reached the Dart `EventSink`. The counter still read 0. **The displayed number is therefore
+not the value this patch forces**, and overriding the pedometer stream was the wrong layer.
+
+What the binary shows about where the number comes from instead:
+
+- The screen is `WalkAndWinModal`, and it fetches `GET /services/walk/campaign/{msisdn}`
+  on the same view. The log shows that request immediately before the push, so both run.
+- The campaign entity exposes `maxSteps` and `isUnlimited`, and `isUnlimited` is reached as
+  `dyn:get:isUnlimited` — a **dynamic**, JSON-decoded field, so the campaign is a map
+  decoded straight from that response rather than a fixed local constant.
+- There is no `currentSteps` field anywhere in the binary, so the current count is not
+  read from the campaign response either. The strings that look like candidates are
+  `walk_and_win_current_steps` and `walk_and_win_last_pedometer_value`, both
+  `SharedPreferences` keys, so the count is local.
+- Nothing else in `classes.dex` can produce a step number. The only hook in the whole DEX
+  is the pedometer plugin: the single matching string is the registrant's
+  `Error registering plugin pedometer, com.example.pedometer.PedometerPlugin`, and the
+  only classes with `SensorEventListener` are `Li5/b;` (the plugin) and `Lf7/b;`
+  (`sensors_plus`). So there is no second entry point to override.
+
+The unresolved part is how the local accumulator is gated. `walk_and_win_is_walking` is
+persisted and `_toggleWalking` / `_onWalkingChanged` / `startWalking` / `pauseWalking` all
+exist, so the counter plausibly only accumulates while a walk session is active — which
+would explain 0 at the moment of subscribe, before Start Walk is pressed. The Dart is AOT
+and its strings are shuffled in the snapshot, so adjacency gives nothing; this has to come
+from the campaign response and one session's logs.
+
+## Campaign response captured: the server never sees a step count
+
+Device logcat, same run as the failing counter:
+
+```
+I flutter : ╔╣ Response ║ GET ║ Status: 200 OK  ║ Time: 612 ms
+I flutter : ║  https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I flutter : ║ Body
+I flutter : ║    { "message": "Waw campaign", "status": 200,
+I flutter : ║      "data": { "wawLevels": [
+I flutter : ║          {steps: 5000, reward: GIFTWALKWIN1GO, donation: null},
+I flutter : ║          {steps: 10000, reward: GIFTWALKWIN2GO, donation: null}]}}
+```
+
+This settles two questions:
+
+1. The campaign carries **no step count at all**. Only thresholds and reward codes. So the
+   displayed number is not server-driven, and the reward threshold is 10000 steps ->
+   `GIFTWALKWIN2GO`.
+2. `donation: null` and no per-user field means nothing in this response can override a
+   local count. Confirmed there is no `currentSteps` string anywhere in `libapp.so`.
+
+Ordering in the same log is the useful part:
+
+```
+...677.658  I djezzy-waw: walk: pushing 10000      <- our onListen insert
+...677.692  flutter  GET .../walk/campaign/...    <- campaign starts after our push
+...678.305  flutter  Response .../walk/campaign/
+...680.001  I djezzy-waw: walk: pushing 10000      <- a second onListen
+```
+
+Two pushes means `onListen` runs twice: the pedometer plugin has two channels
+(`step_detection`, `step_count`) that are both instances of `Li5/c;`, so our single
+fingerprint matches both. `stepDetectionStream` is absent from `libapp.so`, so the
+detection channel is only subscribed because both share the class.
+
+The campaign response lands **after** the first push, so the campaign load rebuilds the
+modal's state over whatever the pedometer had already delivered.
+
+### Why the constant cannot work
+
+`walk_and_win_last_pedometer_value` only makes sense if the app stores the previous raw
+sensor value and accumulates the difference, i.e. roughly
+
+```
+current += raw - last_raw
+last_raw = raw
+```
+
+A **constant** 10000 therefore yields `+10000` on the first event and `0` on every event
+after that. Our second push cannot move the counter, and the campaign load in between
+rebuilds the state. A constant is the wrong shape for a delta accumulator; that is the
+bug, and it is a bug in the patch rather than in the fingerprint.
+
+There is no stateless smali edit that makes a delta accumulator jump on demand, because
+the first emitted value has to sit ~10000 above an unknown persisted baseline. Two ways
+out, both viable:
+
+- **Force the stored value instead of the event stream.** Make the persisted
+  `walk_and_win_current_steps` read back as 10000. Pure smali, and independent of the delta
+  model and of the `is_walking` gate.
+- **Keep emitting increasing values.** Needs a stateful emitter, i.e. a Morphe extension
+  (`BytecodePatchBuilder.extendWith`), which means a new Gradle module.
+
+The first is chosen: it is narrower, it needs no new module, and it is the value the UI
+actually renders. The pedometer constant is kept so the forced baseline and the emitted
+baseline stay equal and the delta stays at 0, pinning the counter at 10000.
+
+### Which SharedPreferences backend is live
+
+`shared_preferences_android` is registered as
+`io.flutter.plugins.sharedpreferences.SharedPreferencesPlugin`, and that plugin ships two
+independent backends. Which one Dart calls is not readable from the AOT snapshot, so both
+are patched, each logging under a distinct tag:
+
+- `Lio/flutter/plugins/sharedpreferences/SharedPreferencesPlugin;->getInt` — suspend fun
+  returning a boxed `Long`. Its `invokeSuspend` reads the key out of the `$key` field and
+  goes to DataStore (`getSharedPreferencesDataStore` -> `Lu0/h;->getData`), so this
+  backend never touches `android.content.SharedPreferences.getInt` and needs its own hook.
+- `Lio/flutter/plugins/sharedpreferences/LegacySharedPreferencesPlugin;->getAllPrefs` —
+  has no per-key getter at all. It copies every entry into a `HashMap` and hands the whole
+  map to Dart, which picks the key itself, so the legacy hook injects into that map before
+  the `return-object`.
+
+Either log line appearing on a device run proves which path the app uses, so a wrong guess
+is visible instead of silent.
+
+### Ground truth for both hooks (androguard, not the hand decoder)
+
+The scratch decoder written earlier mis-renders some opcodes, so the two new hook sites
+were re-read with androguard, which is authoritative.
+
+`LegacySharedPreferencesPlugin.getAllPrefs(String, Set) : Map` — 30 instructions,
+`.registers 8`, `.ins 3`, so `v5`-`v7` are `this`/`prefix`/`allowlist` and `v0`-`v4` are
+locals:
+
+```
+  0 iget-object       v0, v5, L...LegacySharedPreferencesPlugin;->preferences Landroid/content/SharedPreferences;
+  1 invoke-interface  v0, Landroid/content/SharedPreferences;->getAll()Ljava/util/Map;
+  3 new-instance      v1, Ljava/util/HashMap;
+ 15 invoke-virtual    v3, v6, Ljava/lang/String;->startsWith(Ljava/lang/String;)Z
+ 25 invoke-direct     v5, v3, v4, L...LegacySharedPreferencesPlugin;->transformPref(...)Ljava/lang/Object;
+ 27 invoke-virtual    v1, v3, v4, Ljava/util/HashMap;->put(Ljava/lang/Object;, Ljava/lang/Object;)Ljava/lang/Object;
+ 29 return-object     v1
+```
+
+`v1` is the map, all three loop exit branches land on the `return-object` at 29, and
+`v0`-`v4` are dead by then, so inserting at 29 is a tail insert and the exits run through
+it. The six fingerprint filters resolve to indices `0, 1, 15, 25, 27, 29`, and 29 is the
+only `return-object`, which is what `opcode(RETURN_OBJECT)` anchors on.
+
+`SharedPreferencesPlugin.getInt(String, Options) : Long` — 13 instructions,
+`.registers 5`, `.ins 3`, no branches at all:
+
+```
+  0 const-string      v0, "key"
+  1 invoke-static     v3, v0, Lkotlin/jvm/internal/i;->e(Ljava/lang/Object; Ljava/lang/String;)V
+  2 const-string      v0, "options"
+  3 invoke-static     v4, v0, Lkotlin/jvm/internal/i;->e(...)V
+  6 new-instance      v0, L...SharedPreferencesPlugin$getInt$1;
+  8 invoke-direct     v0, v3, v2, v4, v1, L...$getInt$1;-><init>(Ljava/lang/String; L...Plugin; Lkotlin/coroutines/Continuation; I)V
+ 12 return-object     v3
+```
+
+The two null-check calls name their argument registers outright, which settles the
+allocation: `v2` is `this`, `v3` is the key, `v4` is the options object, `v0`/`v1` are
+locals. The two `const-string`s are unique in the method and `"options"` is unique to this
+overload, which is what the `string(...)` filters pin.
+
+Injected on the async side, at index 0, so it runs before the null checks and can return
+without ever starting the coroutine:
+
+```
+const-string v0, "walk_and_win_current_steps"
+invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+move-result v0
+if-eqz v0, :djezzy_waw_prefs_passthrough
+const-string v0, "djezzy-waw"
+const-string v1, "walk: prefs async injected"
+invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String; Ljava/lang/String;)I
+const-wide/16 v0, 0x2710
+invoke-static {v0, v1}, Ljava/lang/Long;->valueOf(J)Ljava/lang/Long;
+move-result-object v0
+return-object v0
+:djezzy_waw_prefs_passthrough
+```
+
+`equals` has the local constant as its receiver so a null key cannot throw before the
+branch. Because the host method has no branches of its own, an insert at index 0 shifts
+nothing that anything jumps to.
+
+A note on the legacy key. The legacy Dart API persists under a `flutter.` prefix and strips
+it again on the way back out, so the name Dart looks up is the unprefixed one either way —
+which is why injecting `walk_and_win_current_steps` rather than
+`flutter.walk_and_win_current_steps` is the correct literal on that path.
+
+### Verified offline
+
+- `tools/checks/patch_smali_checks.py`: 14 files, 0 problems.
+- `tools/checks/test_invoke_arity.py`: 19/19, including the new `const-wide/16` pair.
+- `.scratch/check_walk_smali.py` assembles every rendered string against smali: 8
+  instructions for the legacy insert, 11 for the async one, both PASS at both plausible
+  register counts.
+
+Not verified: that either hook is the path this build's Dart actually takes. That is what
+the two distinct log lines are for.
+
 ## Unresolved risks for Djezzy 3.0.9
 
 - **The Dart delta is not confirmed.** `walk_and_win_last_pedometer_value` and

@@ -10,6 +10,13 @@ import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 private const val FORCED_STEPS = "0x2710"
 
 /**
+ * The pref the app persists its running step total under. The name comes out of
+ * `libapp.so` as a plain string, and the Dart side reads it back through whichever
+ * `shared_preferences` backend it happens to use.
+ */
+private const val CURRENT_STEPS_PREF = "walk_and_win_current_steps"
+
+/**
  * Both sites log under this tag, so a single `adb logcat -s djezzy-waw` shows what the
  * patch did. The logging is left in deliberately: without it a device run cannot tell
  * "the patch applied and the Dart layer clamped the number" apart from "the patch applied
@@ -22,7 +29,8 @@ private const val LOG_TAG = "djezzy-waw"
 val forceWalkStepsPatch = bytecodePatch(
     name = "Force Walk & Win steps to 10000",
     description = "Report 10,000 steps to Djezzy's Walk & Win campaign, both on every " +
-        "step-counter event and once when the step stream is first subscribed.",
+        "step-counter event and once when the step stream is first subscribed, and force " +
+        "the stored step total itself to read back as 10,000.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_DJEZZY)
@@ -92,6 +100,75 @@ val forceWalkStepsPatch = bytecodePatch(
                     "invoke-static {v0}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
                     "move-result-object v0\n" +
                     "invoke-interface {v4, v0}, Lio/flutter/plugin/common/EventChannel\$EventSink;->success(Ljava/lang/Object;)V"
+            )
+        }
+
+        // Forcing the event stream is not enough on its own, and a device run showed why.
+        // The campaign response is `{"wawLevels":[{"steps":5000,...},{"steps":10000,...}]}`
+        // with no step count in it at all, so the number on screen is read from local state
+        // only, and `walk_and_win_last_pedometer_value` implies the app keeps a raw reading
+        // and accumulates the difference. A constant therefore pays out once and then
+        // contributes 0 forever, and the campaign load that lands straight after our push
+        // rebuilds the screen state over the top of it.
+        //
+        // So the persisted total is forced directly. That is what the UI renders, and it
+        // does not care how the app arrived at the value, so it holds whether the total is
+        // read once at start-up or recomputed on every event.
+        //
+        // `shared_preferences_android` has two independent backends and which one Dart uses
+        // is not visible from the AOT snapshot, so both are hooked. They log differently on
+        // purpose: a device run then says which one is live instead of leaving a silent
+        // no-op to be guessed at.
+
+        // Legacy backend. There is no per-type getter to patch, so the finished map is
+        // amended on the way out. `.registers 8` with `ins 3` puts the parameters in
+        // `v5`-`v7` and leaves `v0`-`v4` as locals, all of which are dead by the return.
+        // `v1` is the map: the `new-instance` that the builder allocates is consumed by
+        // `HashMap.put`, and the same register is the one the method returns. `v2` and `v3`
+        // are the scratch pair, which the pref-copying loop leaves behind.
+        LegacyPreferenceMapFingerprint.let { fingerprint ->
+            val mapReturn = fingerprint.instructionMatches[5]
+
+            fingerprint.method.addInstructions(
+                mapReturn.index,
+                "const-string v2, \"$LOG_TAG\"\n" +
+                    "const-string v3, \"walk: prefs legacy injected\"\n" +
+                    "invoke-static {v2, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                    "const-string v2, \"$CURRENT_STEPS_PREF\"\n" +
+                    "const/16 v3, $FORCED_STEPS\n" +
+                    "invoke-static {v3}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
+                    "move-result-object v3\n" +
+                    // `invoke-interface` rather than `invoke-virtual` so the register is
+                    // accepted on its declared `Map` type and not on the `HashMap` the
+                    // builder happens to have instantiated.
+                    "invoke-interface {v1, v2, v3}, Ljava/util/Map;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+            )
+        }
+
+        // Async backend. `getInt` is a suspend wrapper, so the value can simply be returned
+        // before the coroutine is started. `.registers 5` with `ins 3` puts the parameters
+        // in `v2`-`v4` in declaration order, i.e. `v2` is `this`, `v3` is the key and `v4`
+        // is the options object, leaving `v0` and `v1` as locals.
+        //
+        // `equals` is called on our own constant rather than on the key so that a null key
+        // cannot throw before the `if-eqz` is reached.
+        AsyncIntPreferenceFingerprint.let { fingerprint ->
+            fingerprint.method.addInstructions(
+                0,
+                "const-string v0, \"$CURRENT_STEPS_PREF\"\n" +
+                    "invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n" +
+                    "move-result v0\n" +
+                    "if-eqz v0, :djezzy_waw_prefs_passthrough\n" +
+                    "const-string v0, \"$LOG_TAG\"\n" +
+                    "const-string v1, \"walk: prefs async injected\"\n" +
+                    "invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                    // A wide literal: `10000` is a `long` here because the Pigeon API boxes
+                    // into `Long`, so the constant occupies `v0` and `v1` together.
+                    "const-wide/16 v0, $FORCED_STEPS\n" +
+                    "invoke-static {v0, v1}, Ljava/lang/Long;->valueOf(J)Ljava/lang/Long;\n" +
+                    "move-result-object v0\n" +
+                    "return-object v0\n" +
+                    ":djezzy_waw_prefs_passthrough"
             )
         }
     }
