@@ -1,3 +1,10 @@
+## [0.4.2](https://github.com/dunecache/oyasumi-patches/compare/v0.4.1...v0.4.2) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* restore the methodCall import and check imports in CI ([9e4a792](https://github.com/dunecache/oyasumi-patches/commit/9e4a792de862ca7d1057f61a154241a85fafa0ec))
+* suppress the 1DM+ banner at its source instead of hiding a view ([e03c8b7](https://github.com/dunecache/oyasumi-patches/commit/e03c8b7e3f243727ce41134e4e71b50573c9d377)), closes [#43A047](https://github.com/dunecache/oyasumi-patches/issues/43A047)
+
 ## [0.4.1](https://github.com/dunecache/oyasumi-patches/compare/v0.4.0...v0.4.1) (2026-09-30)
 
 ### 🐛 Bug Fixes
