@@ -119,30 +119,40 @@ val forceWalkStepsPatch = bytecodePatch(
         // is not visible from the AOT snapshot, so both are hooked. They log differently on
         // purpose: a device run then says which one is live instead of leaving a silent
         // no-op to be guessed at.
+        //
+        // Both are best-effort. Which of them this build actually uses is not knowable from
+        // here, so a fingerprint that misses has to degrade to "the other one, or neither"
+        // rather than abort: an unhandled match failure throws out of `execute` and takes
+        // the pedometer hooks above down with it, which is how v0.5.1 turned an optional
+        // refinement into a patch that would not apply at all.
 
         // Legacy backend. There is no per-type getter to patch, so the finished map is
         // amended on the way out. `.registers 8` with `ins 3` puts the parameters in
         // `v5`-`v7` and leaves `v0`-`v4` as locals, all of which are dead by the return.
-        // `v1` is the map: the `new-instance` that the builder allocates is consumed by
-        // `HashMap.put`, and the same register is the one the method returns. `v2` and `v3`
+        // `v1` is the map: the `new-instance` that the builder allocates is consumed by the
+        // loop's `put`, and the same register is the one the method returns. `v2` and `v3`
         // are the scratch pair, which the pref-copying loop leaves behind.
-        LegacyPreferenceMapFingerprint.let { fingerprint ->
-            val mapReturn = fingerprint.instructionMatches[5]
+        runCatching {
+            LegacyPreferenceMapFingerprint.let { fingerprint ->
+                val mapReturn = fingerprint.instructionMatches[3]
 
-            fingerprint.method.addInstructions(
-                mapReturn.index,
-                "const-string v2, \"$LOG_TAG\"\n" +
-                    "const-string v3, \"walk: prefs legacy injected\"\n" +
-                    "invoke-static {v2, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
-                    "const-string v2, \"$CURRENT_STEPS_PREF\"\n" +
-                    "const/16 v3, $FORCED_STEPS\n" +
-                    "invoke-static {v3}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
-                    "move-result-object v3\n" +
-                    // `invoke-interface` rather than `invoke-virtual` so the register is
-                    // accepted on its declared `Map` type and not on the `HashMap` the
-                    // builder happens to have instantiated.
-                    "invoke-interface {v1, v2, v3}, Ljava/util/Map;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
-            )
+                fingerprint.method.addInstructions(
+                    mapReturn.index,
+                    "const-string v2, \"$LOG_TAG\"\n" +
+                        "const-string v3, \"walk: prefs legacy injected\"\n" +
+                        "invoke-static {v2, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                        "const-string v2, \"$CURRENT_STEPS_PREF\"\n" +
+                        "const/16 v3, $FORCED_STEPS\n" +
+                        "invoke-static {v3}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
+                        "move-result-object v3\n" +
+                        // `invoke-interface` rather than `invoke-virtual` so the register is
+                        // accepted on its declared `Map` type and not on whichever concrete
+                        // map class the builder happens to have instantiated.
+                        "invoke-interface {v1, v2, v3}, Ljava/util/Map;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+                )
+            }
+        }.onFailure {
+            println("$LOG_TAG: legacy preference hook skipped, ${it.message}")
         }
 
         // Async backend. `getInt` is a suspend wrapper, so the value can simply be returned
@@ -152,24 +162,28 @@ val forceWalkStepsPatch = bytecodePatch(
         //
         // `equals` is called on our own constant rather than on the key so that a null key
         // cannot throw before the `if-eqz` is reached.
-        AsyncIntPreferenceFingerprint.let { fingerprint ->
-            fingerprint.method.addInstructions(
-                0,
-                "const-string v0, \"$CURRENT_STEPS_PREF\"\n" +
-                    "invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n" +
-                    "move-result v0\n" +
-                    "if-eqz v0, :djezzy_waw_prefs_passthrough\n" +
-                    "const-string v0, \"$LOG_TAG\"\n" +
-                    "const-string v1, \"walk: prefs async injected\"\n" +
-                    "invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
-                    // A wide literal: `10000` is a `long` here because the Pigeon API boxes
-                    // into `Long`, so the constant occupies `v0` and `v1` together.
-                    "const-wide/16 v0, $FORCED_STEPS\n" +
-                    "invoke-static {v0, v1}, Ljava/lang/Long;->valueOf(J)Ljava/lang/Long;\n" +
-                    "move-result-object v0\n" +
-                    "return-object v0\n" +
-                    ":djezzy_waw_prefs_passthrough"
-            )
+        runCatching {
+            AsyncIntPreferenceFingerprint.let { fingerprint ->
+                fingerprint.method.addInstructions(
+                    0,
+                    "const-string v0, \"$CURRENT_STEPS_PREF\"\n" +
+                        "invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n" +
+                        "move-result v0\n" +
+                        "if-eqz v0, :djezzy_waw_prefs_passthrough\n" +
+                        "const-string v0, \"$LOG_TAG\"\n" +
+                        "const-string v1, \"walk: prefs async injected\"\n" +
+                        "invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                        // A wide literal: `10000` is a `long` here because the Pigeon API
+                        // boxes into `Long`, so the constant occupies `v0` and `v1` together.
+                        "const-wide/16 v0, $FORCED_STEPS\n" +
+                        "invoke-static {v0, v1}, Ljava/lang/Long;->valueOf(J)Ljava/lang/Long;\n" +
+                        "move-result-object v0\n" +
+                        "return-object v0\n" +
+                        ":djezzy_waw_prefs_passthrough"
+                )
+            }
+        }.onFailure {
+            println("$LOG_TAG: async preference hook skipped, ${it.message}")
         }
     }
 }

@@ -1046,6 +1046,86 @@ which is why injecting `walk_and_win_current_steps` rather than
 Not verified: that either hook is the path this build's Dart actually takes. That is what
 the two distinct log lines are for.
 
+## v0.5.1 failed to apply: naming a class in a fingerprint removes the fallback
+
+A device attempt with v0.5.1 aborted:
+
+```
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+app.djezzy.patches.walk.LegacyPreferenceMapFingerprint@ffcc140
+	at ...ForceWalkStepsPatchKt.forceWalkStepsPatch$lambda$0$0(ForceWalkStepsPatch.kt:130)
+```
+
+Both new fingerprints were checked against the real DEX before shipping, filter by
+filter, with a Java harness built on the same `smali-dexlib2` Morphe uses:
+
+```
+ 0 preferences iget-object : [0]
+ 1 SharedPreferences.getAll : [1]
+ 2 String.startsWith       : [15]
+ 3 transformPref           : [25]
+ 4 HashMap.put             : [27]
+ 5 return-object           : [29]
+```
+
+Every filter matched, at strictly increasing indices, which is the condition
+`Fingerprint.matchFilters` requires. The candidate pre-filter was ruled out as well by
+reproducing `PatchClasses.findIndexValues` and `getClassesReferencingType` over all 11863
+classes:
+
+```
+Lio/flutter/.../LegacySharedPreferencesPlugin; -> 2 classes, contains target: true
+Landroid/content/SharedPreferences;            -> 32 classes, contains target: true
+Ljava/lang/String;                             -> 1441 classes, contains target: true
+Ljava/util/HashMap;                            -> 398 classes, contains target: true
+```
+
+The smallest candidate set contains the target, so the indexed search would have found it.
+
+The real reason is in `Fingerprint.matchOrNull`, `morphe-patcher/src/main/kotlin/app/morphe/patcher/Fingerprint.kt:291`:
+
+```kotlin
+val definingClassLocal = definingClass
+if (definingClassLocal != null) {
+    val type = patchContext.classDefByOrNull(definingClassLocal)   // classMap[classType]
+    if (type != null) { ... }
+    if (definingClassComparisonLocal != StringComparisonType.EQUALS) { /* scan classMap */ }
+    return null                                                    // <-- unconditional
+}
+```
+
+A fingerprint that declares `definingClass` is reduced to **one** `classMap` lookup. If that
+one lookup fails, or the match against that one class fails, matching returns null with no
+fallback — the indexed candidate search and the scan-everything fallback below it are both
+unreachable, because the `return null` is unconditional and sits before them. Declaring
+`definingClass` therefore costs the fallback and buys nothing that `name`, `returnType`,
+`parameters` and the filters do not already give.
+
+So both preference fingerprints drop `definingClass` and matching goes through
+`instructionFilterCandidates()`, which is index-driven and works. The `HashMap.put` filter
+went with it: the concrete map type is the least stable part of that method and a newer
+plugin build can swap it for `LinkedHashMap` without affecting anything this patch needs.
+The remaining four filters resolve to `1, 15, 25, 29`, so `instructionMatches[3]` is the
+`return-object`.
+
+`StringFilter` is deliberately reduced to the single `options` literal: it is the one
+string unique to the two-parameter overload, and every extra literal narrows the string
+index for no gain.
+
+### Optional hooks may not fail the patch
+
+A fingerprint miss throws out of `execute`, so an unhandled optional hook takes the whole
+patch down with it — which is exactly how v0.5.1 turned an optional refinement into a
+patch that would not apply at all. Both preference hooks are now wrapped in `runCatching`
+and report to the patcher log instead. The pedometer hooks stay mandatory, since without
+them there is no patch at all.
+
+What is still unexplained: the filters match on the DEX in the `.apkv` backup, yet did not
+match on the APK the manager patched. The class is present in that DEX and the pedometer
+fingerprints in the same patch matched, so it is not a wholesale build mismatch. Until that
+is pinned down the honest position is that the relaxed fingerprints are *more* likely to
+match, not verified to.
+
 ## Unresolved risks for Djezzy 3.0.9
 
 - **The Dart delta is not confirmed.** `walk_and_win_last_pedometer_value` and
