@@ -477,6 +477,47 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 - The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, the `Lidm/` ad configuration, billing, or the download service.
 - The inserted smali was assembled against the same smali build Morphe uses, so both blocks are known to parse. See the pitfalls section below for the method and for the brace requirement that 0.3.0 violated.
 
+## 1DM launch crash: `setAd` invoke arity (v0.3.4)
+
+The 1DM build died inflating the home screen layout:
+
+```
+VerifyError: void acr.browser.lightning.view.BannerView.setAd(Integer, i.ru)
+failed to verify: [0x2] Rejecting invocation, expected 1 argument registers,
+method signature has 2 or more
+    at android.view.LayoutInflater.rInflateChildren
+    at idm.internet.download.manager.MainActivity.onCreate
+```
+
+The inserted call was
+
+```
+const/16 v0, 0x8
+invoke-virtual {v5}, Landroid/view/View;->setVisibility(I)V
+return-void
+```
+
+`setVisibility(I)V` declares one argument, so its 35c register list has to name the
+receiver **and** the visibility int. Only the receiver was named, so the list had one
+register where the signature demands two. This is an arity error, not a narrower
+encoding of the same call, and the verifier rejects the whole class rather than the
+instruction.
+
+The two earlier 1DM fixes were about smali *syntax* -- the braces a 35c register list
+requires, and the `v` prefix on interpolated register numbers. Both are satisfied by
+`{v5}`, so the call assembled, the patch project compiled, and CI published a bundle.
+Nothing in the build path checks arity, so this could only be caught on a device.
+
+The call is now `{v5, v0}`. `BannerManager.load()`'s inserted `disable()V` takes no
+arguments, so its single-register list is correct and is unchanged.
+
+The general lesson, and the one worth keeping: smali validity and call validity are
+different checks. Braces, prefixes and widths are all verified by assembling. The number
+of registers in an invoke list is only verified by the verifier at class-load time, which
+means an arity mistake ships as a green build and a launch crash. Any inserted invoke
+should have its register count read off the target method's descriptor and asserted
+before release.
+
 ## Unverified risks for 1DM 18.2
 
 - **Layout.** `res/` was not recoverable, so the layout that hosts `BannerView` could not be read. If the banner sits inside a container with a fixed height rather than a `wrap_content` parent, `setVisibility(GONE)` will leave an empty strip where the banner was. This is the same unconfirmed item that the ADM AppBrain change carries.

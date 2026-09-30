@@ -63,10 +63,18 @@ val disableHomeScreenAdsPatch = bytecodePatch(
             val firstFieldRead = fingerprint.instructionMatches[0]
             val receiver = firstFieldRead.getInstruction<TwoRegisterInstruction>().getRegisterB()
 
+            // `setVisibility(I)V` takes one argument, so the 35c register list holds the
+            // receiver *and* the visibility int. Passing only the receiver is not a
+            // narrower encoding, it is a different arity: the verifier rejects it with
+            // "expected 1 argument registers, method signature has 2 or more" and the
+            // class is rejected outright, taking the whole activity's layout down with
+            // it. The earlier braces-and-`v`-prefix fix satisfied smali's grammar but not
+            // the arity, so it compiled and still crashed on launch.
             fingerprint.method.addInstructions(
                 0,
                 "const/16 $VISIBILITY_REGISTER, $GONE\n" +
-                    "invoke-virtual {v$receiver}, Landroid/view/View;->setVisibility(I)V\n" +
+                    "invoke-virtual {v$receiver, $VISIBILITY_REGISTER}, " +
+                    "Landroid/view/View;->setVisibility(I)V\n" +
                     "return-void"
             )
         }
