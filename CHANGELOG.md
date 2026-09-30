@@ -1,3 +1,9 @@
+## [0.3.5](https://github.com/dunecache/oyasumi-patches/compare/v0.3.4...v0.3.5) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* pass the visibility int in the inserted setVisibility call ([1b6e172](https://github.com/dunecache/oyasumi-patches/commit/1b6e17253cbf9a8b2c80cbdd11323095ae5c5cd6))
+
 ## [0.3.4](https://github.com/dunecache/oyasumi-patches/compare/v0.3.3...v0.3.4) (2026-09-30)
 
 ### 🐛 Bug Fixes

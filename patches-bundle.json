@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-30T12:21:14",
-  "description": "## [0.3.4](https://github.com/dunecache/oyasumi-patches/compare/v0.3.3...v0.3.4) (2026-09-30)\n\n### 🐛 Bug Fixes\n\n* remove the silenced invoke without deleting what follows it ([1faed79](https://github.com/dunecache/oyasumi-patches/commit/1faed79d9fbd4390269db83c11e12c09bc4ce432))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.3.4/patches-0.3.4.mpp",
+  "created_at": "2026-09-30T12:29:42",
+  "description": "## [0.3.5](https://github.com/dunecache/oyasumi-patches/compare/v0.3.4...v0.3.5) (2026-09-30)\n\n### 🐛 Bug Fixes\n\n* pass the visibility int in the inserted setVisibility call ([1b6e172](https://github.com/dunecache/oyasumi-patches/commit/1b6e17253cbf9a8b2c80cbdd11323095ae5c5cd6))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.3.5/patches-0.3.5.mpp",
   "signature_download_url": "",
-  "version": "0.3.4"
+  "version": "0.3.5"
 }
