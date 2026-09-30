@@ -1,3 +1,9 @@
+## [0.3.4](https://github.com/dunecache/oyasumi-patches/compare/v0.3.3...v0.3.4) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* remove the silenced invoke without deleting what follows it ([1faed79](https://github.com/dunecache/oyasumi-patches/commit/1faed79d9fbd4390269db83c11e12c09bc4ce432))
+
 ## [0.3.3](https://github.com/dunecache/oyasumi-patches/compare/v0.3.2...v0.3.3) (2026-09-30)
 
 ### 🐛 Bug Fixes
