@@ -1,3 +1,9 @@
+## [0.5.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.0...v0.5.1) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* force the stored Walk & Win total, not just the sensor event ([241166e](https://github.com/dunecache/oyasumi-patches/commit/241166ebed14c39c9ebe6398a73becdbbee1ca32))
+
 ## [0.5.0](https://github.com/dunecache/oyasumi-patches/compare/v0.4.2...v0.5.0) (2026-09-30)
 
 ### 🐛 Bug Fixes
