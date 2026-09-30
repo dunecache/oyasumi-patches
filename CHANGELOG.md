@@ -1,3 +1,9 @@
+## [0.4.0](https://github.com/dunecache/oyasumi-patches/compare/v0.3.5...v0.4.0) (2026-09-30)
+
+### ✨ New Features
+
+* hide the 1DM+ upsell strip on the 1DM home screen ([e624526](https://github.com/dunecache/oyasumi-patches/commit/e6245266ae0e5448bab815d1ca5aad08a0429e5c))
+
 ## [0.3.5](https://github.com/dunecache/oyasumi-patches/compare/v0.3.4...v0.3.5) (2026-09-30)
 
 ### 🐛 Bug Fixes

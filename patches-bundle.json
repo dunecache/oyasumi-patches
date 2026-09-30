@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-30T12:29:42",
-  "description": "## [0.3.5](https://github.com/dunecache/oyasumi-patches/compare/v0.3.4...v0.3.5) (2026-09-30)\n\n### 🐛 Bug Fixes\n\n* pass the visibility int in the inserted setVisibility call ([1b6e172](https://github.com/dunecache/oyasumi-patches/commit/1b6e17253cbf9a8b2c80cbdd11323095ae5c5cd6))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.3.5/patches-0.3.5.mpp",
+  "created_at": "2026-09-30T13:30:32",
+  "description": "## [0.4.0](https://github.com/dunecache/oyasumi-patches/compare/v0.3.5...v0.4.0) (2026-09-30)\n\n### ✨ New Features\n\n* hide the 1DM+ upsell strip on the 1DM home screen ([e624526](https://github.com/dunecache/oyasumi-patches/commit/e6245266ae0e5448bab815d1ca5aad08a0429e5c))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.4.0/patches-0.4.0.mpp",
   "signature_download_url": "",
-  "version": "0.3.5"
+  "version": "0.4.0"
 }

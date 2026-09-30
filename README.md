@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.3.5](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.3.5)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
+> **[v0.4.0](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.4.0)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;4 patches total
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -90,7 +90,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering. |  |
+| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering, and hide the built-in "install 1DM+" upsell strip. |  |
 
 </details>
 
