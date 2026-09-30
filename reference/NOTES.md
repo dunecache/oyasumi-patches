@@ -207,9 +207,151 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 - A re-implementation of Morphe's own matching algorithm (type-declaration comparison, `parametersMatch`, the `matchFilters` backtracking loop, and `MatchAfterWithin` distance rules) was run against the 14.0.27 DEX first. It reproduced every instruction index recorded in the 14.0.27 notes above, including the Telegram gate at 98, the slider ceiling at 6, and the torrent defaults at 1222 and 1227, which is what makes it trustworthy for 14.0.39.
 - All nine 14.0.39 fingerprints were then resolved against the 14.0.39 DEX and each reported the expected instruction indices.
 - Every replacement instruction was chosen to keep the source register. Five of the eight replacements are exactly width-preserving, so the two rewritten methods that contain a `packed-switch` payload (`Lv2/e3;->run()` at byte `0x052c` and `Lv2/p1;->run()` at byte `0x0c60`) keep that payload at its original 4-byte-aligned address. The width changes are confined to `Pref.U()`, which has no switch or array payload, where only branch offsets move and `MutableMethodImplementation.replaceInstruction` re-fixes them.
-- `Pref.U()` was additionally checked by a register liveness pass and by simulating the patched instruction stream. The simulation confirms all six download controls receive the intended bounds, the three chunk-size controls keep minimum 16 and maximum 961, and the patch introduces no uninitialised read and no int/object type violation on any instruction it writes. The four findings the simulation reports exist identically before and after patching and are in untouched app code, where a linear pass cannot model per-merge-point register typing.
+- `Pref.U()` was additionally checked by a register liveness pass and by simulating the patched instruction stream. Those first passes were linear and could not model per-merge-point typing or block termination, and they were redone as a control-flow analysis with liveness and reaching definitions; the results are recorded under "The shared download constant does reach all three profiles". The simulation confirms all six download controls receive the intended bounds, the three chunk-size controls keep minimum 16 and maximum 961, and the patch introduces no uninitialised read and no int/object type violation on any instruction it writes. The four findings the simulation reports exist identically before and after patching and are in untouched app code, where a linear pass cannot model per-merge-point register typing.
 - Note for future work: androguard's `Instruction.get_length()` returns a nibble count, not code units, so instruction addresses derived from it are wrong. The widths used above come from the DEX instruction format table instead.
 - Verified in CI: the patch project compiles and the bundle builds and publishes as a release asset.
+
+### Device crash in `Pref.U()` — root cause (v0.2.1 and later)
+
+A patched 14.0.39 build dies with a hard verifier failure the moment the download
+settings screen is built:
+
+```
+java.lang.VerifyError: Verifier rejected class com.dv.get.Pref: void com.dv.get.Pref.U()
+failed to verify: void com.dv.get.Pref.U(): [0x5A] register v12 has type IntegerConstant
+but expected Reference: f5.g
+    at f3.j.j  at b3.c.b  at b3.c.run
+```
+
+Re-analysed against the pinned 14.0.39 DEX (`classes.dex`, `.registers 23`, 1 002 code
+units). Measured facts, not inference:
+
+- **The two register assumptions both hold.** `v5` is written at indices 5, 106, 246 and
+  393 and read at none of them, so the `const/16 v5, 64` scratch is safe. `v7` is written
+  at index 7 and only read from index 16 onward, so raising `const/4 v7, 5` to
+  `const/16 v7, 32` is type-safe and reaches only the three `DOWN_LOADS_*` maxima.
+- **The cause is `replaceInstructions`, not the registers.** Morphe's extension is
+  implemented in `app.morphe.patcher.extensions.InstructionExtensions` as
+
+  ```kotlin
+  fun MutableMethodImplementation.replaceInstructions(index, instructions) {
+      removeInstructions(index, instructions.size)
+      addInstructions(index, instructions)
+  }
+  ```
+
+  It removes as many instructions as it is given. The thread edit supplies two
+  instructions, so it deleted index 33 *and* index 34. Index 33 is the intended
+  `iput v8, v11, Lv2/j4;->b:I`, but index 34 is
+  `iget-object v12, v0, Lcom/dv/get/Pref;->f:Lf5/g;` — the instruction that gives `v12`
+  its `f5/g` reference type. With it deleted, `v12` keeps the `const v12, 2131755440`
+  written at index 23, so `v12` is an `IntegerConstant` where the later
+  `Lv2/j4;->h(Lf5/g; I Lv2/o4; Ljava/lang/String; ...)` invocation reads it. That is
+  exactly the reported mismatch, and it explains why the message names `v12` and `f5/g`
+  when neither register appears in the patch's own text.
+- **Branch offsets were never the problem.** Branch targets in dexlib2 are `Label`
+  objects bound to instruction identity, and offsets are only assigned when the method
+  is written, so an insertion cannot invalidate them. `Pref.U()` has five branches, two
+  of which cross the edit point (`if-eqz` at index 10 targeting index 289, and `if-nez`
+  at index 12 targeting index 150, `new-instance v12, Lv2/j4;`); both stay correct
+  because the labels move with their instructions. An earlier draft of this note blamed
+  those two branches; that was wrong, and the real fault is the extra deletion above.
+- The prior register liveness pass and patched-stream simulation both missed this
+  because they checked the registers the patch *writes* and never checked which
+  instructions the patch *removes*.
+
+The fix removes the original store explicitly and then inserts, so exactly one
+instruction is deleted:
+
+```kotlin
+fingerprint.method.removeInstruction(maximum.index)
+fingerprint.method.addInstructions(maximum.index, "const/16 v5, 64\niput v5, v11, ...")
+```
+
+### `DOWN_THREADS_*` ceilings extended to all three profiles
+
+The patch previously raised only the `DOWN_THREADS_3G` maximum, while its description
+claimed "64 connections per download". `Pref.U()` contains three structurally identical
+profile blocks. Every access to `Lv2/j4;->a:I` and `->b:I` in the method, in order, is:
+
+| indices | control | value written to `b` |
+| --- | --- | --- |
+| 15, 16 | `DOWN_LOADS_3G` min/max | `v7` |
+| 32, 33 | `DOWN_THREADS_3G` min/max | `v8` |
+| 46, 47 | chunk size 3G min/max | `v8` / `v6` |
+| 152, 153 | `DOWN_LOADS_WF` min/max | `v7` |
+| 169, 170 | `DOWN_THREADS_WF` min/max | `v8` |
+| 184, 185 | chunk size WF min/max | `v8` / `v6` |
+| 299, 300 | `DOWN_LOADS_3GWF` min/max | `v7` |
+| 316, 317 | `DOWN_THREADS_3GWF` min/max | `v8` |
+| 330, 331 | chunk size 3GWF min/max | `v8` / `v6` |
+
+Every access is an `iput`; there are no `iget` reads of either field, and nothing else
+touches them between a profile's `DOWN_LOADS_*` key and its `DOWN_THREADS_*` store. So
+each profile is now matched by a fingerprint anchored on its own `DOWN_LOADS_*` key and
+then walking the next `a`, the next `b`, and that profile's `DOWN_THREADS_*` key, which
+resolves to `21/32/33/38`, `158/169/170/175` and `305/316/317/322`. `string()` compares
+with `StringComparisonType.EQUALS`, so `DOWN_LOADS_3G` cannot match `DOWN_LOADS_3GWF`.
+
+Because each edit removes one instruction and adds two, the three stores are resolved
+before any mutation and then applied from the highest index down, so no edit invalidates
+an index a later edit still needs. `v5` remains the scratch register: it is written at
+indices 5, 106, 246 and 393 and read at none of them, and materialising the value
+immediately before each store means the result does not depend on what any register held
+on the way there. Simulating all three edits gives 434 to 437 instructions, keeps every
+neighbouring instruction intact, and puts `const 64` in front of all three thread maxima
+while the chunk-size minimum stays 16 and the chunk-size maximum stays 961.
+
+### The shared download constant does reach all three profiles
+
+An earlier draft of this note recorded an open question: the simultaneous-download
+ceiling is raised by editing the single shared `const/4 v7, 5` at index 7, on the stated
+grounds that it reaches all three `DOWN_LOADS_*` maxima, and a control-flow pass appeared
+to contradict that. The contradiction was the analysis's fault, not the patch's. A
+control-flow graph built for `Pref.U()` was giving `return-void` a fall-through edge, so
+the finished 3G block looked like it flowed into the WiFi block, and `v7`'s write at
+index 103 inside the 3G block looked like a second reaching definition at the WiFi store.
+With terminators modelled, the answer is unambiguous:
+
+| store | value register | every definition that can reach it |
+| --- | --- | --- |
+| 16 `DOWN_LOADS_3G` max | `v7` | `const/4 v7, 5` |
+| 153 `DOWN_LOADS_WF` max | `v7` | `const/4 v7, 5` |
+| 300 `DOWN_LOADS_3GWF` max | `v7` | `const/4 v7, 5` |
+| 33 / 170 / 317 thread max | `v8` | `const/16 v8, 16` |
+| 46 / 184 / 330 chunk min | `v8` | `const/16 v8, 16` |
+| 47 / 185 / 331 chunk max | `v6` | `const/16 v6, 961` |
+
+Each store is fed by exactly one definition, so raising `v7` to 32 does reach all three
+profiles, and the download half of the patch needs no change. The same table is why the
+thread half cannot work the same way: `v8` feeds the three `DOWN_THREADS_*` maxima *and*
+the three chunk-size minima, so raising `v8` would silently raise the minimum chunk size
+from 16 as well. Materialising the value at each store avoids that, which is what the
+three per-store edits do.
+
+`v5` was also confirmed to be a genuinely dead scratch register by liveness rather than
+by reading the disassembly: it is written at indices 5, 106, 246 and 393 and read at
+none of them, and it is not live at 33, 170 or 317. Note that `filled-new-array` names
+its destination array as the first register, so counting that as a read makes `v5` look
+live and would have wrongly rejected the edit.
+
+### `replaceInstructions` elsewhere in this repository
+
+`replaceInstructions` is only safe when the replacement list is exactly as long as the
+span the author intends to erase. Checked at every call site:
+
+- `DisableAdsPatch.kt` (two sites) and `DisableRatingPromptsPatch.kt` (one site) each pass
+  `"nop\nnop\nnop"` to erase a three-code-unit `invoke-*/range`, so three real
+  instructions are removed and three `nop`s take their place. The count matches the
+  intended span and the width is preserved, so these are not the `Pref.U()` bug — but
+  note that they silence the two instructions *after* the invoke as well, not only the
+  invoke itself. That is a deliberate choice recorded in each file's comment, not an
+  accident.
+- `DisableHomeScreenAdsPatch.kt` (1DM) uses `addInstructions`, which removes nothing, so
+  it is unaffected.
+
+`replaceInstruction` (singular) is unaffected: it replaces exactly one instruction and
+is used correctly by the download-ceiling and torrent-default edits.
 - Verified on device: the `0.2.1-dev.2` bundle applies cleanly to 14.0.39 on Android 15 with all three patches enabled, so every fingerprint resolves and every generated smali instruction assembles.
 - Still unverified on device: the runtime effect of each patch. Applying successfully proves the fingerprints and encodings, not that ads are gone, that the sliders show the new bounds, or that no layout gap is left where the AppBrain container used to sit. Those need a manual pass.
 
