@@ -46,7 +46,7 @@ object StepCountSensorFingerprint : Fingerprint(
             returnType = "Ljava/lang/Integer;"
         ),
         methodCall(
-            definingClass = "Lio/flutter/plugin/common/EventChannel$EventSink;",
+            definingClass = "Lio/flutter/plugin/common/EventChannel\$EventSink;",
             name = "success",
             parameters = listOf("Ljava/lang/Object;"),
             returnType = "V"
@@ -80,7 +80,7 @@ object PedometerStreamHostFingerprint : Fingerprint(
     definingClass = "Li5/c;",
     name = "onListen",
     returnType = "V",
-    parameters = listOf("Ljava/lang/Object;", "Lio/flutter/plugin/common/EventChannel$EventSink;"),
+    parameters = listOf("Ljava/lang/Object;", "Lio/flutter/plugin/common/EventChannel\$EventSink;"),
     filters = listOf(
         fieldAccess(
             definingClass = "Li5/c;",

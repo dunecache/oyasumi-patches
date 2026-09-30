@@ -84,13 +84,32 @@ def string_concat_in(src: str) -> list[tuple[int, str]]:
     for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', src):
         pass
     # fold adjacent "..." + "..." chains
-    chain = re.compile(r'"((?:[^"\\]|\\.)*)"(?:\s*\+\s*\\?\s*\n?\s*"((?:[^"\\]|\\.)*)")*')
     for m in re.finditer(r'"((?:[^"\\\n]|\\.)*)"\s*(?:\+\s*\n?\s*"((?:[^"\\\n]|\\.)*)")+', src):
         parts = re.findall(r'"((?:[^"\\\n]|\\.)*)"', m.group(0))
         if len(parts) > 1:
-            out.append((m.start(), "".join(p.encode().decode("unicode_escape")
-                                           for p in parts)))
+            out.append((m.start(), "".join(unescape(p) for p in parts)))
     return out
+
+
+def unescape(text: str) -> str:
+    """Apply Kotlin's string escapes, including `\\$` for a literal dollar sign.
+
+    `unicode_escape` is not usable here: it treats `\\$` as an invalid escape and warns,
+    and it would mangle any non-ASCII character in a string. Only the escapes that can
+    actually appear in a patch's smali are handled.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == "\\" and i + 1 < len(text):
+            nxt = text[i + 1]
+            out.append({"n": "\n", "t": "\t", "r": "\r", "\\": "\\", "\"": "\"", "$": "$"}.get(nxt, "\\" + nxt))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def check_invoke_arity(path: Path, constants: dict[str, str] | None = None) -> list[str]:
@@ -193,6 +212,58 @@ def check_replace_instructions(path: Path) -> list[str]:
     return problems
 
 
+def _declared_names(src: str) -> set[str]:
+    """Every identifier a Kotlin template in this file could legitimately resolve to."""
+    body = "\n".join(l for l in src.split("\n") if not l.strip().startswith("//"))
+    names: set[str] = set()
+    names |= set(re.findall(r"\b(?:val|var)\s+(\w+)", body))
+    names |= set(re.findall(r"\bconst\s+val\s+(\w+)", body))
+    # a destructuring `val (field, register) = ...` names every component
+    for group in re.findall(r"\bval\s*\(([^)]*)\)\s*=", body):
+        names |= {n.strip() for n in group.split(",") if n.strip()}
+    for params in re.findall(r"\bfun\s+\w+\s*\(([^)]*)\)", body, re.S):
+        for part in params.split(","):
+            token = part.split(":")[0].split("=")[0].strip()
+            names |= set(re.findall(r"\w+", token))
+    names |= {l.split(".")[-1].strip() for l in src.split("\n") if l.startswith("import ")}
+    names |= set(re.findall(r"\bobject\s+(\w+)", body))
+    return names
+
+
+def check_dollar_in_strings(path: Path) -> list[str]:
+    """A `$name` in a string that resolves to nothing is a compile error, not a bug.
+
+    `Lio/flutter/plugin/common/EventChannel$EventSink;` is a type descriptor with a
+    nested class, so a patch that references it naturally writes the `$` unescaped and
+    Kotlin resolves `$EventSink` as a template expression over a name the file does not
+    declare. The Djezzy patch did exactly this in three places and failed
+    `:patches:compileKotlin` with `Unresolved reference 'EventSink'`.
+
+    This is a compile error rather than a smali defect, so nothing else here can see it:
+    the file never gets as far as assembling, and `check_invoke_arity` is reading text
+    that will not be built. Deliberate templates are fine and are not reported -- only a
+    name that resolves to nothing, which the file's own declarations rule out.
+    """
+    problems: list[str] = []
+    src = path.read_text(encoding="utf-8")
+    declared = _declared_names(src)
+    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', src):
+        content = m.group(1).replace("${'$'}", "")
+        for hit in re.finditer(r"(?<!\\)\$(?:\{(\w+)\}|(\w+))", content):
+            name = hit.group(1) or hit.group(2)
+            if name in declared:
+                continue
+            line = src[: m.start(1) + hit.start()].count("\n") + 1
+            problems.append(
+                f"{path.name}:{line}: `${name}` inside a string literal is a Kotlin "
+                f"template, and nothing in this file declares `{name}`. A nested type "
+                f"descriptor such as Lio/flutter/plugin/common/EventChannel$EventSink; "
+                f"has to be written with an escaped dollar sign, 'EventChannel\\$EventSink;', "
+                f"so the dollar survives into the smali."
+            )
+    return problems
+
+
 def check_imports(path: Path) -> list[str]:
     """Every import must be used, and every Morphe helper used must be imported.
 
@@ -253,6 +324,7 @@ def main() -> int:
     for path in sorted(root.rglob("*.kt")):
         problems += check_invoke_arity(path)
         problems += check_replace_instructions(path)
+        problems += check_dollar_in_strings(path)
         problems += check_imports(path)
     for p in problems:
         print("  FAIL", p)

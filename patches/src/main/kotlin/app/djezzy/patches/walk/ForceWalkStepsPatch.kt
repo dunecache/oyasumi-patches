@@ -91,7 +91,7 @@ val forceWalkStepsPatch = bytecodePatch(
                     "const/16 v0, $FORCED_STEPS\n" +
                     "invoke-static {v0}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
                     "move-result-object v0\n" +
-                    "invoke-interface {v4, v0}, Lio/flutter/plugin/common/EventChannel$EventSink;->success(Ljava/lang/Object;)V"
+                    "invoke-interface {v4, v0}, Lio/flutter/plugin/common/EventChannel\$EventSink;->success(Ljava/lang/Object;)V"
             )
         }
     }

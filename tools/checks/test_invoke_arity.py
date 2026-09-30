@@ -44,6 +44,15 @@ def flagged(instruction: str) -> bool:
         path.unlink(missing_ok=True)
 
 
+def dollar_flagged(src: str) -> bool:
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        path.write_text(src)
+        return bool(checks.check_dollar_in_strings(path))
+    finally:
+        path.unlink(missing_ok=True)
+
+
 #: Each row is (what it is, the smali, whether the check must flag it).
 CASES: list[tuple[str, str, bool]] = [
     # Defects the check exists to catch. The first is the shipped v0.3.4 defect.
@@ -77,6 +86,34 @@ CASES: list[tuple[str, str, bool]] = [
 ]
 
 
+#: `check_dollar_in_strings` cases, in the same two-column shape. A `$name` that the file
+#: does not declare is a compile error; a deliberate template is not.
+DOLLAR_CASES: list[tuple[str, str, bool]] = [
+    ("nested type descriptor, unescaped",
+     'val p = bytecodePatch(n = "x") { execute { addInstructions(0,\n'
+     '  "const/4 v0, 0\\n" +\n'
+     '  "invoke-interface {v0, v1}, Lio/flutter/plugin/common/EventChannel$EventSink;'
+     '->success(Ljava/lang/Object;)V") } }', True),
+    ("nested type descriptor in a fingerprint argument",
+     'val f = Fingerprint(definingClass = "Lx/Y$Inner;")', True),
+    ("nested type descriptor, escaped",
+     'val p = bytecodePatch(n = "x") { execute { addInstructions(0,\n'
+     '  "const/4 v0, 0\\n" +\n'
+     '  "invoke-interface {v0, v1}, Lio/flutter/plugin/common/EventChannel\\$EventSink;'
+     '->success(Ljava/lang/Object;)V") } }', False),
+    ("deliberate const template",
+     'private const val TAG = "djezzy"\n'
+     'val p = bytecodePatch(n = "x") { execute { addInstructions(0, '
+     '"const-string v0, \\"$TAG\\"\\n" + "return-void") } }', False),
+    ("deliberate local template",
+     'val p = bytecodePatch(n = "x") { execute { val reg = "v0"\n'
+     '  addInstructions(0, "const/4 $reg, 0\\n" + "return-void") } }', False),
+    ("bare dollar, not a template",
+     'val p = bytecodePatch(n = "x") { execute { addInstructions(0, '
+     '"const-string v0, \\"100$\\"") } }', False),
+]
+
+
 def main() -> int:
     failures = 0
     for label, instruction, expected in CASES:
@@ -84,8 +121,15 @@ def main() -> int:
         ok = got == expected
         failures += not ok
         print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
+    total = len(CASES)
+    for label, src, expected in DOLLAR_CASES:
+        got = dollar_flagged(src)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     print()
-    print(f"{len(CASES) - failures}/{len(CASES)} cases pass" if not failures
+    print(f"{total - failures}/{total} cases pass" if not failures
           else f"{failures} case(s) wrong")
     return 1 if failures else 0
 

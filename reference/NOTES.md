@@ -935,6 +935,35 @@ that must stay quiet, and `replay_history_check.py v0.3.4 v0.4.1` still reports 
 shipped v0.3.4 arity defect as failing and v0.4.1 as clean, so the original purpose of the
 check is intact.
 
+## Second CI failure: `$EventSink` read as a Kotlin template (Djezzy 3.0.9)
+
+With the arity check fixed, CI got 88 seconds further and then failed
+`:patches:compileKotlin`:
+
+```
+e: ForceWalkStepsPatch.kt:94:88 Unresolved reference 'EventSink'.
+e: WalkStepsFingerprints.kt:49:69 Unresolved reference 'EventSink'.
+e: WalkStepsFingerprints.kt:83:87 Unresolved reference 'EventSink'.
+```
+
+`Lio/flutter/plugin/common/EventChannel$EventSink;` is a nested type, so the `$` is
+part of the descriptor and has to be written `\$` in a Kotlin string literal. Written
+plain, Kotlin resolves `$EventSink` as a template expression over a name the file does
+not declare, and the file does not compile. This is a compile error rather than a smali
+defect, so nothing else in the pipeline can see it: `check_invoke_arity` reads text that
+is never assembled, and the smali assembler is never reached. All three sites are fixed.
+
+The patch is also the first in this repository to put a `$` in a patch string at all, which
+is why no earlier check covered it. `check_dollar_in_strings` now reports a `$name` inside
+a string literal when the file declares nothing by that name, and stays quiet for a
+deliberate template, an escaped `\$`, and a bare `$` that is not followed by an
+identifier. Its cases, and the six arity cases added earlier, live in
+`tools/checks/test_invoke_arity.py` (nineteen in total) so that a check cannot be "fixed"
+by loosening it.
+
+Reading the compiler output rather than assuming the first failure was the only one is what
+surfaced this. The arity fix had passed the local suite and still did not build.
+
 ## Patcher pitfalls (Djezzy 3.0.9)
 
 - **`fingerprint.method.getInstructions().size - 1` is not a safe tail anchor.** The count
