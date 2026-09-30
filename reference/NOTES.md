@@ -556,6 +556,33 @@ This is a deliberate departure from the ADM precedent, where the house "remove a
 placeholder was intentionally left alone as "a house promo, not an ad SDK view". It is
 recorded here as a scope decision, not an oversight.
 
+## 1DM upsell fingerprint failed to match (v0.4.0)
+
+v0.4.0 applied no patches at all, failing on
+`BannerViewUpsellFingerprint` with "Failed to match the fingerprint". The target method
+was correct -- the obfuscated name and field name were verified codepoint by codepoint
+against the DEX, and the five filters did land on instructions 0, 41, 43, 45 and 56 --
+but one filter declared the wrong signature:
+
+```
+actual:  Ljava/util/Timer;->schedule(Ljava/util/TimerTask; J J)V
+filter:  returnType = "Ljava/util/Timer;"
+```
+
+`Timer.schedule` returns `void`, not the `Timer`. `MethodCallFilter` compares the
+declared `returnType` against the reference's return descriptor, so that filter could
+never match, the ordered chain never completed, and the whole fingerprint failed. This is
+a plain transcription error: the return type belongs to the *called* method, and copying
+the defining class into it is an easy slip.
+
+Every other `methodCall` in the repository was re-checked against the DEX or against the
+platform signature it targets, and the rest are correct. The two app-owned ones are
+`Lacr/browser/lightning/view/BannerManager;->isNetworkAdShowing(Activity)Z` and
+`Lidm/internet/download/manager/amazon/AmazonService;->getBannerBackfillAd(String)
+DTBAdResponse;` -- note that the latter has a second `(String, Z)` overload in the same
+class, so the filter's explicit single-parameter list is what selects the right one.
+The rest are JDK or Android methods whose signatures are fixed by the platform.
+
 ## Unverified risks for 1DM 18.2
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).

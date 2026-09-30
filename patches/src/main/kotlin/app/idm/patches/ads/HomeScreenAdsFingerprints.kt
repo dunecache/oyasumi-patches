@@ -222,7 +222,9 @@ object BannerViewUpsellFingerprint : Fingerprint(
                 "J",
                 "J"
             ),
-            returnType = "Ljava/util/Timer;"
+            // `Timer.schedule` returns void. Declaring a reference here made the filter
+            // match nothing, and the whole fingerprint failed on a live 18.2 build.
+            returnType = "V"
         )
     )
 )
