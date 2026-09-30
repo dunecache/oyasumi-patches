@@ -583,6 +583,34 @@ DTBAdResponse;` -- note that the latter has a second `(String, Z)` overload in t
 class, so the filter's explicit single-parameter list is what selects the right one.
 The rest are JDK or Android methods whose signatures are fixed by the platform.
 
+## Static checks for the defects that only a device could catch
+
+Five consecutive releases shipped a defect that compiling cannot catch, because each was
+correct Kotlin producing wrong smali. `tools/checks/` now covers the two classes that are
+mechanically checkable from the sources alone, and `tools/checks/README.md` records what
+is still not covered.
+
+- `check_invoke_arity` derives the required register count from the target method's own
+  descriptor. It catches the v0.3.3/v0.3.4 `setVisibility` bug, where the inserted 35c
+  invoke named only the receiver for a one-argument method.
+- `check_replace_instructions` flags a `nop` block longer than the single invoke it is
+  meant to erase, since the helper also removes what follows. It catches the
+  `DisableAdsPatch` and `DisableRatingPromptsPatch` sites that shipped as v0.2.1 and
+  v0.3.3.
+
+`tools/checks/replay_history_check.py` replays released tags to show the checks fire on
+the real defects and stay quiet on the fixes: v0.2.1 and v0.3.3 report 3 and 4 problems,
+v0.3.4 reports 1, and v0.4.0 and v0.4.1 report 0.
+
+Two gaps remain, and both are stated in the checks' README rather than papered over.
+
+- **Fingerprint resolution** needs the pinned APK, a user-supplied 80 MB file CI cannot
+  fetch. v0.4.0 declared `returnType = "Ljava/util/Timer;"` for `Timer.schedule`, which
+  returns void, and the fingerprint matched nothing. Only a reference DEX catches this.
+- **Verifier-visible register typing.** A patch can have correct arity and still leave a
+  register holding a reference where an integer is required, which is what the original
+  three `VerifyError`s turned on. Only a real verifier catches it.
+
 ## Unverified risks for 1DM 18.2
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
