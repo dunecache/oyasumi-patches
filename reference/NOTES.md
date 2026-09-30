@@ -206,7 +206,7 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 
 - A re-implementation of Morphe's own matching algorithm (type-declaration comparison, `parametersMatch`, the `matchFilters` backtracking loop, and `MatchAfterWithin` distance rules) was run against the 14.0.27 DEX first. It reproduced every instruction index recorded in the 14.0.27 notes above, including the Telegram gate at 98, the slider ceiling at 6, and the torrent defaults at 1222 and 1227, which is what makes it trustworthy for 14.0.39.
 - All nine 14.0.39 fingerprints were then resolved against the 14.0.39 DEX and each reported the expected instruction indices.
-- Every replacement instruction was chosen to keep the source register. Five of the eight replacements are exactly width-preserving, so the two rewritten methods that contain a `packed-switch` payload (`Lv2/e3;->run()` at byte `0x052c` and `Lv2/p1;->run()` at byte `0x0c60`) keep that payload at its original 4-byte-aligned address. The width changes are confined to `Pref.U()`, which has no switch or array payload, where only branch offsets move and `MutableMethodImplementation.replaceInstruction` re-fixes them.
+- Every replacement instruction keeps the source register of the instruction it replaces. An earlier draft of this note also claimed the two methods holding a `packed-switch` payload (`Lv2/e3;->run()` at byte `0x052c` and `Lv2/p1;->run()` at byte `0x0c60`) kept that payload at its original 4-byte-aligned address. That was wrong, and is corrected under "Second device crash" below: `replaceInstructions` removed the two instructions after each invoke as well, so those methods shrank by 6 and 3 code units and their payloads did move. Both now remove the invoke on its own and pad it back to its original width, which keeps both method sizes unchanged.
 - `Pref.U()` was additionally checked by a register liveness pass and by simulating the patched instruction stream. Those first passes were linear and could not model per-merge-point typing or block termination, and they were redone as a control-flow analysis with liveness and reaching definitions; the results are recorded under "The shared download constant does reach all three profiles". The simulation confirms all six download controls receive the intended bounds, the three chunk-size controls keep minimum 16 and maximum 961, and the patch introduces no uninitialised read and no int/object type violation on any instruction it writes. The four findings the simulation reports exist identically before and after patching and are in untouched app code, where a linear pass cannot model per-merge-point register typing.
 - Note for future work: androguard's `Instruction.get_length()` returns a nibble count, not code units, so instruction addresses derived from it are wrong. The widths used above come from the DEX instruction format table instead.
 - Verified in CI: the patch project compiles and the bundle builds and publishes as a release asset.
@@ -267,6 +267,42 @@ instruction is deleted:
 fingerprint.method.removeInstruction(maximum.index)
 fingerprint.method.addInstructions(maximum.index, "const/16 v5, 64\niput v5, v11, ...")
 ```
+
+### Second device crash: `Lv2/p1;->run()` (v0.3.3)
+
+With the `Pref.U()` fix in place, v0.3.3 still died on launch, this time before any
+screen was built:
+
+```
+VerifyError: void v2.p1.run() failed to verify: [0x5FC] tried to get class from
+non-reference register v0 (type=Conflict)
+    at com.dv.get.Main.onCreate
+```
+
+`Lv2/p1;->run()` is the delayed-callback dispatcher that `DisableRatingPromptsPatch`
+edits. The same `replaceInstructions` trap as the `Pref.U()` crash, reached from a
+different direction. The patch passes three `nop`s to silence one `invoke-virtual`, and
+that removes three instructions, so it deleted:
+
+- 724 `invoke-virtual` — the intended target, three code units
+- 725 `return-void` — the dispatch case's own return
+- 726 `iget-object v0, v1, ...` — **the only assignment of a reference to `v0` on that
+  path**
+
+Without 726, `v0` holds a reference on the paths that kept the `iget-object` and something
+else everywhere else, so the verifier sees a `Conflict` the first time `v0` is used as a
+receiver. `DisableAdsPatch` has the identical defect in `Lv2/e3;->run()`: its first site
+ate the second invoke outright, and both sites ate the `new-instance` that writes `v0`.
+
+Measured, not inferred: each matched invoke is a 35c, three code units wide, and
+`replaceInstructions` left `Lv2/p1;->run()` at 1 607 code units instead of 1 610 and
+`Lv2/e3;->run()` at 668 instead of 674, so the "same width, so no payload moves" reasoning
+in the original comments never held.
+
+The fix removes the invoke on its own and pads it back to its original width, which keeps
+both methods byte-for-byte the same size. `DisableAdsPatch` additionally reads both
+indices before editing and applies them highest first, because removing one invoke and
+adding three nops moves every later index up by two.
 
 ### `DOWN_THREADS_*` ceilings extended to all three profiles
 
@@ -335,23 +371,27 @@ none of them, and it is not live at 33, 170 or 317. Note that `filled-new-array`
 its destination array as the first register, so counting that as a read makes `v5` look
 live and would have wrongly rejected the edit.
 
-### `replaceInstructions` elsewhere in this repository
+### `replaceInstructions` audit
 
-`replaceInstructions` is only safe when the replacement list is exactly as long as the
-span the author intends to erase. Checked at every call site:
+`replaceInstructions(index, smali)` removes as many instructions as the replacement list
+is long and then inserts that list. It is only correct when the list is exactly as long as
+the span meant to be erased, *and* the list is the same width as that span. Both conditions
+have now been violated and caused a launch crash. Every call site, re-checked:
 
-- `DisableAdsPatch.kt` (two sites) and `DisableRatingPromptsPatch.kt` (one site) each pass
-  `"nop\nnop\nnop"` to erase a three-code-unit `invoke-*/range`, so three real
-  instructions are removed and three `nop`s take their place. The count matches the
-  intended span and the width is preserved, so these are not the `Pref.U()` bug — but
-  note that they silence the two instructions *after* the invoke as well, not only the
-  invoke itself. That is a deliberate choice recorded in each file's comment, not an
-  accident.
-- `DisableHomeScreenAdsPatch.kt` (1DM) uses `addInstructions`, which removes nothing, so
-  it is unaffected.
+| call site | before | now |
+| --- | --- | --- |
+| `IncreaseConnectionLimitsPatch.kt` (threads) | 2-instruction list over a 1-instruction `iput`: deleted the `iget-object` that gave `v12` its reference type | `removeInstruction` + `addInstructions`, one instruction removed |
+| `DisableRatingPromptsPatch.kt` | `"nop\nnop\nnop"` over one 3-unit `invoke-virtual`: deleted the case's `return-void` and the `iget-object` that wrote `v0` | `removeInstruction` + `addInstructions`, method size unchanged |
+| `DisableAdsPatch.kt` (two sites) | same, plus the first site deleted the second invoke outright | indices read up front, applied highest first, size unchanged |
 
-`replaceInstruction` (singular) is unaffected: it replaces exactly one instruction and
-is used correctly by the download-ceiling and torrent-default edits.
+No `replaceInstructions` call remains in the repository. `DisableHomeScreenAdsPatch.kt`
+(1DM) only ever used `addInstructions`, which removes nothing.
+
+`replaceInstruction` (singular) is unaffected: it replaces exactly one instruction, and is
+used correctly by the download-ceiling, torrent-default and Telegram-gate edits. The lesson
+is that a single-instruction edit must be expressed as a single-instruction operation, not
+as a width-matched block of `nop`s handed to a helper that deletes by list length.
+
 - Verified on device: the `0.2.1-dev.2` bundle applies cleanly to 14.0.39 on Android 15 with all three patches enabled, so every fingerprint resolves and every generated smali instruction assembles.
 - Still unverified on device: the runtime effect of each patch. Applying successfully proves the fingerprints and encodings, not that ads are gone, that the sliders show the new bounds, or that no layout gap is left where the AppBrain container used to sit. Those need a manual pass.
 
