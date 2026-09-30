@@ -162,3 +162,67 @@ object BannerViewSetAdFingerprint : Fingerprint(
         )
     )
 )
+
+/**
+ * `Lidm/internet/download/manager/BannerView;->ۦۖۤ()V` builds the app's own "install
+ * 1DM+" strip, and is the one thing on the home screen that the ad-SDK patches above
+ * cannot reach.
+ *
+ * This is not an ad. It is a house upsell for the paid edition, with the text
+ * `1DM+: Fastest download manager (<b>$1.99</b>)` and an `INSTALL` button baked into
+ * `res/layout/banner_view.xml` as literals, inflated by this app's own
+ * `onFinishInflate()`. It lives in a different class from the ad banner
+ * (`Lacr/browser/lightning/view/BannerView;`) and a different dex (`classes9.dex`),
+ * never consults the ad configuration, and is started by a 250 ms `Timer` rather than
+ * by the ad rotation. That is why redirecting `BannerManager.load()` to `disable()`
+ * and hiding the container from `setAd()` both leave it on screen, and why the prompt
+ * survives the whole "Disable home screen ads" patch.
+ *
+ * The method is identified by the upsell text it feeds to `Html.fromHtml()` and
+ * `TextView.setText()`, and by the `Timer.schedule()` that drives the click-through, so
+ * the chain does not depend on the obfuscated member names `ۦۖ۠`/`ۦۖۡ`/`ۦۖۦ`/`ۦۖۧ` or on
+ * the view ids, all of which are release-specific.
+ */
+object BannerViewUpsellFingerprint : Fingerprint(
+    definingClass = "Lidm/internet/download/manager/BannerView;",
+    name = "ۦۖۤ",
+    returnType = "V",
+    parameters = listOf(),
+    filters = listOf(
+        fieldAccess(
+            definingClass = "this",
+            name = "ۦۖۚ",
+            type = "Z",
+            opcode = Opcode.IGET_BOOLEAN
+        ),
+        // The upsell copy is the only string this class ever loads through `Html`.
+        methodCall(
+            definingClass = "Landroid/text/Html;",
+            name = "fromHtml",
+            parameters = listOf("Ljava/lang/String;"),
+            returnType = "Landroid/text/Spanned;"
+        ),
+        methodCall(
+            definingClass = "Landroid/widget/TextView;",
+            name = "setText",
+            parameters = listOf("Ljava/lang/CharSequence;"),
+            returnType = "V"
+        ),
+        fieldAccess(
+            definingClass = "this",
+            name = "ۦۖۚ",
+            type = "Z",
+            opcode = Opcode.IPUT_BOOLEAN
+        ),
+        methodCall(
+            definingClass = "Ljava/util/Timer;",
+            name = "schedule",
+            parameters = listOf(
+                "Ljava/util/TimerTask;",
+                "J",
+                "J"
+            ),
+            returnType = "Ljava/util/Timer;"
+        )
+    )
+)

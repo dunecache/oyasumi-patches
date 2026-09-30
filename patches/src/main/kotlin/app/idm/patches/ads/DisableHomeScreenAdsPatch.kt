@@ -16,10 +16,17 @@ private const val VISIBILITY_REGISTER = "v0"
 
 private const val GONE = "0x8"
 
+/**
+ * `Lidm/internet/download/manager/BannerView;->ۦۖۤ()V` is `.registers 8` with `this` in
+ * `v7` and no parameters, so `v0` is a free local there and the receiver is `v7`.
+ */
+private const val UPSELL_RECEIVER = "v7"
+
 @Suppress("unused")
 val disableHomeScreenAdsPatch = bytecodePatch(
     name = "Disable home screen ads",
-    description = "Keep 1DM's home screen banner from loading, rotating, or rendering.",
+    description = "Keep 1DM's home screen banner from loading, rotating, or rendering, " +
+        "and hide the built-in \"install 1DM+\" upsell strip.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
@@ -76,6 +83,26 @@ val disableHomeScreenAdsPatch = bytecodePatch(
                     "invoke-virtual {v$receiver, $VISIBILITY_REGISTER}, " +
                     "Landroid/view/View;->setVisibility(I)V\n" +
                     "return-void"
+            )
+        }
+
+        // The "install 1DM+" strip is a separate view in a separate class, and neither of
+        // the edits above can touch it. `onFinishInflate()` calls `ۦۖۤ()` unconditionally,
+        // and nothing in that path consults the ad configuration, so redirecting `load()`
+        // to `disable()` and hiding the ad container both leave the upsell on screen.
+        //
+        // It is hidden rather than merely emptied. `res/layout/banner_view.xml` gives this
+        // view a fixed `layout_height` of 55dp, so returning early without hiding it
+        // would trade a visible strip for an empty one. GONE is also what the view's own
+        // timer task already treats as "stop": `BannerView$a.run()` reads `getVisibility()`
+        // and calls `Timer.cancel()` when it is 8, so hiding it also disarms the 250 ms
+        // click-through timer that would otherwise keep re-posting itself.
+        BannerViewUpsellFingerprint.let { fingerprint ->
+            fingerprint.method.addInstructions(
+                0,
+                "const/16 $VISIBILITY_REGISTER, $GONE\n" +
+                    "invoke-virtual {$UPSELL_RECEIVER, $VISIBILITY_REGISTER}, " +
+                    "Landroid/view/View;->setVisibility(I)V"
             )
         }
     }

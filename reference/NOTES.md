@@ -14,6 +14,7 @@
 - Launcher activity: `com.dv.get.Main`.
 - Application class: `com.dv.get.AApp`.
 - The reference is user-supplied and has not been independently verified as the original publisher build.
+- A second copy of the same APKM (`...apkmirror.com (1).apkm`) is intact: `base.apk` inflates to its full 90,777,380 bytes, and all eleven DEX files plus the whole `res/` tree are present, including the `classes8.dex` and `classes9.dex` that the first copy lost. The two files are byte-different and share a name, and only the `(1)` copy is usable.
 
 ## APK structure
 
@@ -468,7 +469,7 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 - Compatibility: `idm.internet.download.manager`, version `18.2`, `ApkFileType.APKM` (non-required, so the plain APK is accepted too).
 - `BannerManager.load(Z)V` is redirected to `BannerManager.disable()V`, which is the exact state 1DM enters when its ad configuration reports the banner as disabled. Consequences: `bannerInfoList` is never populated, `currentBannerInfo` stays null, and `resume()` returns at its `mDisabled` check, so the 500 ms rotation timer never starts and nothing is ever published to the banner view. Nothing else in the ad path is changed.
 - The inserted call runs before the method's own `monitor-enter`, so `disable()` is not executed under the method's monitor. That is safe because after the patch every entry into the list and the current ad goes through `disable()`, and the two fields it writes with `AtomicBoolean.set` are the ones `resume()` reads. `disable()` has its own try/catch around the `Timer` access.
-- `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
+- `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5, v0}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
 - Fingerprints, both resolved against the recovered `classes.dex` with a re-implementation of Morphe's matcher:
   - `BannerManagerLoadFingerprint` → `load(Z)V`, 37 instructions, `public synchronized`, filter indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
   - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 210 instructions, `private`, filter indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
@@ -518,9 +519,47 @@ means an arity mistake ships as a green build and a launch crash. Any inserted i
 should have its register count read off the target method's descriptor and asserted
 before release.
 
+## The "install 1DM+" strip is not an ad (18.2)
+
+After the arity fix the patched build launched, but the home screen showed a tappable
+"Install 1DM+ for an Ad free experience" prompt in exactly the strip where the banner
+used to be. It survives the whole "Disable home screen ads" patch, and the reason is that
+it is not an ad at all:
+
+| | patched by this project | what was on screen |
+| --- | --- | --- |
+| class | `Lacr/browser/lightning/view/BannerView;` | `Lidm/internet/download/manager/BannerView;` |
+| dex | `classes.dex` | `classes9.dex` |
+| content | ad SDK mediation | literal `1DM+: Fastest download manager ($1.99)` and an `INSTALL` button |
+| started by | `BannerManager.load()` / `setAd()` | `onFinishInflate()`, unconditionally |
+
+The text and button are string literals in `res/layout/banner_view.xml`, inflated by the
+app's own view. Nothing in that path reads the ad configuration, so redirecting `load()`
+to `disable()` and hiding the container from `setAd()` both leave it untouched. The
+click-through is a 250 ms `Timer` started by `ۦۖۤ()`, not the ad rotation timer.
+
+`BannerViewUpsellFingerprint` now targets `Lidm/internet/download/manager/BannerView;->ۦۖۤ()V`
+(59 instructions, `.registers 8`, `this` in `v7`) and prepends
+`const/16 v0, 0x8` plus `invoke-virtual {v7, v0}, Landroid/view/View;->setVisibility(I)V`.
+Its filter chain resolves at indices 0, 41, 43, 45 and 56: the `ۦۖۚ` guard read,
+`Html.fromHtml`, `TextView.setText`, the `ۦۖۚ` write, and `Timer.schedule`. The chain
+deliberately avoids the obfuscated members `ۦۖ۠`/`ۦۖۡ`/`ۦۖۦ`/`ۦۖۧ` and the view ids, all of
+which are release-specific, and leans on the upsell copy and the timer instead.
+
+GONE rather than an early return: `banner_view.xml` gives the view a fixed
+`layout_height` of 55dp, so returning early would swap a populated strip for an empty
+one. GONE is also what the view already treats as "stop" -- `BannerView$a.run()` reads
+`getVisibility()` and calls `Timer.cancel()` when it equals 8 -- so hiding it also disarms
+the click-through timer instead of leaving it running against a hidden view.
+
+This is a deliberate departure from the ADM precedent, where the house "remove ads"
+placeholder was intentionally left alone as "a house promo, not an ad SDK view". It is
+recorded here as a scope decision, not an oversight.
+
 ## Unverified risks for 1DM 18.2
 
-- **Layout.** `res/` was not recoverable, so the layout that hosts `BannerView` could not be read. If the banner sits inside a container with a fixed height rather than a `wrap_content` parent, `setVisibility(GONE)` will leave an empty strip where the banner was. This is the same unconfirmed item that the ADM AppBrain change carries.
+- **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
+- **Layout, ADM.** Still unconfirmed. The ADM reference DEX was read from a sound APKM, but its `res/` was never walked for the AppBrain container, so whether that strip leaves an empty gap behind is untested.
 - **Other ad surfaces are out of scope and unexamined.** The interstitial, rewarded, and "network ad" show paths are driven from `Lidm/internet/download/manager/` classes that live in `classes8.dex`/`classes9.dex`, which were not recovered. `BannerManager.setNetworkAdShowingAndNotify(Activity, boolean)` is the visible trace of that path; callers of it could not be read. This patch claims the banner only.
 - **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved locally: `maven.pkg.github.com` returns `401` for the configured `gh` token, whose scopes are `gist`, `read:org`, `repo` and do not include `read:packages`. Compilation and bundle application are delegated to CI, as with the ADM patches.
 - **No device test.** Nothing has been applied to 18.2. The fingerprints resolve and the inserted smali is width-correct and register-safe by inspection, but the runtime effect is unconfirmed.
