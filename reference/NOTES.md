@@ -885,6 +885,56 @@ number as soon as Dart subscribes.
   against the real DEX and resolve to the expected indices, and the register allocation was
   read out of the raw bytecode, but the runtime effect is unconfirmed.
 
+## CI failure and the two checker bugs behind it (Djezzy 3.0.9)
+
+The first push of this patch failed `Check patch sources` in 15 seconds, on two lines:
+
+```
+FAIL ForceWalkStepsPatch.kt: `invoke-static {v1}, Ljava/lang/String;->valueOf(I)...`
+      names 1 register(s) but ...->valueOf declares 1 argument(s) and needs 2 (receiver + arguments)
+```
+
+One of those two lines was a real defect and one was the checker being wrong. Both had to
+be established before anything could be committed, because the obvious response — add a
+register to satisfy the checker — would have broken the build for real.
+
+**The real defect.** `Ljava/lang/String;->concat` and `Landroid/util/Log;->i` were written
+as `invoke-static` when both are instance methods: `concat` on a `String` and `i` on
+`Log`. Smali assembles either form, because the opcode is not checked against the
+descriptor, so this passed every local check and would have failed at class-load time on
+a device, exactly as the v0.3.3 release did. Fixed to `invoke-virtual`, which is what the
+app's own bytecode uses for `String.concat` at `onListen[6]` and `[9]`.
+
+**The checker bug.** `check_invoke_arity` computed `required = 1 + len(params)` for every
+invoke kind, counting a receiver on `invoke-static`, which has none. The patch's two
+`invoke-static` calls to `Integer.valueOf(I)` and `String.valueOf(I)` were correct and
+were reported as errors. Confirmed against the 3.0.9 DEX, where the app itself writes
+`invoke-static {v2}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;` with a single
+register at `onSensorChanged[6]`. Adding a register to "fix" the patch would have put a
+stray register in a static call and been rejected immediately. The check now special-cases
+`invoke-static` as arguments-only.
+
+**A second checker bug, found by the first.** Splitting the parameter list on whitespace
+reported one argument for `Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I`,
+which is a single unspaced token. The file already contained a correct descriptor parser,
+`parse_descriptor`, which walks the grammar; the arity check now uses it.
+
+**A third, pre-existing bug, found by accident.** The wide-register arithmetic was
+backwards in both directions and had never been exercised, because no patch so far
+inserts a call taking a `long` or a `double`. AOSP's verifier is the authority:
+`MethodVerifierImpl::SetTypesFromSignature` seeds `expected_args` from the instruction's
+`ins_size` with the comment *"long/double count as two"*, and
+`VerifyInvocationArgsFromIterator` advances
+`sig_registers += reg_type.IsLongOrDoubleTypes() ? 2 : 1` and then rejects any invoke
+whose encoded register count differs. So a wide argument *adds* a register: `z(J)V` needs
+two and `z(JI)V` needs three. The check had `len(params) - wide`, which is right for no
+signature a patch is likely to contain — it is now `len(params) + wide`.
+
+The check is now covered by thirteen cases, five of them defects it must catch and eight
+that must stay quiet, and `replay_history_check.py v0.3.4 v0.4.1` still reports the
+shipped v0.3.4 arity defect as failing and v0.4.1 as clean, so the original purpose of the
+check is intact.
+
 ## Patcher pitfalls (Djezzy 3.0.9)
 
 - **`fingerprint.method.getInstructions().size - 1` is not a safe tail anchor.** The count

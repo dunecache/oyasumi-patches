@@ -80,7 +80,10 @@ val forceWalkStepsPatch = bytecodePatch(
                     "const/16 v1, $FORCED_STEPS\n" +
                     "invoke-static {v1}, Ljava/lang/String;->valueOf(I)Ljava/lang/String;\n" +
                     "move-result-object v1\n" +
-                    "invoke-static {v0, v1}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;\n" +
+                    // `concat` is a virtual call, so it takes its receiver as the first
+                    // register; the two `valueOf` calls above are static and take one
+                    // register for the argument and nothing else.
+                    "invoke-virtual {v0, v1}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;\n" +
                     "move-result-object v0\n" +
                     "const-string v1, \"$LOG_TAG\"\n" +
                     "invoke-static {v1, v0}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +

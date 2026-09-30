@@ -118,16 +118,40 @@ def check_invoke_arity(path: Path, constants: dict[str, str] | None = None) -> l
                 # bare form: count the comma separated registers before the reference
                 named = [r.strip() for r in m.group(1).split(",") if r.strip()]
             params_text = m.group(4)
-            params = [p for p in re.split(r"\s+", params_text.strip()) if p]
+            # The parameter list has to be split by the descriptor grammar, not on
+            # whitespace. `Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I`
+            # is one token with no space in it, so a whitespace split reported one
+            # argument for a two-argument call and demanded a register the call does
+            # not have. `parse_descriptor` already walks the grammar correctly.
+            params, _ret = parse_descriptor(f"({params_text})V")
+            # A long or double is named once in the register list but is *counted* twice,
+            # so it adds a register rather than removing one. AOSP's
+            # `MethodVerifierImpl::SetTypesFromSignature` seeds `expected_args` from the
+            # instruction's own `ins_size` with the comment "long/double count as two",
+            # and `VerifyInvocationArgsFromIterator` advances
+            # `sig_registers += reg_type.IsLongOrDoubleTypes() ? 2 : 1` and then rejects
+            # any invoke whose encoded register-list count differs. So `z(J)V` needs two
+            # registers and `z(JI)V` needs three. Subtracting the wide count, as this
+            # check did until the Djezzy work, happens to be right for no signature a
+            # patch is likely to contain, which is why it never showed up before.
             wide = sum(1 for p in params if p in ("J", "D"))
-            # a long or double occupies a register pair, so it is named once
-            required = 1 + len(params) - wide
+            # `invoke-static` has no receiver, so it needs one register per argument and
+            # nothing more. Every other invoke kind takes the receiver as its first
+            # register. Verified against the 3.0.9 DEX, where the app's own code calls
+            # `Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;` with a single
+            # register: `invoke-static {v2}, Ljava/lang/Integer;->valueOf(I)...`. Counting
+            # a receiver for it reported a correct line as an error, and "fixing" the
+            # patch to satisfy the count would have put a second register in a static call
+            # and broken the build for real.
+            kind = line.split(None, 1)[0]
+            has_receiver = not kind.startswith("invoke-static")
+            required = len(params) + wide + (1 if has_receiver else 0)
+            shape = "receiver + arguments" if has_receiver else "arguments, no receiver"
             if len(named) != required:
                 problems.append(
                     f"{path.name}:{offset}: `{line[:64]}` names {len(named)} "
                     f"register(s) but {m.group(2)}->{m.group(3)} declares "
-                    f"{len(params)} argument(s) and needs {required} "
-                    f"(receiver + arguments)")
+                    f"{len(params)} argument(s) and needs {required} ({shape})")
     return problems
 
 

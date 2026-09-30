@@ -5,7 +5,18 @@ Both scripts run without a device, an APK, or the Morphe plugin.
 ```sh
 python3 tools/checks/patch_smali_checks.py            # the CI check
 python3 tools/checks/replay_history_check.py v0.3.4   # replay a released tag
+python3 tools/checks/test_invoke_arity.py             # the arity check's own cases
 ```
+
+`test_invoke_arity.py` holds the cases `check_invoke_arity` must and must not flag. It
+exists because a check that is wrong in the strict direction is not a safety net: while
+writing the Djezzy patch, this check reported two correct `invoke-static` calls as errors
+(it was counting a receiver that `invoke-static` does not have), reported a two-argument
+`Landroid/util/Log;->i(String, String)` call as one argument (it split the descriptor on
+whitespace), and had the wide-register arithmetic backwards (AOSP's verifier counts a
+`long` as *two* registers, so `z(J)V` needs two, not one). Obeying it would have added a
+stray register to a static call and broken the build. Its own cases are what caught all
+three.
 
 ## Why this exists
 
