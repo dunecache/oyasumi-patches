@@ -1,3 +1,9 @@
+## [0.3.3](https://github.com/dunecache/oyasumi-patches/compare/v0.3.2...v0.3.3) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* stop the thread ceiling edit deleting the instruction after it ([0356b17](https://github.com/dunecache/oyasumi-patches/commit/0356b176ae04032b78856115919f097289b7fc10))
+
 ## [0.3.2](https://github.com/dunecache/oyasumi-patches/compare/v0.3.1...v0.3.2) (2026-09-29)
 
 ### 🐛 Bug Fixes
