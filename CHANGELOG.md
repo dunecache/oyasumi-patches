@@ -1,3 +1,9 @@
+## [0.5.3](https://github.com/dunecache/oyasumi-patches/compare/v0.5.2...v0.5.3) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* push a zero before the forced steps, not just the steps ([f51ed17](https://github.com/dunecache/oyasumi-patches/commit/f51ed1783a74db8ddf6b33b5113aeff89d6e169d))
+
 ## [0.5.2](https://github.com/dunecache/oyasumi-patches/compare/v0.5.1...v0.5.2) (2026-09-30)
 
 ### 🐛 Bug Fixes
