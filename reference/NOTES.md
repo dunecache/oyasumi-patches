@@ -1126,6 +1126,85 @@ fingerprints in the same patch matched, so it is not a wholesale build mismatch.
 is pinned down the honest position is that the relaxed fingerprints are *more* likely to
 match, not verified to.
 
+## The real cause of the stuck 0: one value cannot open a window and cross it
+
+The two preference hooks never fired on device, and chasing them was a dead end. Dropping
+the SharedPreferences idea entirely and re-reading the v0.5.0 log against both possible
+accumulations identifies the actual defect, and it is in the pedometer patch itself.
+
+Two models fit every observation:
+
+```
+delta:    current += raw - last_raw
+baseline: current  = raw - sessionStartRaw
+```
+
+v0.5.0 pushed a **single** `10000` at subscribe. Under the baseline model that lone value
+*becomes* the baseline, so the total is `10000 - 10000 = 0`, and every subsequent event
+carries the same constant and so contributes a delta of zero. The number can never leave
+zero. Under the delta model the same constant pays out once and then contributes nothing.
+Same defect either way: **one value cannot both establish the origin and jump away from
+it.** This explains the `0` exactly, with no need to assume anything about
+`walk_and_win_is_walking` gating the accumulator.
+
+The fix is a pair — `0` first, then `10000` — and it is stateless:
+
+| model | first event `0` | second event `10000` | total |
+| --- | --- | --- | --- |
+| baseline | baseline := 0 | `10000 - 0` | **10000** |
+| delta, fresh | no-op or `+0` | `+10000` | **10000** |
+| delta, stale baseline 20000 | rewinds `last_raw` to 0 | `+10000` | **10000** |
+
+If the app discards non-positive readings outright, the stored baseline on a fresh install
+is already `0`, so the second event still lands on 10000.
+
+Keeping the `onSensorChanged` constant at 10000 then *locks* the value rather than letting
+it drift: a constant `raw` yields a delta of zero under the delta model and a fixed
+difference under the baseline model, so the displayed number cannot fall away while the
+user stands still.
+
+No timer and no extension are needed for this, which matters because `extendWith` is more
+costly than it looks:
+
+```kotlin
+inline fun extendWith(extension: String) = apply {
+    classLoader.getResourceAsStream(extension) ?: throw PatchException(...)
+}
+```
+
+The argument is a **resource path to a precompiled DEX**, not a class name, and
+`BytecodePatchContext.mergeExtension` merges *every* class in that DEX into the app. So an
+extension needs d8 and the Android build-tools, which CI does not have (the workflow sets
+up only Java and Node), plus a committed binary artifact. The two-event push avoids all of
+that.
+
+### What was wrong with the SharedPreferences attempt, for the record
+
+It was not wrong in principle — forcing the persisted total would have worked — but it was
+unreachable in practice, and the diagnosis went wrong twice on the way:
+
+1. `LegacyPreferenceMapFingerprint` failed on device. Re-verifying the DEX filter by filter
+   with a harness on the same `smali-dexlib2` Morphe uses showed all six filters matching at
+   `0, 1, 15, 25, 27, 29`, and reproducing `findIndexValues` over all 11863 classes showed
+   the candidate pre-filter does contain the target. The filters were never the problem.
+2. The explanation offered next — that declaring `definingClass` removes the fallback search
+   at `Fingerprint.kt:291` — is a true reading of the matcher, but it was **not shown to be
+   the cause here**. It was asserted, then shipped as a fix, then disproved by the hooks
+   staying silent in v0.5.2.
+
+Two files on the device turned out to settle the APK question and kill the "different build"
+theory:
+
+```
+Djezzy-v3.0.7-patches-v1.44.0-dev.11.apk  classes.dex  f1c5109239f2cf911c4cb01055cd8e4b93e6c70ccb810adb2fcf32486a875db0
+com.djezzy.internet_3.0.9.apkv/base.apk   classes.dex  f1c5109239f2cf911c4cb01055cd8e4b93e6c70ccb810adb2fcf32486a875db0
+```
+
+Byte-identical, so the manager patched exactly the DEX that was analysed. Local
+verification and the manager still disagreed on the same bytes, which means the model of how
+the patcher resolves a fingerprint is wrong somewhere — recorded as unresolved rather than
+guessed at again.
+
 ## Unresolved risks for Djezzy 3.0.9
 
 - **The Dart delta is not confirmed.** `walk_and_win_last_pedometer_value` and
