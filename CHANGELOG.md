@@ -1,3 +1,9 @@
+## [0.4.1](https://github.com/dunecache/oyasumi-patches/compare/v0.4.0...v0.4.1) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* declare the real return type of Timer.schedule in the upsell fingerprint ([7e8fbb1](https://github.com/dunecache/oyasumi-patches/commit/7e8fbb1caa3fefb77368efb1bf57dd5be6c23457))
+
 ## [0.4.0](https://github.com/dunecache/oyasumi-patches/compare/v0.3.5...v0.4.0) (2026-09-30)
 
 ### ✨ New Features
