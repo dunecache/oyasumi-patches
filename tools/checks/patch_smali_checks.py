@@ -169,6 +169,57 @@ def check_replace_instructions(path: Path) -> list[str]:
     return problems
 
 
+def check_imports(path: Path) -> list[str]:
+    """Every import must be used, and every Morphe helper used must be imported.
+
+    An import removed on the assumption that it had become unused is a silent build
+    break, and CI only finds it at `:patches:compileKotlin`, after semantic-release has
+    already started. Counting occurrences over the whole file is not enough: the name
+    also appears in the import line and in prose, so usage is measured against the body
+    alone.
+    """
+    problems: list[str] = []
+    text = path.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    imports = [l for l in lines if l.startswith("import ")]
+    body = "\n".join(l for l in lines if not l.startswith("import "))
+    imported = {l.split(".")[-1].strip() for l in imports}
+
+    for l in imports:
+        sym = l.split(".")[-1].strip()
+        if not re.search(r"\b" + re.escape(sym) + r"\b", body):
+            line = text[: text.index(l)].count("\n") + 1
+            problems.append(f"{path.name}:{line}: import {sym!r} is unused")
+
+    for name in sorted(n for n in _MORPHE_API if re.search(r"\b" + n + r"\s*\(", body)):
+        if name in imported or name in _locals_defined(body):
+            continue
+        problems.append(f"{path.name}: {name!r} is called but not imported")
+    return problems
+
+
+#: Only the top-level functions and extension helpers. `Fingerprint`, `bytecodePatch`,
+#: `compatibleWith` and the `InstructionLocation` factories resolve through the patcher
+#: DSL's own imports, so including them produced false positives on files that compile.
+_MORPHE_API = frozenset({
+    "fieldAccess", "methodCall", "string", "literal", "opcode",
+    "addInstruction", "addInstructions", "removeInstruction", "removeInstructions",
+    "replaceInstruction", "replaceInstructions", "getInstruction",
+    "addInstructionsWithLabels",
+})
+
+
+def _locals_defined(body: str) -> set[str]:
+    """Names this file defines itself, so they need no import."""
+    out: set[str] = set()
+    for m in re.finditer(r"\b(?:val|var|fun|object|class)\s+([A-Za-z_][A-Za-z0-9_]*)",
+                         body):
+        out.add(m.group(1))
+    for m in re.finditer(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\{", body):
+        out.add(m.group(1))
+    return out
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2] / "patches/src/main/kotlin"
     if not root.is_dir():
@@ -178,6 +229,7 @@ def main() -> int:
     for path in sorted(root.rglob("*.kt")):
         problems += check_invoke_arity(path)
         problems += check_replace_instructions(path)
+        problems += check_imports(path)
     for p in problems:
         print("  FAIL", p)
     print(f"checked {len(list(root.rglob('*.kt')))} file(s): "

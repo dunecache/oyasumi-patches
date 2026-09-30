@@ -602,6 +602,12 @@ is still not covered.
 the real defects and stay quiet on the fixes: v0.2.1 and v0.3.3 report 3 and 4 problems,
 v0.3.4 reports 1, and v0.4.0 and v0.4.1 report 0.
 
+`check_imports` was added after a `methodCall` import was removed on the assumption it had
+become unused, which broke `:patches:compileKotlin` in CI. Counting occurrences over the
+whole file is not sufficient -- the name also appears in the import line and in prose -- so
+usage is measured against the body alone, over the Morphe API surface only, since Kotlin
+stdlib members resolve without an import.
+
 Two gaps remain, and both are stated in the checks' README rather than papered over.
 
 - **Fingerprint resolution** needs the pinned APK, a user-supplied 80 MB file CI cannot

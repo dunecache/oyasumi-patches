@@ -17,6 +17,7 @@ never executed before a bundle was published.
 | --- | --- | --- |
 | v0.2.1 – v0.3.3 | `replaceInstructions` deleted the instructions after the target | `check_replace_instructions` |
 | v0.3.3 – v0.3.4 | inserted `invoke` named 1 register for a 2-register call | `check_invoke_arity` |
+| v0.4.2 | `methodCall` import removed while still in use | `check_imports` |
 
 Both are silent at build time. smali assembles a `35c` register list of any length, the
 Gradle build succeeds, and the patcher only rejects the class when the verifier runs it at
