@@ -1,3 +1,14 @@
+## [0.6.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.3...v0.6.0-dev.1) (2026-10-02)
+
+### 🐛 Bug Fixes
+
+* resolve Pinterest patch compilation errors ([9f7bb6e](https://github.com/dunecache/oyasumi-patches/commit/9f7bb6e86b862c945b88a25e2870d5f69248d685))
+* use parameterless getRegisterC for the 35c register read ([4cee037](https://github.com/dunecache/oyasumi-patches/commit/4cee0372b155963a5c2398d61d5aed28c93a6a39))
+
+### ✨ New Features
+
+* Pinterest 14.38.0 disassembly, six patches, and patch plan ([3a609fa](https://github.com/dunecache/oyasumi-patches/commit/3a609fa439b43c783865895fae949e3012ec75d2))
+
 ## [0.5.3](https://github.com/dunecache/oyasumi-patches/compare/v0.5.2...v0.5.3) (2026-09-30)
 
 ### 🐛 Bug Fixes
