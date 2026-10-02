@@ -222,3 +222,14 @@ and it must match the `app.morphe.patches` plugin this repo builds with.
   registry returns `401` for the available token, so compilation is delegated to CI.
 - Bundled native libraries, `real_feed_*.jsonl` offline feed assets, and the Firebase/WorkManager
   infrastructure. Out of scope unless a patch forces the question.
+
+## Device verification status
+
+The full bundle applies cleanly to Pinterest 14.38.0 on device: every fingerprint resolves, no
+`VerifyError`, no crash. That proves the anchors and the smali encodings, including the first
+`extensions/` wiring in this repo.
+
+What application does **not** prove is runtime effect. Still unverified per patch: that the
+identifier actually comes back random, that AppsFlyer and Engage transmit nothing, and that the
+resource patches produce a valid `resources.arsc` and manifest. Those need a behavioral pass, not
+just a clean install.
