@@ -99,13 +99,13 @@ implementations because they are narrow, self-contained edits.
   - Main known fragility: the whole patch hangs off one **obfuscated** class name
     (`AFa1tSDK`), which changes when AppsFlyer updates. This is the strongest argument for the
     deferred "Morphe runtime state" work.
-  - Not verified: the Gradle build, and any device run.
+  - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: any device run.
 - [x] **Disable Google Engage** — stops Pinterest publishing user actions to Google.
   - Written. `GoogleEngageBroadcastReceiver.onReceive` is the only enqueue point for
     `GoogleEngageWorker`, so suppressing it stops publishing entirely.
   - First patch in the bundle with **no** obfuscated anchor: the class is not obfuscated and the
     WorkManager job name occurs exactly once in the APK.
-  - Not verified: the Gradle build, and any device run.
+  - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: any device run.
 - [ ] **Disable Google Engage worker** — blocks the Google Engage worker process and its
   background sync.
   - `GoogleEngageWorker` extends `RxWorker`; its `doWork` is renamed to `g()` by R8 and returns an
