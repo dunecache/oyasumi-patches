@@ -49,10 +49,12 @@ actually wanted is known.
     from `<clinit>` and travels as a parcel; rows are obfuscated models bound by three separate
     callers; the two classes in the list package are empty markers. No clean seam. Needs either a
     fingerprint on an obfuscated builder or interception at the parcel boundary.
-- [ ] **Morphe settings screen (label)** — replaces the dark/light localized string for the
-  "Morphe" entry in every language.
-  - Blocked with the above, though the mechanism is transferable: the official patch walks `res`
-    for every `strings.xml` and rewrites one element's `textContent` by attribute name.
+- [x] **Morphe settings screen (label)** — provides the string for the "Morphe" entry.
+  - Written as a `resourcePatch` appending `morphe_settings_entry` to `res/values/strings.xml`.
+  - Default locale only. The all-languages walk is not written because no documented API
+    enumerates the decoded resource tree.
+  - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: resource recompilation
+    against the real APK, and any device run.
 - [x] **Morphe settings screen (manifest)** — registers the settings activity in the manifest.
   - Written as a `resourcePatch` declaring
     `app.oyasumi.extension.MorpheSettingsActivity`, `exported=false`.

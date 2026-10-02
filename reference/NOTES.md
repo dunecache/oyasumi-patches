@@ -1661,9 +1661,9 @@ cover Pinterest's own use.
 - Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 17
   files including the three new ones, and `tools/checks/test_invoke_arity.py` passes 19/19. This
   covers the invoke arity and the escaped `$` in `AdvertisingIdClient$Info`.
-- Not verified: the Gradle build, because `app.morphe.patches` `1.3.4` cannot be resolved from
-  `maven.pkg.github.com` with the available token, and `extensions/` is the first extension module
-  in this repository, so its wiring is unproven here. The extension also has never been run on a
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device, and
+  `extensions/` was the first extension module in this repository, so its wiring is unproven
+  beyond compiling. The extension also has never been run on a
   device, and the `AdvertisingIdClient.Info` constructor has not been checked against a compiled
   artifact.
 
@@ -1778,7 +1778,7 @@ Any fingerprint built from that traffic would be pinning obfuscation artefacts, 
 - No extension is used, so this patch does not depend on the untested `extensions/` wiring.
 - Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 19
   files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
-- Not verified: the Gradle build, and any device run. `init` is the method most likely to change
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device. `init` is the method most likely to change
   between AppsFlyer releases, and the whole patch hangs off one obfuscated class name.
 
 ## Google Engage
@@ -1855,7 +1855,7 @@ therefore the only enqueue point, which is what makes suppressing it sufficient 
   needs no extension either.
 - Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 21
   files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
-- Not verified: the Gradle build, and any device run.
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device.
 
 ## Phase 0 — runtime state, and a bug in the official version check
 
@@ -1908,7 +1908,8 @@ zero rather than throwing, so an unexpected version string degrades to a numeric
 instead of aborting the whole patch run.
 
 Verified by reimplementing the same algorithm and running the table above: all eight cases agree
-with the correct answer. That validates the logic, not the Kotlin, which has not been compiled.
+with the correct answer. That validates the logic; the Kotlin file itself compiles clean in CI
+(`v0.6.0-dev.1`).
 
 ### Only one predicate exists
 
@@ -2095,7 +2096,8 @@ obfuscated builder, or a different strategy entirely, such as intercepting at th
   reference) rather than guessing at a style that may not exist.
 - `document("AndroidManifest.xml")` is an inference, not a confirmed pattern: the documented DOM
   helper is shown on `res/values/strings.xml` and no official example applies it to the manifest.
-  Whether the rebuilt manifest still parses cannot be checked without the patcher build.
+  Whether the rebuilt manifest still parses cannot be checked here: CI compiles the patch
+  code but does not apply it to an APK, so resource recompilation is still unverified.
 - Not verified: the manifest path, resource recompilation, and the missing activity.
 
 ### Settings entry: anchor hunt, completed without a seam
