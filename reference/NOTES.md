@@ -2161,3 +2161,40 @@ protobuf field on the user model (`api/model/cq`), not a gate, so it was not use
 - Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 26
   files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
 - Build verified: compiles clean in CI. Not verified on device.
+
+## Settings entry: live hierarchy and resource IDs (from device dump)
+
+A `uiautomator` dump of the live Account Settings screen, confirmed as `com.pinterest`, gives
+ground truth the static analysis could not:
+
+- The list is a real `androidx.recyclerview.widget.RecyclerView` with id
+  `com.pinterest:id/recycler_adapter_view` (`0x7F0A1143`), bounds `[0,308][1080,2311]`.
+- Rows are `ViewGroup` with id `com.pinterest:id/page_list_action` (`0x7F0A0E9D`), each holding
+  `list_action_header` (`0x7F0A0C4C`, title), `list_action_end_text` (trailing value) and
+  `list_action_subheader` (subtitle). Section headers use `settings_section_header_text`.
+- The screen also shows the email-verification banner (`banner_message` +
+  `banner_primary_action_button` with "Confirm email"). If that banner is visible on a patched
+  install, patch 7 is not suppressing it at runtime — noted, not concluded, since the dump may be
+  from a stock install.
+- `res/layout/lego_fragment_settings_menu.xml` is **not** this screen. It hosts a
+  `com.pinterest.ui.grid.PinterestRecyclerView` (which extends `LinearLayout`, not
+  `RecyclerView`) with a different id (`0x7F0A0E91`). Do not fingerprint against that layout.
+
+Resource-ID tracing:
+
+- `recycler_adapter_view` is read as `Lxu1/k;->recycler_adapter_view` from four methods, none in
+  a settings context (`ideaPinCreation`, `Lqr1/f;.onCreateView`, `Ld11/g;.run`, and
+  `PinterestRecyclerView.<init>` itself). It is a shared generic list-container id, so it does not
+  isolate the settings screen. `Lqr1/f;.onCreateView` makes 61 invokes and 31 field reads with zero
+  settings-related targets — a generic host, not the settings fragment.
+- `page_list_action` is read from exactly one place,
+  `SettingsListActionItemView.<init>` via `Lnr2/c;->page_list_action`. It is settings-specific.
+- `list_action_header` is read via `Lh02/b;->list_action_header` from eight places including
+  `GestaltListAction` and the unified inbox. Shared, not settings-specific.
+- No `RecyclerView.setAdapter`, `swapAdapter`, `setLayoutManager` or `onBindViewHolder` appears in
+  the call index under those names, because the `androidx.recyclerview.widget` classes are
+  R8-renamed in this build. Adapter calls cannot be found by those names.
+
+Static analysis ends here. The remaining step is dynamic: trace which adapter serves the live
+`recycler_adapter_view` while Account Settings is open, and read back its class name. That single
+class name is the anchor the entry patch needs.

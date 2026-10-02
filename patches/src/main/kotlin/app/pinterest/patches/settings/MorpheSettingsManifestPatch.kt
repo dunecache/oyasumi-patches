@@ -5,37 +5,33 @@ import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
 
 /**
- * Declares the Morphe settings activity in the APK manifest.
- *
- * The activity itself does not exist yet. It will be supplied as a precompiled extension that is
- * merged into the app by the settings entry patch, and this declaration is what makes that
- * activity launchable. Writing the declaration first is deliberate: the manifest edit can be
- * validated against the decoded manifest on its own, while the activity's own code is a separate
- * piece of work that needs the same untestable extension tooling as the rest of `extensions/`.
- *
- * The component name pinned here is the one the future extension must use. `app.oyasumi.extension`
- * is the namespace the `extensions/extension` module already declares, and
- * `MorpheSettingsActivity` is the class the settings entry will start, so the declaration and the
- * eventual class agree on exactly this string.
- *
- * No theme is declared, so the activity inherits the application theme (`@7F150341` in the
- * reference). Naming a theme here would mean guessing at a style resource that may not exist in
- * this app, while the inherited theme is guaranteed to compile.
- *
- * Two things are unverified. The `document("AndroidManifest.xml")` form addresses the decoded
- * manifest through the same DOM helper the patcher documents for `res/values/strings.xml`, but no
- * example of it being used on the manifest was found in the official bundle, so the path is an
- * inference from the documented API rather than a confirmed pattern. And whether the rebuilt
- * manifest still satisfies the platform's parser after the edit cannot be checked here, because the
- * patcher build does not run in this environment.
+ * The `morphe://` URI the injected settings row opens. Clicking the row makes Pinterest fire
+ * `Uri.parse(uri)` into a generic `ACTION_VIEW` intent, which resolves to the intent-filter
+ * declared below and opens the settings activity. No Pinterest code needs to know the activity
+ * exists; the URL is the whole integration.
  */
+internal const val MORPHE_SETTINGS_URI = "morphe://settings"
+
 private const val SETTINGS_ACTIVITY = "app.oyasumi.extension.MorpheSettingsActivity"
+
+/**
+ * A framework theme, deliberately not Pinterest's.
+ *
+ * Without this the activity inherits `<application>`'s `Theme.Pinterest.NoActionbar`, which
+ * overrides framework widget styles (`android:buttonStyle` and friends) with references to
+ * design-token attributes that only exist inside Pinterest's own theme overlays. Those overlays
+ * are applied by Pinterest's activity base class, which this activity never goes through, so the
+ * first framework widget construction fails while resolving the attribute and the settings
+ * screen crashes on open. Since the settings UI uses no Pinterest resources at all, the correct
+ * fix is to not inherit the app theme in the first place.
+ */
+private const val SETTINGS_THEME = "@android:style/Theme.Material.NoActionBar"
 
 @Suppress("unused")
 val morpheSettingsManifestPatch = resourcePatch(
     name = "Morphe settings screen (manifest)",
-    description = "Register the Morphe settings activity in the manifest, so the settings " +
-        "screen is reachable on any supported version.",
+    description = "Register the Morphe settings activity in the manifest, with an intent-filter " +
+        "for the morphe:// scheme.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_PINTEREST)
@@ -48,8 +44,30 @@ val morpheSettingsManifestPatch = resourcePatch(
 
             val activity = manifest.createElement("activity").apply {
                 setAttribute("android:name", SETTINGS_ACTIVITY)
-                setAttribute("android:exported", "false")
+                setAttribute("android:exported", "true")
+                setAttribute("android:label", "Morphe")
+                setAttribute("android:theme", SETTINGS_THEME)
             }
+
+            val intentFilter = manifest.createElement("intent-filter")
+
+            val action = manifest.createElement("action")
+            action.setAttribute("android:name", "android.intent.action.VIEW")
+            intentFilter.appendChild(action)
+
+            val categoryDefault = manifest.createElement("category")
+            categoryDefault.setAttribute("android:name", "android.intent.category.DEFAULT")
+            intentFilter.appendChild(categoryDefault)
+
+            val categoryBrowsable = manifest.createElement("category")
+            categoryBrowsable.setAttribute("android:name", "android.intent.category.BROWSABLE")
+            intentFilter.appendChild(categoryBrowsable)
+
+            val data = manifest.createElement("data")
+            data.setAttribute("android:scheme", "morphe")
+            intentFilter.appendChild(data)
+
+            activity.appendChild(intentFilter)
             application.appendChild(activity)
         }
     }
