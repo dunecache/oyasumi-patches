@@ -2198,3 +2198,31 @@ Resource-ID tracing:
 Static analysis ends here. The remaining step is dynamic: trace which adapter serves the live
 `recycler_adapter_view` while Account Settings is open, and read back its class name. That single
 class name is the anchor the entry patch needs.
+
+## Patch 8 — Morphe settings entry
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- Mechanism adapted from `browzomje/browzomje-patches` (older Pinterest versions), whose comments
+  document two failures that shaped it: anchoring on a conditional section misses accounts, and
+  anchoring on the first `<init>(int)` in program order can land on a conditional spacer. Both are
+  avoided here by requiring the header class to be built at least twice.
+- `SettingsMenuListBuilderFingerprint` matches `Object invoke(Object)` with a `custom` matcher
+  requiring at least five `invoke-direct <init>` in `menu/model/`, including one `(int)` and one
+  `(String)`. No class or method name is pinned. Uses the patcher 1.13.0 `custom` API, confirmed
+  present in that version.
+- On 14.38.0 this resolves to `labs/s;.invoke`: 17 model constructions, header `f1` built 4x,
+  external-link `k1` built 1x, the only single-`String` constructor in the package.
+- Two injections: `appendMorpheSettingsEntry(list)` after the header's `List.add` (register read
+  from the matched invoke via `FiveRegisterInstruction.registerC`, no scratch register needed),
+  and `setSettingsRowClass(name)` at index 0 where `v0` is certainly free.
+- The extension holds `MorpheRuntimeNames` (resolved names + `morphe://settings`), `SettingsEntry`
+  (reflection row construction with full error handling), and a minimal `MorpheSettingsActivity`
+  (framework widgets only, `SharedPreferences`-backed placeholder toggles, `isEnabled()` helper
+  for future settings-toggled patches).
+- The label and manifest patches were rewritten to the same proven design: the label renames the
+  existing `settings_menu_teen_safety_resources` (confirmed present in 14.38.0's ARSC) across 48
+  locales instead of adding a resource, and the manifest uses a framework theme with
+  `exported=true` plus the `morphe://` intent-filter. The earlier versions (new string, inherited
+  theme, no intent-filter) would have failed repackaging or crashed on open.
+- Static validation passed, and the build compiles clean in CI. Not verified: the fingerprint
+  matches the live builder, the row appears, or the activity opens on device.

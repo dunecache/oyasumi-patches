@@ -44,11 +44,16 @@ actually wanted is known.
   - Be clear about what this does and does not do: it does **not** make a fingerprint survive an
     app update. It makes a patch able to tell which version it is running against, which is the
     prerequisite for noticing that a fingerprint has stopped matching.
-- [ ] **Morphe settings entry** — adds the "Morphe" row to Account Settings under Profile.
-  - Anchor hunt completed and recorded in `reference/NOTES.md`. `SETTINGS_MAIN` is referenced only
-    from `<clinit>` and travels as a parcel; rows are obfuscated models bound by three separate
-    callers; the two classes in the list package are empty markers. No clean seam. Needs either a
-    fingerprint on an obfuscated builder or interception at the parcel boundary.
+- [x] **Morphe settings entry** — adds the "Morphe" row to Account Settings.
+  - Written, following the mechanism proven in the `browzomje/browzomje-patches` bundle: reuse
+    Pinterest's own external-link row (single-`String` constructor) with a `morphe://settings`
+    URL, which fires `ACTION_VIEW` into the declared intent-filter. The obfuscated row class is
+    resolved from the dex at patch time, never pinned.
+  - On 14.38.0 the builder is `labs/s;.invoke` (17 rows, header `f1` built 4x, link `k1` built
+    1x), identified by shape, not name. Anchor is the most-frequent `<init>(int)`; the list
+    register comes from the first `List.add` after it.
+  - Build verified: compiles clean in CI. Not verified: fingerprint matches on device, row
+    appears, activity opens.
 - [x] **Morphe settings screen (label)** — provides the string for the "Morphe" entry.
   - Written as a `resourcePatch` appending `morphe_settings_entry` to `res/values/strings.xml`.
   - Default locale only. The all-languages walk is not written because no documented API
