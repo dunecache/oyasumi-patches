@@ -76,21 +76,6 @@ implementations because they are narrow, self-contained edits.
     "random/empty" behaviour is what was implemented.
   - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: any device run, and `extensions/` is the first extension module in this repo,
     so its wiring is unproven here.
-- [~] **Disable third party trackers** — investigated; **superseded**, see below.
-  - The SDK list in the description is wrong for this build. MoPub, Adjust, Nielsen, Segment,
-    Facebook SDK, AppLovin, Unity, IronSource, Vungle, Pangle, Mintegral, Appbrain and Appodeal
-    are all **absent**. Enumerated against the real APK rather than trusted.
-  - What is present and disableable is exactly AppsFlyer and Google Engage, both already written
-    as patches 2 and 3. Google Mobile Ads (3,337 classes) is advertising, not tracking, and belongs
-    to the "Disable ads" item.
-  - Google Measurement (Firebase Analytics, 289 classes) has **no** clean gate: Pinterest makes
-    zero calls into it, it is self-initialising through manifest components, and its uploader was
-    not identified. Not patched, deliberately, rather than writing a speculative fingerprint.
-  - Recommend folding this item into patches 2 and 3 and deleting it. Details in
-    `reference/NOTES.md`.
-  - Broad by nature. Expect to need several narrow edits, not one. Enumerate the SDKs actually
-  bundled before starting; do not assume the list in the description is complete for 14.38.0.
-
 - [x] **Disable AppsFlyer tracking** — neutralizes the AppsFlyer attribution SDK.
   - Written. Six methods on the single concrete implementation
     (`com.appsflyer.internal.AFa1tSDK`, the only class extending `AppsFlyerLib`) are replaced with
@@ -108,13 +93,14 @@ implementations because they are narrow, self-contained edits.
   - First patch in the bundle with **no** obfuscated anchor: the class is not obfuscated and the
     WorkManager job name occurs exactly once in the APK.
   - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: any device run.
-- [ ] **Disable Google Engage worker** — blocks the Google Engage worker process and its
-  background sync.
-  - `GoogleEngageWorker` extends `RxWorker`; its `doWork` is renamed to `g()` by R8 and returns an
-  obfuscated `Single`.
-  - **Known weak target.** Unlike the receiver this method has no literal and every collaborator is
-  obfuscated, so there is no clean anchor yet. Needs its own investigation; do not assume it is
-  covered by suppressing the receiver.
+- [x] **Disable Google Engage worker** — covered by the receiver patch, no separate patch written.
+  - Verified: the only scheduling site in the APK is the receiver's `onReceive` (sole
+    `const-class` for the worker). The two other references are the WorkManager `WorkerFactory`
+    rebuild (`Lpr/n9;`) and the injected holder (`Lpo0/f;`); neither schedules.
+  - With the receiver suppressed no job is ever enqueued, so the worker never runs. Writing a
+    second patch against its R8-renamed `g()` would add fragility for no effect.
+  - Edge case noted, not handled: a job enqueued *before* the user installs the patched build
+    would still run once. No action — it cannot re-enqueue itself.
 
 - [x] **Disable email confirmation dialog** — hides the "Confirm your email" prompt.
   - Written. The `android_settings_email_verification` experiment gate is forced to `false`,
