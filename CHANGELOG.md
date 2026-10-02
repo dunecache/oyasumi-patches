@@ -1,3 +1,9 @@
+## [0.6.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.2...v0.6.0-dev.3) (2026-10-02)
+
+### ✨ New Features
+
+* Pinterest settings entry, label rename, and manifest ([3c2900c](https://github.com/dunecache/oyasumi-patches/commit/3c2900c16d226e0df70f35231cd3b71bc6e4fe6b))
+
 ## [0.6.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.1...v0.6.0-dev.2) (2026-10-02)
 
 ### ✨ New Features
