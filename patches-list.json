@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.6.0-dev.1",
+  "version": "0.6.0-dev.2",
   "patches": [
     {
       "name": "Disable AppsFlyer tracking",
@@ -92,6 +92,40 @@
                 "ARMEABI_V7A": 140039,
                 "X86_64": 140039,
                 "X86": 140039
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Disable email confirmation dialog",
+      "description": "Hide the \"Confirm your email\" prompt and related screen, whether in home or settings.",
+      "default": true,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.pinterest",
+          "name": "Pinterest",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "14.38.0",
+              "versionCodes": {
+                "ARM64_V8A": 14388010,
+                "ARMEABI_V7A": 14388010,
+                "X86_64": 14388010,
+                "X86": 14388010
               },
               "isExperimental": false,
               "minSdk": null,

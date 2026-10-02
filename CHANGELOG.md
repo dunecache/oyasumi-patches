@@ -1,3 +1,9 @@
+## [0.6.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.1...v0.6.0-dev.2) (2026-10-02)
+
+### ✨ New Features
+
+* disable Pinterest email confirmation dialog ([9b27995](https://github.com/dunecache/oyasumi-patches/commit/9b279952d561a5192fd2153e71353f8b772e656b))
+
 ## [0.6.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.3...v0.6.0-dev.1) (2026-10-02)
 
 ### 🐛 Bug Fixes
