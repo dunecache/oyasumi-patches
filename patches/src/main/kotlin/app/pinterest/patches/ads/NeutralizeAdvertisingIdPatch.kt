@@ -39,10 +39,10 @@ val neutralizeAdvertisingIdPatch = bytecodePatch(
             val fetch = fingerprint.instructionMatches[0]
 
             // The register is read from the matched invoke rather than hardcoded. A 35c
-            // invoke takes its arguments in the C slots and has no receiver, so this is
-            // `getRegisterC(0)` and not `getRegisterA`, which would be the opcode nibble.
+            // invoke takes its arguments in the C through G slots and has no receiver, so a
+            // one-register call like this one keeps its argument in `getRegisterC()`.
             // Reading it means the patch still works if Pinterest reorders the locals.
-            val contextRegister = fetch.getInstruction<Instruction35c>().getRegisterC(0)
+            val contextRegister = fetch.getInstruction<Instruction35c>().getRegisterC()
 
             fingerprint.method.replaceInstruction(
                 fetch.index,
