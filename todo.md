@@ -116,8 +116,10 @@ implementations because they are narrow, self-contained edits.
   obfuscated, so there is no clean anchor yet. Needs its own investigation; do not assume it is
   covered by suppressing the receiver.
 
-- [ ] **Disable email confirmation dialog** — hides the "Confirm your email" prompt and related
-  screen, in home and in settings.
+- [x] **Disable email confirmation dialog** — hides the "Confirm your email" prompt.
+  - Written. The `android_settings_email_verification` experiment gate is forced to `false`,
+    covering all five call sites. Polarity verified at `Lvj1/u0;.F1(Z)V`.
+  - Build verified: compiles clean in CI. Not verified on device.
 
 ## Phase 2 — Ads
 

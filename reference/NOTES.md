@@ -2128,3 +2128,36 @@ time, and the list is built by obfuscated code outside the settings package thro
 adapters. The entry patch is therefore not writable as a verifiable static patch from this
 reference. The viable unblockers are dynamic analysis on a device to find the live builder, or
 intercepting at the parcel boundary where the screen location is materialised.
+
+## Email confirmation dialog
+
+The prompt is gated by an experiment flag, not by user state. `Lfq0/r0;->b()Z` reads the key
+`android_settings_email_verification`, compares it against the literal `"enabled"`, then reads
+the key again through `Lfq0/a0;->i(String)Z`, and returns the conjunction. Five call sites all
+take the prompt path on `true` and the normal path on `false`:
+
+```
+Lak1/k;.z9()Liu1/k;                                     ins 182
+Lvj1/v;.onCreateView(LayoutInflater, ViewGroup, Bundle)  ins 330
+Lvj1/v;.z9()Liu1/k;                                     ins 154
+Lvj1/u0;.F1(Z)V                                         ins 8
+Lvj1/u0;.dismiss()V                                     ins 8
+```
+
+`Lvj1/u0;.F1(Z)V` was read in full to confirm the polarity: on `false` it branches past the
+email-verification UI block straight to `super.F1(Z)V`. `has_confirmed_email`, by contrast, is a
+protobuf field on the user model (`api/model/cq`), not a gate, so it was not used.
+
+## Patch 7 — Disable email confirmation dialog
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- `EmailVerificationGateFingerprint` pins the return type `Z`, an empty parameter list, and the
+  two literals `android_settings_email_verification` and `enabled`. Neither the obfuscated
+  defining class `Lfq0/r0;` nor the method name `b` is used.
+- Verified in the reference: the key literal occurs in three code methods plus one interning
+  `<clinit>`; the other two return `Object`, so the return type isolates the target exactly.
+- The replacement is `const/4 v0, 0` plus `return v0` at index 0. Five registers with one
+  incoming parameter, so `v0` is a free local.
+- Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 26
+  files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
+- Build verified: compiles clean in CI. Not verified on device.
