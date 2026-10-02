@@ -72,7 +72,7 @@ implementations because they are narrow, self-contained edits.
     exactly one method in the reference.
   - The transcribed `ad_tracking` literal does not exist in this build; the description's
     "random/empty" behaviour is what was implemented.
-  - Not verified: the Gradle build, and `extensions/` is the first extension module in this repo,
+  - Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified: any device run, and `extensions/` is the first extension module in this repo,
     so its wiring is unproven here.
 - [~] **Disable third party trackers** — investigated; **superseded**, see below.
   - The SDK list in the description is wrong for this build. MoPub, Adjust, Nielsen, Segment,
