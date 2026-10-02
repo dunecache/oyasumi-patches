@@ -3,7 +3,7 @@ group = "app.morphe.patches"
 patches {
     about {
         name = "Oyasumi Patches"
-        description = "Patches for ADM"
+        description = "When the night settles, we patch."
         source = "git@github.com:dunecache/oyasumi-patches.git"
         author = "karim"
         contact = "https://github.com/dunecache"

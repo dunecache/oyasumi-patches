@@ -1,3 +1,104 @@
+## [0.5.3](https://github.com/dunecache/oyasumi-patches/compare/v0.5.2...v0.5.3) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* push a zero before the forced steps, not just the steps ([f51ed17](https://github.com/dunecache/oyasumi-patches/commit/f51ed1783a74db8ddf6b33b5113aeff89d6e169d))
+
+## [0.5.2](https://github.com/dunecache/oyasumi-patches/compare/v0.5.1...v0.5.2) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* stop naming classes in the preference fingerprints ([673c2ba](https://github.com/dunecache/oyasumi-patches/commit/673c2ba3e7cbcb1d97bb3f6090721c7d04849bc7))
+
+## [0.5.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.0...v0.5.1) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* force the stored Walk & Win total, not just the sensor event ([241166e](https://github.com/dunecache/oyasumi-patches/commit/241166ebed14c39c9ebe6398a73becdbbee1ca32))
+
+## [0.5.0](https://github.com/dunecache/oyasumi-patches/compare/v0.4.2...v0.5.0) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* escape the dollar in EventChannel$EventSink ([e26c147](https://github.com/dunecache/oyasumi-patches/commit/e26c14774bb80f27c5f8f79c1f7e078c7c02bad0))
+* make invoke-static and wide args arity-correct ([e6580f9](https://github.com/dunecache/oyasumi-patches/commit/e6580f97ba87acad8ec419297069243c548bb19b))
+
+### ✨ New Features
+
+* force Djezzy Walk & Win steps to 10000 ([f7cd27d](https://github.com/dunecache/oyasumi-patches/commit/f7cd27d2359eb033be869c9b7c25f8de7f32da85))
+
+## [0.4.2](https://github.com/dunecache/oyasumi-patches/compare/v0.4.1...v0.4.2) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* restore the methodCall import and check imports in CI ([9e4a792](https://github.com/dunecache/oyasumi-patches/commit/9e4a792de862ca7d1057f61a154241a85fafa0ec))
+* suppress the 1DM+ banner at its source instead of hiding a view ([e03c8b7](https://github.com/dunecache/oyasumi-patches/commit/e03c8b7e3f243727ce41134e4e71b50573c9d377)), closes [#43A047](https://github.com/dunecache/oyasumi-patches/issues/43A047)
+
+## [0.4.1](https://github.com/dunecache/oyasumi-patches/compare/v0.4.0...v0.4.1) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* declare the real return type of Timer.schedule in the upsell fingerprint ([7e8fbb1](https://github.com/dunecache/oyasumi-patches/commit/7e8fbb1caa3fefb77368efb1bf57dd5be6c23457))
+
+## [0.4.0](https://github.com/dunecache/oyasumi-patches/compare/v0.3.5...v0.4.0) (2026-09-30)
+
+### ✨ New Features
+
+* hide the 1DM+ upsell strip on the 1DM home screen ([e624526](https://github.com/dunecache/oyasumi-patches/commit/e6245266ae0e5448bab815d1ca5aad08a0429e5c))
+
+## [0.3.5](https://github.com/dunecache/oyasumi-patches/compare/v0.3.4...v0.3.5) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* pass the visibility int in the inserted setVisibility call ([1b6e172](https://github.com/dunecache/oyasumi-patches/commit/1b6e17253cbf9a8b2c80cbdd11323095ae5c5cd6))
+
+## [0.3.4](https://github.com/dunecache/oyasumi-patches/compare/v0.3.3...v0.3.4) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* remove the silenced invoke without deleting what follows it ([1faed79](https://github.com/dunecache/oyasumi-patches/commit/1faed79d9fbd4390269db83c11e12c09bc4ce432))
+
+## [0.3.3](https://github.com/dunecache/oyasumi-patches/compare/v0.3.2...v0.3.3) (2026-09-30)
+
+### 🐛 Bug Fixes
+
+* stop the thread ceiling edit deleting the instruction after it ([0356b17](https://github.com/dunecache/oyasumi-patches/commit/0356b176ae04032b78856115919f097289b7fc10))
+
+## [0.3.2](https://github.com/dunecache/oyasumi-patches/compare/v0.3.1...v0.3.2) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* give the interpolated invoke registers their v prefix ([86e5755](https://github.com/dunecache/oyasumi-patches/commit/86e575584aedb6cfb36b8c2a1f19cb384ca6da01))
+
+## [0.3.1](https://github.com/dunecache/oyasumi-patches/compare/v0.3.0...v0.3.1) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* brace the register list in the 1DM inserted invokes ([bff38e9](https://github.com/dunecache/oyasumi-patches/commit/bff38e96bd9956f235ff6b6e09b94ee7d9618f4b))
+
+## [0.3.0](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1...v0.3.0) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* escape the click listener type in the 1DM banner fingerprint ([3f3d261](https://github.com/dunecache/oyasumi-patches/commit/3f3d2616be1388d204537eb7ed3b2eb18b79b2a0))
+
+### ✨ New Features
+
+* add the 1DM 18.2 home screen ads patch ([0ad111b](https://github.com/dunecache/oyasumi-patches/commit/0ad111b68177914352c1ac1a572703a358e0b3d8))
+
+## [0.2.1](https://github.com/dunecache/oyasumi-patches/compare/v0.2.0...v0.2.1) (2026-09-29)
+
+### 🐛 Bug Fixes
+
+* declare ADM 14.0.39 as a supported target ([8d2c0c7](https://github.com/dunecache/oyasumi-patches/commit/8d2c0c7d66d81c4c6a103029bdb41bbeadfb43a7))
+* declare only ADM 14.0.39 as a supported target ([40307b4](https://github.com/dunecache/oyasumi-patches/commit/40307b49002e88e11fbec914be1ca1a3a1e8a3f8))
+* read instruction registers from the dexlib2 instruction interfaces ([7e5ae11](https://github.com/dunecache/oyasumi-patches/commit/7e5ae11bc636ce2f4b87c8ae19a96bfefd26d0fb))
+* retarget the ads patch to ADM 14.0.39 ([062d02e](https://github.com/dunecache/oyasumi-patches/commit/062d02e7b0d6aef1243a66ae7e2ba51b6f098895))
+* retarget the connection limits patch to ADM 14.0.39 ([a90ac32](https://github.com/dunecache/oyasumi-patches/commit/a90ac32d3971ee84743240c1f83e0865380cae96))
+* retarget the rating prompt patch to ADM 14.0.39 ([cb901d8](https://github.com/dunecache/oyasumi-patches/commit/cb901d8145a4a8e35a898915dd73a21f86f26730))
+* use register B for the field store target ([3ec65bf](https://github.com/dunecache/oyasumi-patches/commit/3ec65bf398d4e8966b49f5e0541b9d19b9884432))
+* use smali's colon in the field reference ([b7b336e](https://github.com/dunecache/oyasumi-patches/commit/b7b336ed5bdb21e5066db18f4cd5edc5c5de43e3))
+
 ## [0.2.1-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1-dev.2...v0.2.1-dev.3) (2026-09-29)
 
 ### 🐛 Bug Fixes

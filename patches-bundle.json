@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-09-29T16:30:26",
-  "description": "## [0.2.1-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.2.1-dev.2...v0.2.1-dev.3) (2026-09-29)\n\n### 🐛 Bug Fixes\n\n* declare only ADM 14.0.39 as a supported target ([40307b4](https://github.com/dunecache/oyasumi-patches/commit/40307b49002e88e11fbec914be1ca1a3a1e8a3f8))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.2.1-dev.3/patches-0.2.1-dev.3.mpp",
+  "created_at": "2026-09-30T21:29:52",
+  "description": "## [0.5.3](https://github.com/dunecache/oyasumi-patches/compare/v0.5.2...v0.5.3) (2026-09-30)\n\n### 🐛 Bug Fixes\n\n* push a zero before the forced steps, not just the steps ([f51ed17](https://github.com/dunecache/oyasumi-patches/commit/f51ed1783a74db8ddf6b33b5113aeff89d6e169d))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.5.3/patches-0.5.3.mpp",
   "signature_download_url": "",
-  "version": "0.2.1-dev.3"
+  "version": "0.5.3"
 }
