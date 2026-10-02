@@ -16,7 +16,7 @@ import app.pinterest.patches.shared.versionCheckPatch
  *
  * First, only the default `res/values/strings.xml` is touched. The description this patch is
  * transcribed from promises the label "across all languages", which in the official bundle is
- * done by walking `res` for every `values-*/strings.xml` and rewriting each. Enumerating the
+ * done by walking `res` for every `values-<locale>/strings.xml` and rewriting each. Enumerating the
  * decoded resource directory from inside a patch has no documented API — `get(String, Boolean)`
  * addresses one file by name, and `listApkEntries(String)` lists the *input* APK, not the decoded
  * working tree — so the multi-locale expansion is not written here. It needs either a confirmed

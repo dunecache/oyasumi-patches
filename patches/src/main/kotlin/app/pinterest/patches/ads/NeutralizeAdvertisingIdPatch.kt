@@ -4,7 +4,7 @@ import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.bytecodePatch
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
-import com.android.tools.smali.dexlib2.iface.instruction.ThirtyFiveCInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.formats.Instruction35c
 
 private const val EXTENSION_CLASS = "Lapp/oyasumi/extension/NeutralizeAdvertisingIdPatch;"
 
@@ -42,7 +42,7 @@ val neutralizeAdvertisingIdPatch = bytecodePatch(
             // invoke takes its arguments in the C slots and has no receiver, so this is
             // `getRegisterC(0)` and not `getRegisterA`, which would be the opcode nibble.
             // Reading it means the patch still works if Pinterest reorders the locals.
-            val contextRegister = fetch.getInstruction<ThirtyFiveCInstruction>().getRegisterC(0)
+            val contextRegister = fetch.getInstruction<Instruction35c>().getRegisterC(0)
 
             fingerprint.method.replaceInstruction(
                 fetch.index,
