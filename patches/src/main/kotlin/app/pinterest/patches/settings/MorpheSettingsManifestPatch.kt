@@ -15,7 +15,8 @@ internal const val MORPHE_SETTINGS_URI = "morphe://settings"
 private const val SETTINGS_ACTIVITY = "app.oyasumi.extension.MorpheSettingsActivity"
 
 /**
- * A framework theme, deliberately not Pinterest's.
+ * A Material 3 theme from the framework-independent Material library, deliberately not
+ * Pinterest's.
  *
  * Without this the activity inherits `<application>`'s `Theme.Pinterest.NoActionbar`, which
  * overrides framework widget styles (`android:buttonStyle` and friends) with references to
@@ -24,8 +25,11 @@ private const val SETTINGS_ACTIVITY = "app.oyasumi.extension.MorpheSettingsActiv
  * first framework widget construction fails while resolving the attribute and the settings
  * screen crashes on open. Since the settings UI uses no Pinterest resources at all, the correct
  * fix is to not inherit the app theme in the first place.
+ *
+ * DayNight (not Dark or Light) so the screen follows the system setting automatically, like the
+ * rest of the app. Verified present in the reference `resources.arsc` as `0x7F1502FD`.
  */
-private const val SETTINGS_THEME = "@android:style/Theme.Material.NoActionBar"
+private const val SETTINGS_THEME = "@style/Theme.Material3.DayNight.NoActionBar"
 
 @Suppress("unused")
 val morpheSettingsManifestPatch = resourcePatch(
