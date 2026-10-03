@@ -1,3 +1,9 @@
+## [0.6.0-dev.5](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.4...v0.6.0-dev.5) (2026-10-03)
+
+### ✨ New Features
+
+* Material 3 settings screen with DayNight theme ([8f02975](https://github.com/dunecache/oyasumi-patches/commit/8f02975a6756e0da2c767e9b91c758f8efa5253b))
+
 ## [0.6.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.3...v0.6.0-dev.4) (2026-10-03)
 
 ### 🐛 Bug Fixes
