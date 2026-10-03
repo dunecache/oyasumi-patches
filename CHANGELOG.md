@@ -1,3 +1,9 @@
+## [0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.7...v0.6.0-dev.8) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* push the pair on every step, and stop feeding the detection channel ([7ae7b9c](https://github.com/dunecache/oyasumi-patches/commit/7ae7b9c94f7ac39f1dcb66d7b535bf15d034441d))
+
 ## [0.6.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.6...v0.6.0-dev.7) (2026-10-03)
 
 ### 🐛 Bug Fixes

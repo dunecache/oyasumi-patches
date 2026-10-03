@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-03T01:08:10",
-  "description": "## [0.6.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.6...v0.6.0-dev.7) (2026-10-03)\n\n### 🐛 Bug Fixes\n\n* settings header below status bar with version subtitle ([d04e89c](https://github.com/dunecache/oyasumi-patches/commit/d04e89ced84840b59181e0a02a8593db0639ecfd))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.7/patches-0.6.0-dev.7.mpp",
+  "created_at": "2026-10-03T10:55:25",
+  "description": "## [0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.7...v0.6.0-dev.8) (2026-10-03)\n\n### 🐛 Bug Fixes\n\n* push the pair on every step, and stop feeding the detection channel ([7ae7b9c](https://github.com/dunecache/oyasumi-patches/commit/7ae7b9c94f7ac39f1dcb66d7b535bf15d034441d))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.8/patches-0.6.0-dev.8.mpp",
   "signature_download_url": "",
-  "version": "0.6.0-dev.7"
+  "version": "0.6.0-dev.8"
 }

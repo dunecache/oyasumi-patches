@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.7](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.7)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;12 patches total
+> **[v0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.8)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;12 patches total
 <details open>
 <summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;7 patches</summary>
 <br>
@@ -126,7 +126,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Report 10,000 steps to Djezzy's Walk & Win campaign, both on every step-counter event and once when the step stream is first subscribed. The subscribe push is a zero followed by 10,000, because one value cannot both open the counter's accumulation window and jump through it. |  |
+| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Report 10,000 steps to Djezzy's Walk & Win campaign, both on every step-counter event and once when the step stream is first subscribed. Each push is a zero followed by 10,000, because one value cannot both open the counter's accumulation window and jump through it. Only the step-count channel is touched. |  |
 
 </details>
 
