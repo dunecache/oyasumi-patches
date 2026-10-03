@@ -174,7 +174,7 @@ All of these are settings-toggled, so all depend on Phase 0.
   - Written. Same seam, same shape and same reasoning as the search patch, keyed on
     `Lde0/a;->NOTIFICATIONS`. Both patches insert into `Q1` and compose, since each block uses
     only `v0`/`v1` and falls through to its own label.
-  - Build verified in CI. Not verified on device.
+  - CI: `:patches:compileKotlin` and `Verify project compiles` both green. Not verified on device.
 - [x] **Hide Search nav button** — hides the search navigation button.
   - Written. Hides the tab's view in `FloatingBottomNavBar.Q1`; the tab is still created.
   - **Skipping the tab instead throws on every app start.** The tab index is a `forEachIndexed`
@@ -185,7 +185,7 @@ All of these are settings-toggled, so all depend on Phase 0.
     `GONE` child of a horizontal `LinearLayout` takes no space so the others still reflow.
   - `const/16` for the visibility, not `const/4`: `const/4 v0, 0x8` assembles silently but
     decodes as `-8`, giving a blank gap rather than a removed button.
-  - Build verified in CI. Not verified: fingerprint matches, button disappears, tabs reflow.
+  - CI: `:patches:compileKotlin` and `Verify project compiles` both green. Not verified: fingerprint matches, button disappears, tabs reflow.
 - [ ] **Hide greeting header buttons** — hides the search and camera buttons in the home feed
   header.
 - [x] **Hide comments** — hides the comments button on a pin.
@@ -196,7 +196,7 @@ All of these are settings-toggled, so all depend on Phase 0.
     legacy/unified experiment literal, and `CommentsLibraryLocation` is referenced only by its own
     `<clinit>` and parcel plumbing.
   - The dump confirmed the only comments affordance on a pin closeup is the action-module button.
-  - Build verified in CI. Not verified on device.
+  - CI: `:patches:compileKotlin` and `Verify project compiles` both green. Not verified on device.
 - [ ] **Hide search history** — hides the "Recent searches" section on the search screen and
   clears the search terms Pinterest stores about the user's view.
   - Two distinct effects: a view change and a data-clearing action. Decide whether the clear is
