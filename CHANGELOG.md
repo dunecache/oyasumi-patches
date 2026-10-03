@@ -1,3 +1,9 @@
+## [0.6.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.9...v0.6.0-dev.10) (2026-10-03)
+
+### ✨ New Features
+
+* force the stored Walk & Win total so the counter needs no walk ([f167991](https://github.com/dunecache/oyasumi-patches/commit/f167991e88a9b00db74b1bb8f1bfb992323e06d1))
+
 ## [0.6.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.8...v0.6.0-dev.9) (2026-10-03)
 
 ### ✨ New Features

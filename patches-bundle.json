@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-03T10:57:37",
-  "description": "## [0.6.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.8...v0.6.0-dev.9) (2026-10-03)\n\n### ✨ New Features\n\n* hide Pinterest search nav button ([b8e6f42](https://github.com/dunecache/oyasumi-patches/commit/b8e6f42ecc9213ff64915c6d6f16ecddc9365c58))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.9/patches-0.6.0-dev.9.mpp",
+  "created_at": "2026-10-03T11:11:14",
+  "description": "## [0.6.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.9...v0.6.0-dev.10) (2026-10-03)\n\n### ✨ New Features\n\n* force the stored Walk & Win total so the counter needs no walk ([f167991](https://github.com/dunecache/oyasumi-patches/commit/f167991e88a9b00db74b1bb8f1bfb992323e06d1))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.10/patches-0.6.0-dev.10.mpp",
   "signature_download_url": "",
-  "version": "0.6.0-dev.9"
+  "version": "0.6.0-dev.10"
 }
