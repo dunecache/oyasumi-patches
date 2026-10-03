@@ -1,3 +1,9 @@
+## [0.6.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.10...v0.6.0-dev.11) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* drop the pedometer hooks that crashed plugin registration ([b7e8272](https://github.com/dunecache/oyasumi-patches/commit/b7e8272abc5faccbe453ff6c6e74db3db853df52))
+
 ## [0.6.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.9...v0.6.0-dev.10) (2026-10-03)
 
 ### ✨ New Features

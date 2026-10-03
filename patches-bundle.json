@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-03T11:11:14",
-  "description": "## [0.6.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.9...v0.6.0-dev.10) (2026-10-03)\n\n### ✨ New Features\n\n* force the stored Walk & Win total so the counter needs no walk ([f167991](https://github.com/dunecache/oyasumi-patches/commit/f167991e88a9b00db74b1bb8f1bfb992323e06d1))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.10/patches-0.6.0-dev.10.mpp",
+  "created_at": "2026-10-03T11:37:20",
+  "description": "## [0.6.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.10...v0.6.0-dev.11) (2026-10-03)\n\n### 🐛 Bug Fixes\n\n* drop the pedometer hooks that crashed plugin registration ([b7e8272](https://github.com/dunecache/oyasumi-patches/commit/b7e8272abc5faccbe453ff6c6e74db3db853df52))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.11/patches-0.6.0-dev.11.mpp",
   "signature_download_url": "",
-  "version": "0.6.0-dev.10"
+  "version": "0.6.0-dev.11"
 }
