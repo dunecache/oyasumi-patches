@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.6.0-dev.8",
+  "version": "0.6.0-dev.9",
   "patches": [
     {
       "name": "Disable AppsFlyer tracking",
@@ -138,7 +138,7 @@
     },
     {
       "name": "Disable home screen ads",
-      "description": "Keep 1DM's home screen banner from loading, rotating, or rendering, including the built-in \"install 1DM+\" banner ad.",
+      "description": "Keep the home screen banner from loading, rotating, or rendering. The banner in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo banner, including the built-in \"install 1DM+\" ad, is suppressed at its source.",
       "default": true,
       "category": null,
       "dependencies": [],
@@ -222,6 +222,40 @@
                 "ARMEABI_V7A": 40076,
                 "X86_64": 40076,
                 "X86": 40076
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Hide Search nav button",
+      "description": "Hide the search button in the bottom navigation bar.",
+      "default": false,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.pinterest",
+          "name": "Pinterest",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "14.38.0",
+              "versionCodes": {
+                "ARM64_V8A": 14388010,
+                "ARMEABI_V7A": 14388010,
+                "X86_64": 14388010,
+                "X86": 14388010
               },
               "isExperimental": false,
               "minSdk": null,

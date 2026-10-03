@@ -61,9 +61,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.8)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;12 patches total
+> **[v0.6.0-dev.9](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.9)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;13 patches total
 <details open>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;7 patches</summary>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;8 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -76,6 +76,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable AppsFlyer tracking](#disable-appsflyer-tracking) | Neutralize the AppsFlyer attribution SDK, so no state is returned to the external data tracker. |  |
 | [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
 | [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
+| [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |
 | [Morphe settings entry](#morphe-settings-entry) | Add the "Morphe" entry to the Account Settings list, opening the Morphe settings screen. |  |
 | [Morphe settings screen (label)](#morphe-settings-screen-label) | Rename the reused string resource to "Morphe" in every shipped language, so the settings entry is identifiable. |  |
 | [Morphe settings screen (manifest)](#morphe-settings-screen-manifest) | Register the Morphe settings activity in the manifest, with an intent-filter for the morphe:// scheme. |  |
@@ -111,7 +112,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering, including the built-in "install 1DM+" banner ad. |  |
+| [Disable home screen ads](#disable-home-screen-ads) | Keep the home screen banner from loading, rotating, or rendering. The banner in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo banner, including the built-in "install 1DM+" ad, is suppressed at its source. |  |
 
 </details>
 

@@ -1,3 +1,9 @@
+## [0.6.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.8...v0.6.0-dev.9) (2026-10-03)
+
+### ✨ New Features
+
+* hide Pinterest search nav button ([b8e6f42](https://github.com/dunecache/oyasumi-patches/commit/b8e6f42ecc9213ff64915c6d6f16ecddc9365c58))
+
 ## [0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.7...v0.6.0-dev.8) (2026-10-03)
 
 ### 🐛 Bug Fixes
