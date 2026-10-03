@@ -1,3 +1,9 @@
+## [0.6.0-dev.6](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.5...v0.6.0-dev.6) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* use only Material methods present in Pinterest's stripped copy ([8902a94](https://github.com/dunecache/oyasumi-patches/commit/8902a94a3596fccdcb3dfa79bcf7f6c80e518cab))
+
 ## [0.6.0-dev.5](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.4...v0.6.0-dev.5) (2026-10-03)
 
 ### ✨ New Features
