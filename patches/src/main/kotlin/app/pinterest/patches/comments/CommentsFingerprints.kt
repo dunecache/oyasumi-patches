@@ -40,6 +40,7 @@ object CommentsButtonFingerprint : Fingerprint(
     definingClass = "Lcom/pinterest/activity/pin/view/modules/LegacyPromotedCloseupActionButtonModule;",
     name = "createView",
     returnType = "V",
+    parameters = listOf(),
     filters = listOf(
         fieldAccess(name = "action_module_comment_icon", opcode = Opcode.SGET),
         fieldAccess(name = "action_buttons_center", opcode = Opcode.SGET)
