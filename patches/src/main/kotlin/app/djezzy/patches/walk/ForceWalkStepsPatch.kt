@@ -26,13 +26,21 @@ private const val LOG_TAG = "djezzy-waw"
  */
 private const val STEP_COUNT_CHANNEL = "StepCount"
 
+/**
+ * The pref the running total lives under. Read straight out of `libapp.so` as a plain
+ * string, next to `walk_and_win_last_pedometer_value`.
+ */
+private const val CURRENT_STEPS_PREF = "walk_and_win_current_steps"
+
 @Suppress("unused")
 val forceWalkStepsPatch = bytecodePatch(
     name = "Force Walk & Win steps to 10000",
     description = "Report 10,000 steps to Djezzy's Walk & Win campaign, both on every " +
         "step-counter event and once when the step stream is first subscribed. Each push " +
         "is a zero followed by 10,000, because one value cannot both open the counter's " +
-        "accumulation window and jump through it. Only the step-count channel is touched.",
+        "accumulation window and jump through it. Only the step-count channel is touched, " +
+        "and the stored total itself is forced to read back as 10,000 so the counter needs " +
+        "no walk at all.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_DJEZZY)
@@ -179,6 +187,93 @@ val forceWalkStepsPatch = bytecodePatch(
                     // instructions, so both paths continue correctly.
                     ":djezzy_waw_not_step_count"
             )
+        }
+
+        // The stream cannot do this on its own, and the device run is what proved it.
+        //
+        // Everything on the Walk & Win card is a lifetime accumulator — steps, distance,
+        // calories and the `63h 34m` reading all sat frozen while the stream was visibly
+        // delivering values, and none of them moved across Start Walk. A stream event
+        // therefore only reaches storage while a session is running, and the number the
+        // card renders is read back out of storage. Delivering 10,000 at rest means
+        // forcing the stored total, because no event delivered before Start Walk is ever
+        // counted.
+        //
+        // Both backends are hooked because which one Dart calls is not knowable from here,
+        // and both log *unconditionally*. The previous attempt logged only when the key
+        // matched, which left "the hook never applied" indistinguishable from "the hook
+        // applied and the app never reads that key through it" — two very different bugs
+        // that looked identical in the one signal available.
+        //
+        // Neither is allowed to fail the patch. A fingerprint miss throws out of `execute`,
+        // and an unhandled one takes the pedometer hooks above down with it, which is
+        // exactly how an optional refinement once stopped the app from patching at all.
+
+        // Legacy backend. `LegacySharedPreferencesPlugin` has no per-type getter at all —
+        // its only reads are `getAllPrefs`, `getAll` and `getKeys`, and all of them funnel
+        // through `getAllPrefs`, which hands Dart the whole map and lets Dart pick the key.
+        // So the map is amended on the way out rather than a getter being hooked.
+        //
+        // `.registers 8` with `ins 3` puts the parameters in `v5`-`v7` and leaves
+        // `v0`-`v4` as locals, all dead by the return. `v1` is the map: the `new-instance`
+        // the builder allocates is the receiver of the loop's own `put`, and the same
+        // register is what the method returns. `v2` and `v3` are free for scratch.
+        runCatching {
+            LegacyPreferenceMapFingerprint.let { fingerprint ->
+                val mapReturn = fingerprint.instructionMatches[3]
+
+                fingerprint.method.addInstructions(
+                    mapReturn.index,
+                    "const-string v2, \"$LOG_TAG\"\n" +
+                        "const-string v3, \"prefs legacy map forced\"\n" +
+                        "invoke-static {v2, v3}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                        "const-string v2, \"$CURRENT_STEPS_PREF\"\n" +
+                        "const/16 v3, $FORCED_STEPS\n" +
+                        "invoke-static {v3}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
+                        "move-result-object v3\n" +
+                        // `invoke-interface` rather than `invoke-virtual` so the register is
+                        // accepted on its declared `Map` type rather than on whichever
+                        // concrete map the builder instantiated.
+                        "invoke-interface {v1, v2, v3}, Ljava/util/Map;->put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"
+                )
+            }
+        }.onFailure {
+            println("$LOG_TAG: legacy preference hook skipped, ${it.message}")
+        }
+
+        // Async backend. `.registers 5` with `ins 3` puts the parameters in `v2`-`v4` in
+        // declaration order: `v2` is `this`, `v3` is the key and `v4` is the options
+        // object. `v0` and `v1` are locals, and both are free.
+        //
+        // The trace line is built before the key comparison so that it prints for every
+        // call. If it never appears, the hook did not apply; if it appears without ever
+        // naming this pref, the app does not read that key through this backend.
+        runCatching {
+            AsyncIntPreferenceFingerprint.let { fingerprint ->
+                fingerprint.method.addInstructions(
+                    0,
+                    "const-string v0, \"$LOG_TAG\"\n" +
+                        "const-string v1, \"prefs async getInt \"\n" +
+                        "invoke-virtual {v1, v3}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;\n" +
+                        "move-result-object v1\n" +
+                        "invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I\n" +
+                        "const-string v0, \"$CURRENT_STEPS_PREF\"\n" +
+                        // `equals` has our own constant as the receiver so a null key
+                        // cannot throw before the branch is reached.
+                        "invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n" +
+                        "move-result v0\n" +
+                        "if-eqz v0, :djezzy_waw_prefs_passthrough\n" +
+                        // A wide literal: the Pigeon API boxes into `Long`, so 10000 is a
+                        // `long` here and the constant occupies `v0` and `v1` together.
+                        "const-wide/16 v0, $FORCED_STEPS\n" +
+                        "invoke-static {v0, v1}, Ljava/lang/Long;->valueOf(J)Ljava/lang/Long;\n" +
+                        "move-result-object v0\n" +
+                        "return-object v0\n" +
+                        ":djezzy_waw_prefs_passthrough"
+                )
+            }
+        }.onFailure {
+            println("$LOG_TAG: async preference hook skipped, ${it.message}")
         }
     }
 }

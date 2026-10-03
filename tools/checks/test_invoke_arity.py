@@ -114,6 +114,47 @@ DOLLAR_CASES: list[tuple[str, str, bool]] = [
 ]
 
 
+
+#: A `//` comment between a literal and the `+` continuing the chain must not stop the
+#: fold. It did once: every literal after the comment was dropped, so a trailing smali
+#: label -- the operand of a branch -- went unchecked while still being emitted. These rows
+#: put a bad invoke *after* a comment, so a fold that stops early reports no problem.
+COMMENT_CASES: list[tuple[str, str, bool]] = [
+    (
+        "bad invoke after an interposed comment is caught",
+        "invoke-static {v0, v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;",
+        True,
+    ),
+    (
+        "correct invoke after an interposed comment is not flagged",
+        "invoke-static {v0}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;",
+        False,
+    ),
+]
+
+
+def comment_flagged(instruction: str) -> bool:
+    src = (
+        'val p = bytecodePatch(n = "x") {\n'
+        "    execute {\n"
+        "        addInstructions(0,\n"
+        '            "const/4 v0, 0\\n" +\n'
+        "            // a comment the compiler ignores\n"
+        f'            "{instruction}"\n'
+        "        )\n"
+        "    }\n"
+        "}\n"
+    )
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        path.write_text(src)
+        return bool(checks.check_invoke_arity(path))
+    except Exception:
+        return False
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def main() -> int:
     failures = 0
     for label, instruction, expected in CASES:
@@ -122,6 +163,12 @@ def main() -> int:
         failures += not ok
         print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     total = len(CASES)
+    for label, instruction, expected in COMMENT_CASES:
+        got = comment_flagged(instruction)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     for label, src, expected in DOLLAR_CASES:
         got = dollar_flagged(src)
         ok = got == expected

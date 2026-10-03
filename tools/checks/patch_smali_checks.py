@@ -81,11 +81,15 @@ def string_concat_in(src: str) -> list[tuple[int, str]]:
     list matters.
     """
     out: list[tuple[int, str]] = []
-    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', src):
-        pass
-    # fold adjacent "..." + "..." chains
-    for m in re.finditer(r'"((?:[^"\\\n]|\\.)*)"\s*(?:\+\s*\n?\s*"((?:[^"\\\n]|\\.)*)")+', src):
-        parts = re.findall(r'"((?:[^"\\\n]|\\.)*)"', m.group(0))
+    lit = r'"((?:[^"\\\n]|\\.)*)"'
+    # Between two concatenated literals the compiler allows whitespace and `//` comment
+    # lines. A regex that omits comments stops folding at the first one and silently drops
+    # every literal after it -- which is how a trailing smali label, the operand of a
+    # branch, vanishes from the check while still being emitted. The `+` stays mandatory:
+    # making it optional lets the pattern run across unrelated literals.
+    between = r"(?:\s|//[^\n]*\n)*"
+    for m in re.finditer(lit + "(?:" + between + r"\+" + between + lit + ")+", src):
+        parts = re.findall(lit, m.group(0))
         if len(parts) > 1:
             out.append((m.start(), "".join(unescape(p) for p in parts)))
     return out
