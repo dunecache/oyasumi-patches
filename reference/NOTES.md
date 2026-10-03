@@ -411,6 +411,56 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 - Own services: `DownloadService`, `MediaScannerService`, `CheckAppVersion`, `IDMFirebaseMessagingService`, `TempFilesDeletionService`, `LogcatCaptureService`, and four quick-settings tile services.
 - Bundled mediation stack: AdMob, AppLovin MAX, Unity Ads, IronSource, Chartboost, Vungle, Pangle, BidMachine, Moloco, MobileFuse, Smaato, InMobi, Bigo, MyTarget, PubMatic, Fyber, Verve, Mintegral, plus the Amazon APS banner (`com.amazon.device.ads`).
 - The reference is user-supplied and has not been independently verified as the original publisher build.
+- **A second, complete 18.2 artifact exists, and it is what everything below was re-derived
+  from**: the installed app's own `base.apk`, at
+  `/data/app/~~WHrUNUEWf-QcrR98fn1o6g==/idm.internet.download.manager-LYZjVSMnmWC9nmwe13xo4Q==/base.apk`.
+  65,504,886 bytes, mode 0644, a single unsplit APK carrying all eleven DEX files
+  (`classes.dex` through `classes11.dex`) and the whole of `res/`. Its manifest metadata is
+  identical to the APKM's: `idm.internet.download.manager`, `18.2`, `30249`, minSdk `24`,
+  targetSdk `34`, application class `acr.browser.lightning.app.BrowserApp`. This closes the
+  "a complete `base.apk` is needed" gap recorded under unverified risks.
+- **It is a different build of 18.2, not the same artifact.** Re-inflating the APKM's damaged
+  `base.apk` up to the failure point and walking its local file headers shows most of its DEX
+  files are byte-identical to this APK's under a renumbering, verified by SHA-256:
+
+  | APKM entry | this APK | note |
+  | --- | --- | --- |
+  | `classes10.dex` | `classes3.dex` | identical |
+  | `classes2.dex` | `classes4.dex` | identical |
+  | `classes3.dex` | `classes5.dex` | identical |
+  | `classes4.dex` | `classes6.dex` | identical |
+  | `classes5.dex` | `classes7.dex` | identical |
+  | `classes6.dex` | `classes8.dex` | identical |
+  | `classes7.dex` | `classes9.dex` | identical |
+  | `classes8.dex` | `classes10.dex` | same 8,706,412 bytes; the APKM copy is truncated by the damage |
+  | `classes9.dex` | `classes11.dex` | never reached by the recovery; sizes agree |
+  | `classes.dex` | `classes2.dex` | **same 10,713,976 bytes, different content** |
+
+  Only the Lightning core differs: `BannerManager.load(Z)V` has 37 instructions in the APKM
+  build and 39 in this one, and `BannerView.setAd` has 210 against 213. So these are two
+  releases of 18.2 from the same publisher, not one release in two containers.
+- Consequence for this patch: the three fingerprints that already existed were derived from
+  the APKM build and were re-resolved against the on-device build. All four match, which is
+  the evidence that they are not over-fitted to one build's instruction layout. Anything
+  under `Lidm/`, and every layout, can only ever be checked against the on-device build,
+  because the APKM's copies are exactly the DEX files its damaged download lost.
+
+## Where the app's own code lives (on-device build)
+
+The damaged-download inventory below is superseded for anything under `Lidm/`. On the
+on-device build the split is:
+
+| DEX | bytes | classes | contents |
+| --- | --- | --- | --- |
+| `classes.dex` | 142,764 | 3 | `R` and `BuildConfig` |
+| `classes2.dex` | 10,713,976 | 9,198 | `Lacr/browser/**` (914), `androidx.compose/**` (5,195) |
+| `classes11.dex` | 7,557,860 | 6,732 | `Lidm/internet/**` (669), `io.bidmachine/**` (3,357) |
+
+So `Lidm/internet/download/manager/BannerView` and `manager/NewBannerView` are in
+`classes11.dex`, `Lacr/browser/lightning/view/BannerManager` and `BannerView` are in
+`classes2.dex`, and the Appodeal SDK itself is `classes5.dex` and `classes6.dex`. A scan of
+app-owned classes in `classes.dex`, `classes2.dex` and `classes11.dex` is enough to cover all
+of the app's own code.
 
 ## The reference file is damaged, and what that allowed
 
@@ -464,19 +514,134 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 
 - `GONE` is `8`, which `const/4` cannot encode, so the app itself loads it with `const/16 v2, 8` (index 22). A patch that writes the constant must use `const/16` too.
 
+## The banner on the home screen is Appodeal's, not 1DM's (v0.6.0-dev.8)
+
+This is the finding that explains why suppressing `BannerManager` and the `Li/ru;` promo left
+a banner on screen. It is not a fourth banner class that was missed; it is a different ad
+system entirely, and it is the one 1DM actually renders.
+
+Evidence, in the order it was obtained:
+
+1. A uiautomator dump of the installed build (`/storage/emulated/0/1dm_main_hierarchy.xml`)
+   shows the footer of the download list as
+   `LinearLayout id=footer` → `FrameLayout id=appodealBannerView` → `RelativeLayout` →
+   `RelativeLayout` → `WebView`, sized `[0,2170][1080,2308]`. The leaf is a `WebView`, which is
+   how the Appodeal SDK renders a banner. Nothing in the dump is a `BannerView`, an `ImageView`
+   icon, a `Button` or an `AmazonService` view, so none of the four app-owned banner classes
+   is on screen.
+2. `res/layout/activity_main_bottom.xml` decodes to a `com.appodeal.ads.BannerView` as the last
+   child of the drawer's content column: `android:id="@+id/appodealBannerView"`,
+   `android:visibility="gone"`, `android:layout_width="match_parent"`,
+   `android:layout_height="wrap_content"`, `android:layout_gravity="top|left"`. Because it is
+   `wrap_content` and `gone` in the layout, never loading it removes the strip rather than
+   leaving a gap -- which is why the fix does not need to resize anything.
+3. The app hands that exact view to the SDK by id: `Lidm/internet/download/manager/e;-><init>()V`
+   loads `const v0, 2131362191` and calls `Appodeal.setBannerViewId(I)V`, and
+   `2131362191 == 0x7f0a018f` is the `appodealBannerView` entry in `resources.arsc`. This is
+   Appodeal's "banner view id" mode, where the SDK finds the view in each activity's layout
+   itself and shows the banner as soon as one is cached.
+4. `Appodeal`'s own constants, read out of `classes5.dex`: `BANNER = 4`, `BANNER_VIEW = 64`,
+   `INTERSTITIAL = 3`, `REWARDED_VIDEO = 128`, `ALL = 4095`. In the same constructor,
+   `const/4 v3, 4` and `const/4 v4, 7` are `BANNER` and `BANNER|INTERSTITIAL`, and the
+   selected mask is passed to `Appodeal.cache(Activity, I)`. So the banner is requested from
+   `cache` and nowhere else.
+
+A scan of every app-owned method in `classes.dex`, `classes2.dex` and `classes11.dex` for the
+string `Lcom/appodeal/ads/` returns exactly five methods, and only the constructor touches the
+banner:
+
+| method | Appodeal calls | role |
+| --- | --- | --- |
+| `Lidm/internet/download/manager/e;-><init>()V` | `setBannerViewId`, `initialize`, `setBannerCallbacks`, `cache`, `disableNetwork`, `muteVideosIfCallsMuted`, `setSharedAdsInstanceAcrossActivities` | the whole banner path |
+| `Lidm/internet/download/manager/d;->ۦۡۗ(Activity)V` | `isLoaded(4)`, `show(Activity, 64)` | queries whether the banner view is showing |
+| `Lidm/internet/download/manager/d;->ۦۡۚ(Activity)V` | `isLoaded(4)`, `show(Activity, 64)` | the same, from the other caller |
+| `Lidm/internet/download/manager/d;->ۦۤۥ(...)V` | `isLoaded(3)`, `setInterstitialCallbacks`, `show(Activity, 3)` | interstitial |
+| `Lidm/internet/download/manager/d$z;->onInterstitialClosed()V` | callback interface | interstitial |
+
+The two `show(Activity, 64)` sites deserve a note, because `64` is `BANNER_VIEW` and reads
+like a banner display. They are not: both are
+
+```
+const/4 v0, 4
+invoke-static {v0}, Lcom/appodeal/ads/Appodeal;->isLoaded(I)Z
+move-result v0
+const/16 v1, 64
+invoke-static {v2, v1}, Lcom/appodeal/ads/Appodeal;->show(Landroid/app/Activity;I)Z
+move-result v1
+if-eqz v1, ...
+if-eqz v0, ...
+invoke-static {}, Lacr/browser/lightning/view/BannerManager;->getInstance()...
+invoke-virtual {v0, v2, v1}, BannerManager;->setNetworkAdShowingAndNotify(Activity, Z)V
+```
+
+i.e. "is a network ad of this type on screen, and if so tell 1DM's own `BannerManager` about
+it". They are the read-only counterpart of the notes' `setNetworkAdShowingAndNotify` entry,
+and they can only ever narrow 1DM's own banner, never draw the Appodeal one.
+
+Also settled here, from `res/layout/banner_view.xml` and the class inventory: the four
+app-owned banner classes are `Lacr/browser/lightning/view/BannerView` (Lightning's, in
+`classes2.dex`), `Lidm/internet/download/manager/BannerView` and
+`Lidm/internet/download/manager/manager/NewBannerView` (both in `classes11.dex`), plus the
+Lightning `default_banner` layout pair. None of them is in `activity_main_bottom.xml`, which
+is the layout the footer is inflated from.
+
 ## Disable home screen ads (1DM 18.2)
 
 - Compatibility: `idm.internet.download.manager`, version `18.2`, `ApkFileType.APKM` (non-required, so the plain APK is accepted too).
+- **The Appodeal bootstrap is suppressed first**, because it is the edit that removes the
+  banner which is actually on screen:
+  `Lidm/internet/download/manager/e;-><init>()V` gets `return-void` at index 0, so
+  `Appodeal.setBannerViewId`, `Appodeal.initialize`, `Appodeal.setBannerCallbacks` and
+  `Appodeal.cache` are never reached. Nothing is resized or hidden: the `BannerView` stays
+  `visibility="gone"` from `activity_main_bottom.xml` and the footer collapses, because the
+  view is `wrap_content`.
+- Returning early there is a state the app already has a path for, which is why it needs no
+  more than one instruction. The singleton's only caller,
+  `Lidm/internet/download/manager/d;->ۦۜ۟(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/q15;)V`,
+  constructs it only when the premium check fails and otherwise calls `Li/a6;->ۦۖ۟(...)`, so
+  a constructed-but-inert `e;` is ordinary. `e;`'s two other instance methods are empty list
+  callbacks (`ۦۖۨ(List)V` is a bare `return-void`, `ۦۖ۫(List)V` calls it and returns), so the
+  `Random` field the constructor would have written is never read. The two consumers that
+  outlive the bootstrap are both guarded: `d;->ۦۤۥ(...)V` tests `Appodeal.isLoaded(3)` and
+  `ActivityLifecycleListener.onStateChanged(...)` tests `AmazonService.isInitialized()`
+  before it calls `AmazonService.start`/`stop`, so an SDK that was never started is skipped
+  rather than misused. `AmazonService.start(true)` at the top of the constructor is itself only
+  ad traffic: its two readers are `BannerView.setAd` and `d;->ۦۤۥ`, both already suppressed
+  or guarded here.
+- `AppodealAdInitFingerprint` deliberately declares **no** `definingClass`, because
+  `Lidm/internet/download/manager/e;` is obfuscated. It pins `returnType = "V"` and an empty
+  parameter list, and is identified by an ordered chain whose every anchor is a fixed Appodeal
+  member name or the publisher's own key: `Appodeal.setBannerViewId(I)V` → the key
+  `b1eafec41c5ab762a5acc356f9526305d05536819d4d0184` → `Appodeal.initialize(Context, String,
+  I, ApdInitializationCallback)V` → `Appodeal.setBannerCallbacks(BannerCallbacks)V` →
+  `Appodeal.cache(Activity, I)V`. Offline resolution against all eleven DEX files of the
+  on-device build returns **exactly one** method, `Lidm/internet/download/manager/e;-><init>()V`,
+  69 instructions, `.registers 8`, `public constructor`, filter indices `[34, 45, 54, 57, 67]`
+  — so the chain is unique across the whole APK, not merely within `Lidm/`. This is the same
+  "pin the contract, not the obfuscated name" shape used by the Pinterest
+  `AdvertisingIdInfoFingerprint`.
 - `BannerManager.load(Z)V` is redirected to `BannerManager.disable()V`, which is the exact state 1DM enters when its ad configuration reports the banner as disabled. Consequences: `bannerInfoList` is never populated, `currentBannerInfo` stays null, and `resume()` returns at its `mDisabled` check, so the 500 ms rotation timer never starts and nothing is ever published to the banner view. Nothing else in the ad path is changed.
 - The inserted call runs before the method's own `monitor-enter`, so `disable()` is not executed under the method's monitor. That is safe because after the patch every entry into the list and the current ad goes through `disable()`, and the two fields it writes with `AtomicBoolean.set` are the ones `resume()` reads. `disable()` has its own try/catch around the `Timer` access.
 - `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5, v0}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
-- Fingerprints, both resolved against the recovered `classes.dex` with a re-implementation of Morphe's matcher:
-  - `BannerManagerLoadFingerprint` → `load(Z)V`, 37 instructions, `public synchronized`, filter indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
-  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 210 instructions, `private`, filter indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
-  - Both fingerprints declare the defining class with a trailing `;`, which Morphe's type comparison resolves to an exact class match, so each is pinned to a single method by construction.
+- Fingerprints, all four resolved with `.scratch/idm_fp_check.py`, a re-implementation of
+  Morphe's matcher. The indices below are the on-device build's; the APKM build's, recorded
+  before that artifact was available, are in the commit that introduced each fingerprint.
+  - `AppodealAdInitFingerprint` → `Lidm/internet/download/manager/e;-><init>()V`, 69
+    instructions, `.registers 8`, `public constructor`, filter indices `[34, 45, 54, 57, 67]`,
+    and the only match in the APK. Described above.
+  - `BannerManagerLoadFingerprint` → `load(Z)V`, 39 instructions, `public synchronized`, filter indices `[2, 5, 6, 10, 12, 14, 16, 17, 18, 22, 31]`. On the APKM build: 37 instructions, indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
+  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 213 instructions, `private`, filter indices `[3, 5, 7, 9, 23, 48, 49, 55, 205]`. On the APKM build: 210 instructions, indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
+  - `IdmPlusBannerFingerprint` → `Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;`, 37
+    instructions, `.registers 3`, `public static`, filter indices
+    `[2, 13, 16, 19, 22, 25]`. This is the one fingerprint that had to be written blind,
+    because its target class was in one of the DEX files the damaged download lost; it is now
+    verified against the on-device build.
+  - The three fingerprints that declare a defining class do so with a trailing `;`, which
+    Morphe's type comparison resolves to an exact class match, so each is pinned to a single
+    method by construction.
 - The `Li/ru;` parameter in `setAd`'s signature and the `Lidm/internet/download/manager/amazon/AmazonService;` call are release-specific, as documented for every obfuscated name in this file. Both are acceptable only because the compatibility declaration is pinned to 18.2/30249.
-- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, the `Lidm/` ad configuration, billing, or the download service.
-- The inserted smali was assembled against the same smali build Morphe uses, so both blocks are known to parse. See the pitfalls section below for the method and for the brace requirement that 0.3.0 violated.
+- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, billing, or the download service. Suppressing the bootstrap does mean the Appodeal and Smaato SDKs are never initialized and `AmazonService` is never started, which is a deliberate widening: those three exist only to serve the banner, the interstitials and the Amazon backfill.
+- The three inserted blocks that existed before v0.6.0-dev.8 were assembled against the same smali build Morphe uses, so they are known to parse. The new one is a bare `return-void` with no interpolation, no 35c register list and no arity, so none of the three failure modes recorded below can apply to it. See the pitfalls section for the method and for the brace requirement that 0.3.0 violated.
 
 ## 1DM launch crash: `setAd` invoke arity (v0.3.4)
 
@@ -672,16 +837,17 @@ chain against the DEX rather than by reading it.
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
 - **Layout, ADM.** Still unconfirmed. The ADM reference DEX was read from a sound APKM, but its `res/` was never walked for the AppBrain container, so whether that strip leaves an empty gap behind is untested.
-- **Other ad surfaces are out of scope and unexamined.** The interstitial, rewarded, and "network ad" show paths are driven from `Lidm/internet/download/manager/` classes that live in `classes8.dex`/`classes9.dex`, which were not recovered. `BannerManager.setNetworkAdShowingAndNotify(Activity, boolean)` is the visible trace of that path; callers of it could not be read. This patch claims the banner only.
+- **Other ad surfaces are now readable but still out of scope.** The on-device build has the `Lidm/` DEX, so the interstitial path can be read for the first time: it is `Lidm/internet/download/manager/d;->ۦۤۥ(MyAppCompatActivity, c$a, Runnable)V`, which asks `Appodeal.isLoaded(3)`, installs `d$z` as the interstitial callback and shows, with an `AmazonService.getInterstitialAd("any")` fallback. Suppressing the bootstrap disables it in practice, but the patch does not target that method, so any future interstitial entered from outside Appodeal would still show. The rewarded path is still unexamined.
+- **The APKM build's `Lidm/` code can never be verified.** Both 18.2 builds are declared compatible, but the APKM's `Lidm/` classes are in the two DEX files its damaged download lost, so `AppodealAdInitFingerprint` and `IdmPlusBannerFingerprint` are verified against the on-device build only. If the APKM build turns out to register its banner differently, those two fingerprints will fail to resolve there rather than misfire: neither declares a `definingClass`, and both are pinned to SDK member names that have to be present for the ad path to work at all.
 - **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved locally: `maven.pkg.github.com` returns `401` for the configured `gh` token, whose scopes are `gist`, `read:org`, `repo` and do not include `read:packages`. Compilation and bundle application are delegated to CI, as with the ADM patches.
-- **No device test.** Nothing has been applied to 18.2. The fingerprints resolve and the inserted smali is width-correct and register-safe by inspection, but the runtime effect is unconfirmed.
-- **A complete `base.apk` is needed** before adding any further 1DM patch that touches the app's own classes.
+- **No device test of the result.** All four fingerprints resolve against the on-device build and the inserted smali is width-correct and register-safe by inspection, but the bundle has not been applied to 18.2 and the banner has not been seen to disappear. This is the one claim in this file that still needs a device.
+- **The offline smali harness has to be rebuilt before it means anything.** `.scratch/check_smali.py` compiles its helper into `/usr/tmp/opencode/jars/out`, and that directory did not survive; the script now fails with an explicit message instead of quietly skipping. Its `CALLS` table also listed two `addInstructions` sites when the patch had four, so it had been exiting on the count check rather than assembling anything. Both are fixed. Rebuild `SmaliTest` per the recipe below before relying on it.
 
 ## Patcher pitfalls (1DM 18.2)
 
 - **`addInstructions` smali must be parsed, and 35c invokes need braces.** `addInstructions` routes the string through `InlineSmaliCompiler`, which wraps it in a dummy `.method` built from the matched method's own parameters, register count, and static flag, and then parses it with smali's ANTLR grammar. The 0.3.0 bundle shipped `invoke-virtual v1, L...;->disable()V` and died on-device with `Encountered 2 parser syntax errors and 0 lexer syntax errors!`. The grammar rule is `instruction_format35c_method : INSTRUCTION_FORMAT35c_METHOD OPEN_BRACE register_list CLOSE_BRACE COMMA method_reference` (`smaliParser.g`, line 1088), so the register list is mandatory and must be braced: `invoke-virtual {v1}, ...`. Only 35c/3rc/45cc invoke forms take braces; 22c forms such as `iput v5, v0, L...;->a:I` take a bare register pair, which is why the ADM patches parse.
 - **A register list holds register names, not numbers, and the `v` prefix does not come from the interpolation.** `getRegisterA()` and `getRegisterB()` return integers, so writing `invoke-virtual {$receiver}` renders `invoke-virtual {1}` and 0.3.1 died on-device with `Encountered 1 parser syntax errors` (`no viable alternative at input '1'`). The rendered text has to be `{v$receiver}`. The two failures are distinguishable by the reported count: two errors is a missing brace, one error is a bare number inside braces.
-- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake.
+- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake. Two things about it are load-bearing and were both got wrong at least once: the `CALLS` table must list **every** `addInstructions` site in the patch, in source order, with that method's `.registers` and declared parameters, or it exits on the count check without assembling anything; and the helper class has to be compiled into the `out` directory it names on the classpath, or every result is a failure to exec rather than a parse result. It guards the second case explicitly now.
 - **The dummy method means the register numbers are the real ones.** Because the template uses the matched method's `.registers` and parameter list, `p0` resolves to the receiver: in `load(Z)V` (`.registers 3`, one declared parameter) `p0` and `v1` are the same register, and in `setAd` (`.registers 8`, two declared parameters) `p0` and `v5` are the same. Verified by assembling both forms, so the explicit `v`-register form used by the patch is equivalent and does not depend on the template's parameter list being passed correctly.
 - **How to verify smali offline without the Morphe plugin.** The forks' smali is published on JitPack at `com.github.MorpheApp.smali:<module>/<commit>/<module>-<commit>.jar` (not the flat Maven path, which 404s), and Morphe tracks `com.github.MorpheApp.smali:smali` at commit `d856bad65f`. With `smali`, `smali-dexlib2`, `smali-util`, `antlr-runtime:3.5.2`, `stringtemplate:3.2.1`, `guava:31.1-android`, and `jsr305:1.3.9` on the classpath, a ~60-line Java program that copies `METHOD_TEMPLATE` from `InlineSmaliCompiler.kt` reproduces the exact parse, the exact error count, and the assembled instruction registers. That is how the brace fix was proven without a Gradle build, and it should be the first step for any new smali here. The same tool reproduces the numbers in the table above.
 

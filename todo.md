@@ -170,24 +170,33 @@ implementations because they are narrow, self-contained edits.
 All of these are settings-toggled, so all depend on Phase 0.
 
 - [ ] **Hide Create nav button** — hides the "+" bottom navigation button.
-- [ ] **Hide Notifications nav button** — hides the notifications navigation button.
+- [x] **Hide Notifications nav button** — hides the notifications navigation button.
+  - Written. Same seam, same shape and same reasoning as the search patch, keyed on
+    `Lde0/a;->NOTIFICATIONS`. Both patches insert into `Q1` and compose, since each block uses
+    only `v0`/`v1` and falls through to its own label.
+  - Build verified in CI. Not verified on device.
 - [x] **Hide Search nav button** — hides the search navigation button.
-  - Written. Skips the tab in `FloatingBottomNavBar.Q1`, which returns void, so no value needs
-    supplying. The tab factory `e1` cannot be the target: `Q1` dereferences its result at
-    instruction 2 with no null guard, so a null return would be an NPE.
-  - Anchor is readable where it matters: the tab identity is the `Lde0/a;->SEARCH` enum constant,
-    never obfuscated. The bar's tab list and per-tab layout weights derive from the surviving
-    descriptors, so the remaining tabs should take the space rather than leave a gap.
-  - Default is OFF: hiding navigation is a user preference, unlike the privacy patches.
-  - Build verified: compiles clean in CI. Not verified: fingerprint matches, tab disappears,
-    no gap left.
+  - Written. Hides the tab's view in `FloatingBottomNavBar.Q1`; the tab is still created.
+  - **Skipping the tab instead throws on every app start.** The tab index is a `forEachIndexed`
+    counter incremented unconditionally at `O1` instruction 312 and passed to `Q1` at 322, then used
+    positionally for `h.add(index, tab)` and for `addView`. Dropping one tab desynchronises the
+    counter from the bar's list, so the next tab does `h.add(2, ...)` on a list of size 1.
+  - Letting the tab be created and setting its view `GONE` keeps every index consistent, and a
+    `GONE` child of a horizontal `LinearLayout` takes no space so the others still reflow.
+  - `const/16` for the visibility, not `const/4`: `const/4 v0, 0x8` assembles silently but
+    decodes as `-8`, giving a blank gap rather than a removed button.
+  - Build verified in CI. Not verified: fingerprint matches, button disappears, tabs reflow.
 - [ ] **Hide greeting header buttons** — hides the search and camera buttons in the home feed
   header.
-- [ ] **Hide comments** — hides the pin comments section and replaces it with the standard
-  comment section.
-  - Confirmed present: `com.pinterest.feature.unifiedcomments.view.CommentActivity`, plus
-    `com/pinterest/activity/pin/view/unifiedcomments/*`. The "replaces it with the standard
-    comment section" half is ambiguous; clarify before implementing.
+- [x] **Hide comments** — hides the comments button on a pin.
+  - Written. Sets the comments module wrapper in `UnifiedPinActionBarView`'s three-argument
+    constructor to `GONE`.
+  - **No legacy comments UI exists in 14.38.0** to fall back to, so the transcription's "replace
+    with the standard comment section" cannot be implemented as described. Verified: no
+    legacy/unified experiment literal, and `CommentsLibraryLocation` is referenced only by its own
+    `<clinit>` and parcel plumbing.
+  - The dump confirmed the only comments affordance on a pin closeup is the action-module button.
+  - Build verified in CI. Not verified on device.
 - [ ] **Hide search history** — hides the "Recent searches" section on the search screen and
   clears the search terms Pinterest stores about the user's view.
   - Two distinct effects: a view change and a data-clearing action. Decide whether the clear is
