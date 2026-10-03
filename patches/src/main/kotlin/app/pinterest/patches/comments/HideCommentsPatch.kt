@@ -2,6 +2,8 @@ package app.pinterest.patches.comments
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.TwoRegisterInstruction
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
 
@@ -12,6 +14,17 @@ private const val GONE = "0x8"
 private const val EXTENSION_CLASS = "Lapp/oyasumi/extension/MorpheSettingsActivity;"
 
 private const val SETTINGS_KEY = "morphe_hide_comments"
+
+/** The module holding the comments button, whose field `l` is the button itself. */
+private const val MODULE_CLASS = "Lcom/pinterest/activity/pin/view/modules/LegacyPromotedCloseupActionButtonModule;"
+
+/**
+ * Field `l` is the comments button. Note `iconbutton`, not `iconcomponent`; the latter is the
+ * other action bar's type and is the near-miss that misidentified the class in the first place.
+ * No trailing semicolon, because the descriptor constant already ends in one and a second would
+ * be a doubled `;`, which the inline parser rejects.
+ */
+private const val BUTTON_TYPE = "Lcom/pinterest/gestalt/iconbutton/GestaltIconButton"
 
 @Suppress("unused")
 val hideCommentsPatch = bytecodePatch(
@@ -26,84 +39,65 @@ val hideCommentsPatch = bytecodePatch(
     extendWith("extensions/extension.mpe")
 
     execute {
-        // Hides field `e`, the comments icon, NOT field `d`, the wrapper. Both constructors are
-        // patched; see the fingerprint for why the three-parameter one alone is a no-op on a
-        // real pin.
+        // Hides field `l`, the comments button, in
+        // `LegacyPromotedCloseupActionButtonModule.createView`.
         //
-        // The wrapper was the wrong target, and a uiautomator dump of a patched pin proves it.
-        // The wrapper id `action_module_comments_wrapper` does not appear in the hierarchy at all,
-        // while `action_module_comments_icon` is present and visible between the react and share
-        // buttons. So the wrapper was never the visible thing: it is a sibling of the icon, not
-        // its parent. Hiding it removed nothing the user could see, and the button stayed.
+        // Three earlier attempts patched `UnifiedPinActionBarView` instead and shipped in
+        // v0.6.0-dev.13 through .15. Each applied cleanly and changed nothing, because a pin's
+        // closeup screen uses the legacy "promoted" action bar. See the fingerprint for how the
+        // uiautomator dump identified the right class.
         //
-        // That absence is itself evidence the earlier patch ran: a `GONE` view is excluded from a
-        // uiautomator dump, so a wrapper that is present in the layout but missing from the dump
-        // was hidden successfully. It was hiding the wrong view.
+        // The button is read off `this` rather than reused from a register. `createView` has six
+        // registers and one declared parameter, so `this` is `v5` and only `v0` through `v4` are
+        // free. `v1` is the register the surrounding code uses for every `findViewById` result; the
+        // block below runs after the last read of `v1`, and re-initialises `v1` itself.
         //
-        // Field `e` is read off `this` rather than reusing `v6`. By the icon lookup `v6` has been
-        // reused for the id, so it no longer holds the wrapper, and the icon is only reachable
-        // through the field. `e` is written by the immediately preceding `iput-object`, so it is
-        // assigned by the time this runs.
-        //
-        // The wrapper is already in `v6` when it is stored into field `d`, and the next
-        // instruction reuses `v6` for the icon lookup, so the insertion goes at the index of the
-        // icon lookup: after the store, before `v6` is overwritten. That holds for both overloads.
-        //
-        // No null guard is added. Each constructor already dereferences the result of the wrapper's
-        // `findViewById` two instructions earlier, at the `getClass()` call on the value it
-        // returns, so a missing wrapper would have thrown before reaching here. Adding a guard
-        // would widen methods that have branches in them for no behavioural gain.
-        //
-        // `const/16`, not `const/4`: `const/4` encodes a signed nibble, so `const/4 v0, 0x8`
+        // `const/16`, not `const/4`: `const/4` encodes a signed nibble, so `const/4 v1, 0x8`
         // assembles without complaint but decodes as `-8`, which stores `0xFFF8` in the visibility
-        // bits. The view would then be neither VISIBLE, INVISIBLE nor GONE: it is not drawn, but
-        // it keeps its layout slot, so the user sees a blank gap instead of a removed button.
-        // Static checks cannot see this; it is the same trap the 1DM ads patch documents.
+        // bits. The button would then be neither VISIBLE, INVISIBLE nor GONE: not drawn, but still
+        // holding its layout slot, so the user sees a blank gap instead of a removed button.
         //
-        // Nothing in this class ever calls `setVisibility`, so the constructor-time change is not
-        // undone by a later bind pass.
+        // The insertion index is the crux, and picking it wrong is what made the first three
+        // attempts no-ops. Field `l` is written by this `iput-object`:
         //
-        // The free registers differ per overload. The three-parameter constructor has four
-        // declared parameters, so `this` is `v5` and `v0`/`v1` are free. The two-parameter
-        // constructor has three and passes six registers to its super constructor with
-        // `invoke-direct/range`, which puts `this` in `v0` and frees `v1`/`v2` instead — writing
-        // to `v0` there would overwrite `this` and crash the constructor.
-        CommentsModuleWrapperFingerprint.instructionMatches[1].let { iconLookup ->
-            CommentsModuleWrapperFingerprint.method.addInstructionsWithLabels(
-                iconLookup.index,
-                """
-                iget-object v0, v5, Lcom/pinterest/feature/pin/closeup/view/UnifiedPinActionBarView;->e:Lcom/pinterest/gestalt/iconcomponent/GestaltIcon;
-                invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
-                move-result-object v1
-                const-string v2, "$SETTINGS_KEY"
-                invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
-                move-result v1
-                if-eqz v1, :morphe_end_hide_comments
-                const/16 v1, $GONE
-                invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
-                :morphe_end_hide_comments
-                nop
-                """.trimIndent()
-            )
+        //   102  sget           v1, action_module_comment_icon
+        //   103  findViewById
+        //   104  move-result-object v1
+        //   105  check-cast     v1, GestaltIconButton
+        //   106  iput-object    v1 -> l          <- insert immediately after this
+        //   107  invoke-virtual v5, ->l()V
+        //
+        // Anchoring on either `fieldAccess` match is wrong. `action_buttons_center` is resolved at
+        // ins 58, long *before* `l` exists, and `action_module_comment_icon` at ins 102 is four
+        // instructions before the store. Reading `l` at either point yields null, and a null guard
+        // would turn that into a silent no-op rather than a crash. So the anchor is found by
+        // scanning for the store itself, which is the only position where `l` is guaranteed live.
+        val storeIndex = CommentsButtonFingerprint.method.instructions.indexOfFirst { instruction ->
+            instruction.opcode == Opcode.IPUT_OBJECT &&
+                (instruction as? TwoRegisterInstruction)?.reference?.let {
+                    it.name == "l" && it.type == MODULE_CLASS
+                } == true
+        }
+        check(storeIndex != -1) {
+            "Comments button field 'l' store not found in createView; the anchor this patch " +
+                "depends on is gone, so inserting earlier would read a null field."
         }
 
-        CommentsModuleWrapper2ArgFingerprint.instructionMatches[1].let { iconLookup ->
-            CommentsModuleWrapper2ArgFingerprint.method.addInstructionsWithLabels(
-                iconLookup.index,
-                """
-                iget-object v1, v0, Lcom/pinterest/feature/pin/closeup/view/UnifiedPinActionBarView;->e:Lcom/pinterest/gestalt/iconcomponent/GestaltIcon;
-                invoke-virtual {v1}, Landroid/view/View;->getContext()Landroid/content/Context;
-                move-result-object v2
-                const-string v3, "$SETTINGS_KEY"
-                invoke-static {v2, v3}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
-                move-result v2
-                if-eqz v2, :morphe_end_hide_comments
-                const/16 v2, $GONE
-                invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
-                :morphe_end_hide_comments
-                nop
-                """.trimIndent()
-            )
-        }
+        CommentsButtonFingerprint.method.addInstructionsWithLabels(
+            storeIndex + 1,
+            """
+            iget-object v0, v5, $MODULE_CLASS->l:$BUTTON_TYPE;
+            invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
+            move-result-object v1
+            const-string v2, "$SETTINGS_KEY"
+            invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+            move-result v1
+            if-eqz v1, :morphe_end_hide_comments
+            const/16 v1, $GONE
+            invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
+            :morphe_end_hide_comments
+            nop
+            """.trimIndent()
+        )
     }
 }

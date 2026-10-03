@@ -2577,3 +2577,65 @@ in the constructor is what the app itself relies on, so `e` is the right handle 
 
 Lesson worth keeping: a patch can match, apply, report success, and still be a no-op. The only
 thing that settled two separate wrong-target bugs here was a view dump from the running app.
+
+## Retraction: the wrapper's absence proved nothing
+
+An earlier entry in this file claims the wrapper being missing from the uiautomator dump is "itself
+evidence the earlier patch ran". **That reasoning is wrong and is retracted.**
+
+It assumed the wrapper would appear in that dump if the patch had not run. There is no basis for
+that. The dump is of a *different view*, so the wrapper may never have been in it. Absence of an
+expected node is not evidence unless you have independently established that it should be present.
+
+## The real target: `LegacyPromotedCloseupActionButtonModule`
+
+The dump's ids end in `_sab`:
+
+```
+action_module_react_icon_sab      in the dump
+action_module_share_icon_sab      in the dump
+action_module_comments_wrapper    what the patch targets   (no _sab)
+```
+
+Those are a different, smaller action bar. The dump reports `action_bar_root` and
+`action_module_comments_icon` as `android.widget.LinearLayout`, but `UnifiedPinActionBarView` is a
+custom ViewGroup and would appear under its own class name. So the view being screenshotted was
+never the one being patched.
+
+Indexing every read of the two R fields gives five classes. Only two constructors read the wrapper,
+and both belong to `UnifiedPinActionBarView` — the wrong class:
+
+| class | reads |
+| --- | --- |
+| `UnifiedPinActionBarView.<init>` x2 | wrapper + comments_icon |
+| `LegacyPromotedCloseupActionButtonModule.createView` | `action_module_comment_icon` (singular "comment") |
+| `EducationNewContainerView.e`, `Lho0/c;.<init>`, `Lsa1/i;.<init>` | comments_icon only |
+
+`LegacyPromotedCloseupActionButtonModule.createView` is the real target. It owns
+`action_buttons_center`, `promote_button`, `menu_react`, `menu_send`, `overflow_button` — which is
+exactly the set of views in the dump — and it is named for the *promoted* closeup action bar, i.e.
+the legacy variant. In it:
+
+```
+registers=6 ins=1
+102  sget                     v1, Lvf0/c;->action_module_comment_icon I
+103  invoke-virtual           v5, v1, Landroid/view/View;->findViewById(I)Landroid/view/View;
+104  move-result-object       v1
+105  check-cast               v1, Lcom/pinterest/gestalt/iconbutton/GestaltIconButton;
+106  iput-object              v1, v5, ...->l Lcom/pinterest/gestalt/iconbutton/GestaltIconButton;
+```
+
+So the comments button is field **`l` : `GestaltIconButton`**, not `e : GestaltIcon`, and the id is
+`action_module_comment_icon` — singular, no `s`, and no `_sab`.
+
+Three separate near-misses stacked up here, and each was individually plausible:
+
+1. `action_module_comments_wrapper` and `action_module_comments_icon` read like the comments module,
+   and they are — of the *other* action bar.
+2. `action_module_comments_icon` appears in the dump, so it looks like the right anchor, but the dump
+   shows the accessibility class rather than the runtime type, and this field is a
+   `GestaltIconButton` while the dump reports a `LinearLayout`.
+3. Two sibling constructors that both had to be patched, which was real work that changed nothing.
+
+A patch applied cleanly against the wrong class will do exactly this forever. The only reliable
+discriminator was the class name in the dump, and it was the one thing I did not check first.
