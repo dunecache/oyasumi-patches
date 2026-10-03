@@ -26,8 +26,24 @@ val hideCommentsPatch = bytecodePatch(
     extendWith("extensions/extension.mpe")
 
     execute {
-        // Both constructors are patched; see the fingerprint for why the three-parameter one alone
-        // is a no-op on a real pin.
+        // Hides field `e`, the comments icon, NOT field `d`, the wrapper. Both constructors are
+        // patched; see the fingerprint for why the three-parameter one alone is a no-op on a
+        // real pin.
+        //
+        // The wrapper was the wrong target, and a uiautomator dump of a patched pin proves it.
+        // The wrapper id `action_module_comments_wrapper` does not appear in the hierarchy at all,
+        // while `action_module_comments_icon` is present and visible between the react and share
+        // buttons. So the wrapper was never the visible thing: it is a sibling of the icon, not
+        // its parent. Hiding it removed nothing the user could see, and the button stayed.
+        //
+        // That absence is itself evidence the earlier patch ran: a `GONE` view is excluded from a
+        // uiautomator dump, so a wrapper that is present in the layout but missing from the dump
+        // was hidden successfully. It was hiding the wrong view.
+        //
+        // Field `e` is read off `this` rather than reusing `v6`. By the icon lookup `v6` has been
+        // reused for the id, so it no longer holds the wrapper, and the icon is only reachable
+        // through the field. `e` is written by the immediately preceding `iput-object`, so it is
+        // assigned by the time this runs.
         //
         // The wrapper is already in `v6` when it is stored into field `d`, and the next
         // instruction reuses `v6` for the icon lookup, so the insertion goes at the index of the
@@ -56,14 +72,15 @@ val hideCommentsPatch = bytecodePatch(
             CommentsModuleWrapperFingerprint.method.addInstructionsWithLabels(
                 iconLookup.index,
                 """
-                invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
-                move-result-object v0
-                const-string v1, "$SETTINGS_KEY"
-                invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
-                move-result v0
-                if-eqz v0, :morphe_end_hide_comments
-                const/16 v0, $GONE
-                invoke-virtual {v6, v0}, Landroid/view/View;->setVisibility(I)V
+                iget-object v0, v5, Lcom/pinterest/feature/pin/closeup/view/UnifiedPinActionBarView;->e:Lcom/pinterest/gestalt/iconcomponent/GestaltIcon;
+                invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
+                move-result-object v1
+                const-string v2, "$SETTINGS_KEY"
+                invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+                move-result v1
+                if-eqz v1, :morphe_end_hide_comments
+                const/16 v1, $GONE
+                invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
                 :morphe_end_hide_comments
                 nop
                 """.trimIndent()
@@ -74,14 +91,15 @@ val hideCommentsPatch = bytecodePatch(
             CommentsModuleWrapper2ArgFingerprint.method.addInstructionsWithLabels(
                 iconLookup.index,
                 """
-                invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
-                move-result-object v1
-                const-string v2, "$SETTINGS_KEY"
-                invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
-                move-result v1
-                if-eqz v1, :morphe_end_hide_comments
-                const/16 v1, $GONE
-                invoke-virtual {v6, v1}, Landroid/view/View;->setVisibility(I)V
+                iget-object v1, v0, Lcom/pinterest/feature/pin/closeup/view/UnifiedPinActionBarView;->e:Lcom/pinterest/gestalt/iconcomponent/GestaltIcon;
+                invoke-virtual {v1}, Landroid/view/View;->getContext()Landroid/content/Context;
+                move-result-object v2
+                const-string v3, "$SETTINGS_KEY"
+                invoke-static {v2, v3}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+                move-result v2
+                if-eqz v2, :morphe_end_hide_comments
+                const/16 v2, $GONE
+                invoke-virtual {v1, v2}, Landroid/view/View;->setVisibility(I)V
                 :morphe_end_hide_comments
                 nop
                 """.trimIndent()

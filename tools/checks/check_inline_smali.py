@@ -76,14 +76,17 @@ LAYOUTS = {
             "signature": "(Landroid/content/Context;Landroid/util/AttributeSet;I)V",
             "registers": 9,
             "ins": 5,
-            "live": "v5=this v6=comments wrapper v7=attrs v8=int; v0..v4 free",
+            # this=v5, ctx=v6, attrs=v7, defStyle=v8. v0..v4 free. Reads field `e` off `this`,
+            # so v0 must survive as the icon while v1/v2 are scratch.
+            "live": "v5=this v6=ctx v7=attrs v8=int; v0..v4 free",
             "method": "UnifiedPinActionBarView.<init>(Context, AttributeSet, int)",
         },
         {
             "signature": "(Landroid/content/Context;Landroid/util/AttributeSet;)V",
             "registers": 9,
             "ins": 3,
-            "live": "v0=this v6=comments wrapper v7=ctx v8=attrs; v1..v5 free",
+            # this=v0 (invoke-direct/range v0..v5 to super), ctx=v7, attrs=v8. v1..v6 free.
+            "live": "v0=this v7=ctx v8=attrs; v1..v6 free",
             "method": "UnifiedPinActionBarView.<init>(Context, AttributeSet)",
         },
     ],

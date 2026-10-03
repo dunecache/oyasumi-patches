@@ -2538,3 +2538,42 @@ comes immediately after the store into `d`.
 So `tools/checks/check_inline_smali.py` guarantees syntax only. It will not tell you that a block
 writes over `this` or over a value the target method still needs. That has to be reasoned out, which
 is why the register map is recorded per block in the checker's `LAYOUTS` rather than left implicit.
+
+## The comments wrapper is not the comments button
+
+`v0.6.0-dev.14` applied cleanly, the toggle was on, and the comments button was still there. A
+uiautomator dump of the patched pin settles it:
+
+```
+com.pinterest:id/action_bar_root                 LinearLayout  [0,0][1080,2388]
+  com.pinterest:id/action_module_react_icon_sab   ImageView     [11,1179][143,1311]
+  com.pinterest:id/reaction_count                 TextView      [127,1225][206,1265]
+  com.pinterest:id/action_module_comments_icon    LinearLayout  [206,1157][358,1333]
+  com.pinterest:id/action_module_share_icon_sab    LinearLayout  [358,1157][490,1333]
+```
+
+`action_module_comments_wrapper` is **absent from the tree**, while
+`action_module_comments_icon` is present, visible, and sitting exactly where a comments button
+belongs — between react and share.
+
+So the patch *ran*; it was hiding the wrong view. A `GONE` view is dropped from a uiautomator dump,
+which is why the wrapper's absence proves the earlier patch worked as written. The wrapper is a
+**sibling** of the icon, not its parent, so hiding it changed nothing visible.
+
+The constructors corroborate this. Each one does, in sequence:
+
+```
+sget  action_module_comments_wrapper -> findViewById -> check-cast ViewGroup -> iput ->d
+sget  action_module_comments_icon    -> findViewById -> check-cast GestaltIcon -> iput ->e
+```
+
+`d` is the wrapper and `e` is the icon. The patch now hides `e`. It reads the field off `this`
+rather than reusing `v6`, because `v6` has already been reused for the id by the time the icon
+lookup runs, and `e` is written by the immediately preceding `iput-object`.
+
+Note the dump reports `action_module_comments_icon` as a `LinearLayout` while the constructor casts
+it to `GestaltIcon`. The accessibility class in a dump is not always the runtime type, and the cast
+in the constructor is what the app itself relies on, so `e` is the right handle regardless.
+
+Lesson worth keeping: a patch can match, apply, report success, and still be a no-op. The only
+thing that settled two separate wrong-target bugs here was a view dump from the running app.
