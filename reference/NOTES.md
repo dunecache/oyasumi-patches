@@ -2417,3 +2417,37 @@ class name is the anchor the entry patch needs.
   theme, no intent-filter) would have failed repackaging or crashed on open.
 - Static validation passed, and the build compiles clean in CI. Not verified: the fingerprint
   matches the live builder, the row appears, or the activity opens on device.
+
+## Release workflow: recovering a wedged semantic-release run
+
+Observed on `dev` while releasing the three UI-hiding patches. The failure is not in our code;
+it is a self-inflicted wedge in the Release workflow, and it is worth writing down because
+`gh run rerun` cannot clear it.
+
+The order inside the `Release` step matters:
+
+1. `generatePatchesList` runs `./gradlew generatePatchesList`, which compiles `:patches` only.
+2. semantic-release `prepare` commits and pushes `chore: Release v<X> [skip ci]` to `dev`,
+   then creates and pushes the tag, then pushes `refs/notes/semantic-release-v<X>`.
+3. `publish` creates the GitHub release.
+4. Only after `Release` does the workflow run `Attest` and `Verify project compiles`.
+
+Two consequences:
+
+- If `Release` fails at step 2 or 3, `Verify project compiles` is **skipped**, so a green
+  `:patches:compileKotlin` is *not* evidence that `extensions` or the bundle built. Read the
+  step conclusions, not just the run conclusion.
+- If `Release` fails *after* step 2, `dev` has advanced but no tag or GitHub release exists.
+  semantic-release derives the next version from the last **GitHub release**, not from tags, so
+  the next run recomputes the same version and `git tag` fails with exit 128.
+
+Recovery, in order:
+
+1. Check `gh release list` and `git ls-remote --tags origin` together. A tag with no matching
+   GitHub release is the orphan to remove:
+   `git push origin :refs/tags/v<X>`.
+2. Push a **new** commit. Do not use `gh run rerun`. A re-run re-checkouts the original
+   triggering SHA, while the remote is now ahead by the release commit from the failed attempt,
+   so semantic-release logs `The local branch dev is behind the remote one, therefore a new
+   version won't be published` and exits green having published nothing.
+3. Watch for that exact message. A green run containing it is a no-op, not a release.
