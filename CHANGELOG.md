@@ -1,3 +1,10 @@
+## [0.6.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.13...v0.6.0-dev.14) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* drop the stray paren that failed compileKotlin, and check for it ([b8a2de8](https://github.com/dunecache/oyasumi-patches/commit/b8a2de8a3808db593ef4837fb5f4d9f3734d4c5a))
+* patch both action-bar constructors for hiding comments ([2665b0d](https://github.com/dunecache/oyasumi-patches/commit/2665b0d637415ddfe2dcfe57cfb035df316fc527))
+
 ## [0.6.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.12...v0.6.0-dev.13) (2026-10-03)
 
 ### 🐛 Bug Fixes
