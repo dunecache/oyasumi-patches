@@ -55,32 +55,40 @@ public final class MorpheSettingsActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         resolveThemeColors();
+        final float density = getResources().getDisplayMetrics().density;
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(background);
-
-        MaterialTextView title = new MaterialTextView(this);
-        title.setText("Morphe");
-        title.setTextSize(22);
-        title.setTextColor(textPrimary);
-        title.setGravity(Gravity.CENTER_HORIZONTAL);
-        root.addView(title);
+        // The activity draws under a transparent status bar with no toolbar to absorb the
+        // inset, so pad by the status bar height. Resolved from the framework, which always
+        // carries this dimen, with a 24dp fallback that matches it on almost all devices.
+        root.setPadding(0, statusBarHeight(density), 0, 0);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
-        float density = getResources().getDisplayMetrics().density;
-        int pad = (int) (16 * density);
-        body.setPadding(pad, pad, pad, pad);
+        int pad = (int) (20 * density);
+        body.setPadding(pad, (int) (8 * density), pad, pad);
+
+        MaterialTextView title = new MaterialTextView(this);
+        title.setText("Morphe");
+        title.setTextSize(28);
+        title.setTextColor(textPrimary);
+        body.addView(title);
 
         MaterialTextView subtitle = new MaterialTextView(this);
-        subtitle.setText("Toggles appear here as their patches land.");
+        subtitle.setText(pinterestVersion() + "  •  patched with Oyasumi");
         subtitle.setTextSize(14);
         subtitle.setTextColor(textSecondary);
-        subtitle.setGravity(Gravity.CENTER_HORIZONTAL);
         body.addView(subtitle);
 
         body.addView(new MaterialDivider(this, null));
+
+        MaterialTextView section = new MaterialTextView(this);
+        section.setText("Toggles");
+        section.setTextSize(13);
+        section.setTextColor(textSecondary);
+        body.addView(section);
 
         // Placeholder. The first settings-toggled patch replaces this with a real switch
         // bound to its own key through isEnabled() below.
@@ -88,6 +96,23 @@ public final class MorpheSettingsActivity extends Activity {
 
         root.addView(body);
         setContentView(root);
+    }
+
+    private int statusBarHeight(float density) {
+        int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+        if (resId > 0) {
+            return getResources().getDimensionPixelSize(resId);
+        }
+        return (int) (24 * density);
+    }
+
+    private String pinterestVersion() {
+        try {
+            return "Pinterest "
+                    + getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+        } catch (Throwable t) {
+            return "Pinterest";
+        }
     }
 
     /** Reads a Morphe toggle. Settings-toggled patches call this instead of reading prefs directly. */
