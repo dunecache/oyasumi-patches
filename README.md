@@ -61,9 +61,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.11](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.11)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;13 patches total
+> **[v0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.12)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;15 patches total
 <details open>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;8 patches</summary>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;10 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -76,7 +76,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable AppsFlyer tracking](#disable-appsflyer-tracking) | Neutralize the AppsFlyer attribution SDK, so no state is returned to the external data tracker. |  |
 | [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
 | [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
+| [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
 | [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |
+| [Hide comments](#hide-comments) | Hide the comments button on a pin, so comments cannot be opened from the pin. |  |
 | [Morphe settings entry](#morphe-settings-entry) | Add the "Morphe" entry to the Account Settings list, opening the Morphe settings screen. |  |
 | [Morphe settings screen (label)](#morphe-settings-screen-label) | Rename the reused string resource to "Morphe" in every shipped language, so the settings entry is identifiable. |  |
 | [Morphe settings screen (manifest)](#morphe-settings-screen-manifest) | Register the Morphe settings activity in the manifest, with an intent-filter for the morphe:// scheme. |  |

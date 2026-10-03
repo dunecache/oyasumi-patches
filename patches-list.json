@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.6.0-dev.11",
+  "version": "0.6.0-dev.12",
   "patches": [
     {
       "name": "Disable AppsFlyer tracking",
@@ -233,8 +233,76 @@
       "options": []
     },
     {
+      "name": "Hide Notifications nav button",
+      "description": "Hide the notifications button in the bottom navigation bar.",
+      "default": false,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.pinterest",
+          "name": "Pinterest",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "14.38.0",
+              "versionCodes": {
+                "ARM64_V8A": 14388010,
+                "ARMEABI_V7A": 14388010,
+                "X86_64": 14388010,
+                "X86": 14388010
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
       "name": "Hide Search nav button",
       "description": "Hide the search button in the bottom navigation bar.",
+      "default": false,
+      "category": null,
+      "dependencies": [
+        "BytecodePatch"
+      ],
+      "compatiblePackages": [
+        {
+          "packageName": "com.pinterest",
+          "name": "Pinterest",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "14.38.0",
+              "versionCodes": {
+                "ARM64_V8A": 14388010,
+                "ARMEABI_V7A": 14388010,
+                "X86_64": 14388010,
+                "X86": 14388010
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Hide comments",
+      "description": "Hide the comments button on a pin, so comments cannot be opened from the pin.",
       "default": false,
       "category": null,
       "dependencies": [
