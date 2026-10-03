@@ -4,6 +4,7 @@ import app.djezzy.patches.shared.Constants.COMPATIBILITY_DJEZZY
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
 import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.bytecodePatch
+import com.android.tools.smali.dexlib2.iface.instruction.FiveRegisterInstruction
 import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
 
 /** 10000 decimal, as a signed `const/16` literal. `0x7fff` is 32767, so this fits. */
@@ -18,13 +19,20 @@ private const val FORCED_STEPS = "0x2710"
  */
 private const val LOG_TAG = "djezzy-waw"
 
+/**
+ * The name `Li5/c;->l` carries for the `Sensor.TYPE_STEP_COUNTER` channel. The plugin
+ * chooses it in its constructor, branching on whether the sensor type is 19, so this is
+ * the app's own word for the channel and not something invented here.
+ */
+private const val STEP_COUNT_CHANNEL = "StepCount"
+
 @Suppress("unused")
 val forceWalkStepsPatch = bytecodePatch(
     name = "Force Walk & Win steps to 10000",
     description = "Report 10,000 steps to Djezzy's Walk & Win campaign, both on every " +
-        "step-counter event and once when the step stream is first subscribed. The " +
-        "subscribe push is a zero followed by 10,000, because one value cannot both open " +
-        "the counter's accumulation window and jump through it.",
+        "step-counter event and once when the step stream is first subscribed. Each push " +
+        "is a zero followed by 10,000, because one value cannot both open the counter's " +
+        "accumulation window and jump through it. Only the step-count channel is touched.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_DJEZZY)
@@ -46,13 +54,34 @@ val forceWalkStepsPatch = bytecodePatch(
         // targets to shift.
         StepCountSensorFingerprint.let { fingerprint ->
             val conversion = fingerprint.instructionMatches[1]
+            val successCall = fingerprint.instructionMatches[3]
             val register = conversion.getInstruction<OneRegisterInstruction>().getRegisterA()
+            val sink = successCall.getInstruction<FiveRegisterInstruction>().getRegisterC()
 
             // `v$register` and not `$register`: smali's grammar takes register names, and
             // the rendered text only matches the compiled output when the `v` is present.
             fingerprint.method.replaceInstruction(
                 conversion.index,
                 "const/16 v$register, $FORCED_STEPS"
+            )
+
+            // A real step is the first moment the app is definitely counting, so the pair
+            // is repeated here and not only at subscribe. See the `onListen` note for why
+            // the pair is needed at all; the short version is that the app very likely
+            // discards everything the stream delivers until the walk is started, which
+            // makes a subscribe-time push arrive far too early to ever be counted.
+            //
+            // `.registers 3` with `ins 2` puts `this` in `v1` and the event in `v2`, and the
+            // sink lands in `v0` on the `iget-object` immediately above. Both `v0` and `v2`
+            // are still live for the original `success` call, so `v1` — dead since that
+            // `iget-object` read it — is the only register available to build the leading
+            // zero without disturbing anything the plugin emitted.
+            fingerprint.method.addInstructions(
+                successCall.index,
+                "const/4 v1, 0x0\n" +
+                    "invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
+                    "move-result-object v1\n" +
+                    "invoke-interface {v$sink, v1}, Lio/flutter/plugin/common/EventChannel\$EventSink;->success(Ljava/lang/Object;)V"
             )
         }
 
@@ -96,12 +125,33 @@ val forceWalkStepsPatch = bytecodePatch(
         //
         // `v0` and `v1` are the two locals. `v0` holds the listener that was just stored
         // and is reloaded from the field further down; `v1` is not read again on this path.
+        //
+        // The push is gated on the channel actually being the step counter. The pedometer
+        // plugin builds two instances of this one class, and its constructor is what
+        // decides which:
+        //
+        //     if (sensorType == Sensor.TYPE_STEP_COUNTER /* 19 */) l = "StepCount"
+        //     else                                            l = "StepDetection"
+        //
+        // Dart subscribes to *both*, which is why v0.5.3 logged two pushes for one modal.
+        // `step_detection` carries a boolean — `PedestrianStatus` on the Dart side — so
+        // pushing a boxed `Integer` down it is a type error the moment anything listens,
+        // and a stream that errors mid-flight can take the shared subscriber with it.
+        // Nothing in the app's own code needs the detection channel, so the gate keeps
+        // those bytes off it entirely.
         PedometerStreamHostFingerprint.let { fingerprint ->
             val listenerStore = fingerprint.instructionMatches[0]
 
             fingerprint.method.addInstructions(
                 listenerStore.index + 1,
-                "const-string v0, \"walk: pushing 0 then \"\n" +
+                "iget-object v0, v2, Li5/c;->l:Ljava/lang/String;\n" +
+                    "const-string v1, \"$STEP_COUNT_CHANNEL\"\n" +
+                    // `equals` has our own constant as the receiver so that a null name
+                    // cannot throw before the branch below is reached.
+                    "invoke-virtual {v1, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n" +
+                    "move-result v0\n" +
+                    "if-eqz v0, :djezzy_waw_not_step_count\n" +
+                    "const-string v0, \"walk: pushing 0 then \"\n" +
                     "const/16 v1, $FORCED_STEPS\n" +
                     "invoke-static {v1}, Ljava/lang/String;->valueOf(I)Ljava/lang/String;\n" +
                     "move-result-object v1\n" +
@@ -123,7 +173,11 @@ val forceWalkStepsPatch = bytecodePatch(
                     "const/16 v0, $FORCED_STEPS\n" +
                     "invoke-static {v0}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;\n" +
                     "move-result-object v0\n" +
-                    "invoke-interface {v4, v0}, Lio/flutter/plugin/common/EventChannel\$EventSink;->success(Ljava/lang/Object;)V"
+                    "invoke-interface {v4, v0}, Lio/flutter/plugin/common/EventChannel\$EventSink;->success(Ljava/lang/Object;)V\n" +
+                    // The detection channel falls through to the plugin's own code
+                    // untouched. The label sits after the block and before the original
+                    // instructions, so both paths continue correctly.
+                    ":djezzy_waw_not_step_count"
             )
         }
     }
