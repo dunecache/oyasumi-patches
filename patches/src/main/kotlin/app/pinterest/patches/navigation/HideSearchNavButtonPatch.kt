@@ -57,13 +57,20 @@ val hideSearchNavButtonPatch = bytecodePatch(
         //
         // The context comes from the tab's own view rather than from the method, which has none.
         //
+        // Field references here use the `->member:Type` spelling, not the `->member Type`
+        // spelling that baksmali prints. The patcher's inline smali compiler is an ANTLR
+        // grammar that requires the colon and rejects the space form with
+        // `missing COLON`, so the space form compiles in a disassembly listing and then throws
+        // at patch time. Method references are unaffected, which is why every other patch in
+        // this project injects only `invoke-*` and was unaffected.
+        //
         // The tab stays in the bar's lookup list, so navigation by identity still resolves and no
         // other code path loses a tab it expected to find.
         BottomNavTabAdderFingerprint.method.addInstructionsWithLabels(
             4,
             """
-            iget-object v0, v3, $DESCRIPTOR_TYPE->a $TAB_ENUM;
-            sget-object v1, $TAB_ENUM->$SEARCH_TAB $TAB_ENUM;
+            iget-object v0, v3, $DESCRIPTOR_TYPE->a:$TAB_ENUM
+            sget-object v1, $TAB_ENUM->$SEARCH_TAB:$TAB_ENUM
             if-ne v0, v1, :morphe_end_hide_search_nav
             invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
             move-result-object v0

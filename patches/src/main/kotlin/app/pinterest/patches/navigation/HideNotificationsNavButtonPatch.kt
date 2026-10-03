@@ -44,11 +44,13 @@ val hideNotificationsNavButtonPatch = bytecodePatch(
         //
         // See the search patch for why the tab is hidden rather than skipped, and for why the
         // preference read takes only a context and a key.
+        // Field references use the `->member:Type` spelling; see the search patch for why the
+        // space-separated form that baksmali prints is rejected by the inline compiler.
         BottomNavTabAdderFingerprint.method.addInstructionsWithLabels(
             4,
             """
-            iget-object v0, v3, $DESCRIPTOR_TYPE->a $TAB_ENUM;
-            sget-object v1, $TAB_ENUM->$NOTIFICATIONS_TAB $TAB_ENUM;
+            iget-object v0, v3, $DESCRIPTOR_TYPE->a:$TAB_ENUM
+            sget-object v1, $TAB_ENUM->$NOTIFICATIONS_TAB:$TAB_ENUM
             if-ne v0, v1, :morphe_end_hide_notifications_nav
             invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
             move-result-object v0

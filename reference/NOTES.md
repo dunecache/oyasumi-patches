@@ -2451,3 +2451,43 @@ Recovery, in order:
    so semantic-release logs `The local branch dev is behind the remote one, therefore a new
    version won't be published` and exits green having published nothing.
 3. Watch for that exact message. A green run containing it is a no-op, not a release.
+
+## The inline smali dialect: `->member:Type`, and never a doubled `;`
+
+Found the hard way. `v0.6.0-dev.12` compiled in CI, released cleanly, and then threw on device
+while applying patches:
+
+```
+PatchException: Encountered 2 parser syntax errors and 2 lexer syntax errors!
+  at InlineSmaliCompiler$Companion.compile
+  at HideNotificationsNavButtonPatch.kt:47
+```
+
+Two independent faults, both in the two nav patches, which were the first patches in this project
+to inject **field** references. Every earlier patch injects only `invoke-*` method references, which
+is why nothing else was affected.
+
+1. **Field references need a colon.** This grammar wants `Lae0/o;->a:Lde0/a;`. The
+   space-separated `Lae0/o;->a Lde0/a;` that baksmali prints and that every disassembly listing and
+   every fingerprint comment in `reference/` shows is rejected with `missing COLON`. Method
+   references are unaffected. Verified against the parser, not inferred:
+
+   | field reference | result |
+   | --- | --- |
+   | `->a Lde0/a;` space | fails |
+   | `->a:Lde0/a;` colon | parses |
+   | either, with `;;` | fails |
+
+2. **A doubled `;` is invalid.** The `private const val` descriptors already end in `;`, so the
+   smali template must not add another. `$DESCRIPTOR_TYPE->a:$TAB_ENUM;` expands to
+   `Lae0/o;->a:Lde0/a;;` and fails with `Invalid text` on the `;`.
+
+So a baksmali listing is the right place to *read* an instruction and the wrong place to *copy* one
+from. The dialect difference only shows up at patch time.
+
+`tools/checks/check_inline_smali.py` now guards this. It pulls each triple-quoted block out of the
+patch sources, substitutes the file's `private const val`s exactly as Kotlin would, wraps it in a
+stub carrying the target method's real `.registers` and parameter count, and runs it through
+`SmaliTestUtils.compileSmali` — the same entry point `InlineSmaliCompiler` uses. Reintroducing the
+space form makes it report the same `missing COLON` the device did. Run it before pushing any patch
+that injects smali; Kotlin compiling is not evidence that the smali parses.
