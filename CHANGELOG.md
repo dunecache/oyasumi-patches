@@ -1,3 +1,9 @@
+## [0.6.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.6...v0.6.0-dev.7) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* settings header below status bar with version subtitle ([d04e89c](https://github.com/dunecache/oyasumi-patches/commit/d04e89ced84840b59181e0a02a8593db0639ecfd))
+
 ## [0.6.0-dev.6](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.5...v0.6.0-dev.6) (2026-10-03)
 
 ### 🐛 Bug Fixes
