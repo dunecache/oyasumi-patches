@@ -171,11 +171,16 @@ All of these are settings-toggled, so all depend on Phase 0.
 
 - [ ] **Hide Create nav button** — hides the "+" bottom navigation button.
 - [ ] **Hide Notifications nav button** — hides the notifications navigation button.
-- [ ] **Hide Search nav button** — hides the search navigation button.
-  - These three should share one nav-menu anchor if the nav is built in one place. Verify that
-    first; if the nav is built per-tab they are genuinely separate patches.
-  - Related: `info.mqtt.android.service.MqttService`, `com.pinterest.pushnotification.MessagingService`
-    and `FirebaseMessagingService` are all confirmed present and bear on the notifications button.
+- [x] **Hide Search nav button** — hides the search navigation button.
+  - Written. Skips the tab in `FloatingBottomNavBar.Q1`, which returns void, so no value needs
+    supplying. The tab factory `e1` cannot be the target: `Q1` dereferences its result at
+    instruction 2 with no null guard, so a null return would be an NPE.
+  - Anchor is readable where it matters: the tab identity is the `Lde0/a;->SEARCH` enum constant,
+    never obfuscated. The bar's tab list and per-tab layout weights derive from the surviving
+    descriptors, so the remaining tabs should take the space rather than leave a gap.
+  - Default is OFF: hiding navigation is a user preference, unlike the privacy patches.
+  - Build verified: compiles clean in CI. Not verified: fingerprint matches, tab disappears,
+    no gap left.
 - [ ] **Hide greeting header buttons** — hides the search and camera buttons in the home feed
   header.
 - [ ] **Hide comments** — hides the pin comments section and replaces it with the standard

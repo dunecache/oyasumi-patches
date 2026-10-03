@@ -5,6 +5,7 @@ import app.morphe.patcher.InstructionLocation
 import app.morphe.patcher.fieldAccess
 import app.morphe.patcher.methodCall
 import app.morphe.patcher.opcode
+import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.Opcode
 
 /**
@@ -98,5 +99,75 @@ object PedometerStreamHostFingerprint : Fingerprint(
             ),
             returnType = "Z"
         )
+    )
+)
+
+/**
+ * The counter is rendered from the persisted total, not from the event stream. Every number
+ * on the Walk & Win card is a lifetime accumulator, and a device run showed all of them
+ * frozen while the stream was demonstrably delivering values — so the stream only writes to
+ * storage during an active session and the displayed total comes back out of it.
+ *
+ * That makes this the layer that actually has to change for the counter to read 10,000
+ * without a walk. `shared_preferences_android` has two independent backends and which one
+ * Dart calls is not visible from the AOT snapshot, so both are hooked, and both log
+ * unconditionally. The previous attempt logged only on a key match, which made "the hook
+ * never applied" and "the hook applied but the app never reads that key through it" look
+ * identical from the outside.
+ *
+ * No Fingerprint-level `definingClass` on either: that reduces matching to a single
+ * `classMap` lookup that returns null with no fallback, which costs the indexed candidate
+ * search without adding anything the name, return type, parameter list and filters do not
+ * already give.
+ */
+object LegacyPreferenceMapFingerprint : Fingerprint(
+    name = "getAllPrefs",
+    returnType = "Ljava/util/Map;",
+    parameters = listOf("Ljava/lang/String;", "Ljava/util/Set;"),
+    filters = listOf(
+        methodCall(
+            definingClass = "Landroid/content/SharedPreferences;",
+            name = "getAll",
+            parameters = emptyList(),
+            returnType = "Ljava/util/Map;"
+        ),
+        methodCall(
+            definingClass = "Ljava/lang/String;",
+            name = "startsWith",
+            parameters = listOf("Ljava/lang/String;"),
+            returnType = "Z"
+        ),
+        methodCall(
+            definingClass = "Lio/flutter/plugins/sharedpreferences/LegacySharedPreferencesPlugin;",
+            name = "transformPref",
+            parameters = listOf("Ljava/lang/String;", "Ljava/lang/Object;"),
+            returnType = "Ljava/lang/Object;"
+        ),
+        opcode(Opcode.RETURN_OBJECT)
+    )
+)
+
+/**
+ * The async half. This plugin version stores through DataStore, so its `getInt` never
+ * touches `android.content.SharedPreferences.getInt` and needs its own hook.
+ *
+ * `getInt` is a suspend wrapper whose whole body is two null checks, a coroutine start and
+ * a return, so the key is available in a register before anything is read and the boxed
+ * `Long` can simply be returned.
+ *
+ * The `const-string` is Kotlin's parameter-name null-check message for the options
+ * argument. It is unique to this two-parameter overload and R8 has no reason to change it,
+ * because the compiler emits it from the declared parameter name.
+ */
+object AsyncIntPreferenceFingerprint : Fingerprint(
+    name = "getInt",
+    returnType = "Ljava/lang/Long;",
+    parameters = listOf(
+        "Ljava/lang/String;",
+        "Lio/flutter/plugins/sharedpreferences/SharedPreferencesPigeonOptions;"
+    ),
+    filters = listOf(
+        string("options"),
+        opcode(Opcode.RETURN_OBJECT)
     )
 )
