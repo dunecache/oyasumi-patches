@@ -155,6 +155,85 @@ def comment_flagged(instruction: str) -> bool:
         path.unlink(missing_ok=True)
 
 
+
+#: A conditional branch whose target label sits in the same fragment is a join, and Dalvik
+#: requires both paths to agree on every register's type. These rows are the shape that
+#: shipped and took the app down with a blank screen -- gating the pedometer push on the
+#: channel name put a `String` in `v0` on the skip path and an `Integer` in `v0` on the push
+#: path, and the verifier rejected the class at load:
+#:
+#:     VerifyError: Verifier rejected class i5.c: i5.c.onListen failed to verify:
+#:     [0x2C] register v0 has type Conflict but expected Reference: i5.b
+#:
+#: The second row is the shape that is fine, and it is fine for a specific reason worth
+#: keeping: the skipped block ends in `return-object`, so the fall-through path never
+#: reaches the label and there is no join to reconcile.
+BRANCH_CASES: list[tuple[str, str, bool]] = [
+    (
+        "merging branch is flagged",
+        r'const-string v0, "StepCount"' + "\n"
+        + r"invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z" + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v0, 0x2710\n"
+        + "move-result-object v0\n"
+        + ":skip",
+        True,
+    ),
+    (
+        "merging branch is flagged past an interposed comment",
+        r'const-string v0, "StepCount"' + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v0, 0x1\n"
+        + ":skip",
+        True,
+    ),
+    (
+        "skipped block ending in a return is not a join",
+        r'const-string v0, "StepCount"' + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :pass\n"
+        + "const-wide/16 v0, 0x2710\n"
+        + "return-object v0\n"
+        + ":pass",
+        False,
+    ),
+    (
+        "skipped block touching only fresh registers is fine",
+        "iget-object v0, v2, Lx;->l:Ljava/lang/String;\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v4, 0x2710\n"
+        + ":skip",
+        False,
+    ),
+]
+
+
+def join_flagged(smali: str, comment: bool = False) -> bool:
+    """Write `smali` as the folded literal of an addInstructions call."""
+    escaped = smali.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    gap = "            // a comment the compiler ignores\n" if comment else ""
+    src = (
+        'val p = bytecodePatch(n = "x") {\n'
+        "    execute {\n"
+        "        addInstructions(0,\n"
+        '            "const/4 v0, 0\\n" +\n'
+        + gap
+        + f'            "{escaped}"\n'
+        "        )\n"
+        "    }\n"
+        "}\n"
+    )
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        path.write_text(src)
+        return bool(checks.check_branch_joins(path))
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def main() -> int:
     failures = 0
     for label, instruction, expected in CASES:
@@ -163,6 +242,12 @@ def main() -> int:
         failures += not ok
         print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     total = len(CASES)
+    for label, smali, expected in BRANCH_CASES:
+        got = join_flagged(smali, comment="comment" in label)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     for label, instruction, expected in COMMENT_CASES:
         got = comment_flagged(instruction)
         ok = got == expected

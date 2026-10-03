@@ -178,6 +178,67 @@ def check_invoke_arity(path: Path, constants: dict[str, str] | None = None) -> l
     return problems
 
 
+#: Instructions that end a basic block, so the block cannot fall through into whatever
+#: follows them.
+TERMINATORS = ("return", "return-void", "return-object", "return-wide", "throw", "goto")
+
+#: `if-<cond> <regs...>, :label`, and the assignment forms, in the fragments this repo emits.
+COND_BRANCH = re.compile(r"^if-\w+\s+.*?,\s*(:\w+)\s*$")
+ASSIGN = re.compile(r"^\S+\s+(?:v\d+,\s*)?(v\d+)\b")
+WRITES = re.compile(r"\b(v\d+)\s*,")
+LABEL = re.compile(r"^(:\w+)\s*$")
+
+
+def check_branch_joins(path: Path) -> list[str]:
+    """A branch target inside the same fragment is a join, and a join must agree on types.
+
+    Dalvik's verifier tracks the type of every register, and where two paths meet it
+    requires them to agree. Giving the two paths different types for the same register is
+    a `VerifyError` at class-load time, not at patch time, so it survives every check that
+    only looks at the smali in isolation and takes the whole app down with a blank screen.
+    That is not hypothetical: gating the pedometer push on the channel name assigned a
+    `String` to `v0` on the skip path and an `Integer` to `v0` on the push path, the two
+    rejoined at the label, and the device reported
+
+        VerifyError: Verifier rejected class i5.c: i5.c.onListen failed to verify:
+        [0x2C] register v0 has type Conflict but expected Reference: i5.b
+
+    A join only exists when the label can also be *reached by falling through*. If the
+    skipped block ends in a terminator there is no second path and there is nothing to
+    reconcile, which is why the async hook's early return is fine and the gated one was
+    not. So the flag is: a conditional branch whose target is in this fragment, where the
+    block it skips does not end in a terminator, and that block reassigns a register the
+    branch had already assigned.
+    """
+    problems: list[str] = []
+    src = path.read_text(encoding="utf-8")
+    for offset, smali in string_concat_in(src):
+        lines = [ln.strip() for ln in smali.splitlines() if ln.strip()]
+        for i, line in enumerate(lines):
+            m = COND_BRANCH.match(line)
+            if not m:
+                continue
+            target = m.group(1)
+            try:
+                end = next(j for j in range(i + 1, len(lines)) if lines[j] == target)
+            except StopIteration:
+                continue  # target is in another method or another fragment
+            skipped = lines[i + 1:end]
+            if not skipped or skipped[-1].startswith(TERMINATORS):
+                continue  # no fall-through path, so no join
+            after_branch = set(WRITES.findall(" ".join(lines[:i + 1])))
+            for ln in skipped:
+                for reg in WRITES.findall(ln):
+                    if reg in after_branch:
+                        problems.append(
+                            f"{path.name}:{offset}: {line} rejoins at {target} with "
+                            f"{reg} assigned on both paths, so the two paths can give it "
+                            f"incompatible types and the verifier will reject the class. "
+                            f"End the skipped block with a return/throw/goto, or keep "
+                            f"{reg} out of it.")
+    return problems
+
+
 def check_replace_instructions(path: Path) -> list[str]:
     """`replaceInstructions` deletes as many instructions as the list is long.
 
@@ -328,6 +389,7 @@ def main() -> int:
     for path in sorted(root.rglob("*.kt")):
         problems += check_invoke_arity(path)
         problems += check_replace_instructions(path)
+        problems += check_branch_joins(path)
         problems += check_dollar_in_strings(path)
         problems += check_imports(path)
     for p in problems:
