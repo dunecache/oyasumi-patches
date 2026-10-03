@@ -20,6 +20,17 @@
 * hide notifications nav button and pin comments; fix two defects in the search patch ([b904ff4](https://github.com/dunecache/oyasumi-patches/commit/b904ff427b5fd4f12a3f197756d0b20a0c0e36db))
 * wire the three UI patches to in-app Morphe settings toggles ([1a2a2fc](https://github.com/dunecache/oyasumi-patches/commit/1a2a2fc83aee086a054e068d98136d6a354a5b60))
 
+## [0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.11...v0.6.0-dev.12) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* keep the Appodeal package glob out of the KDoc that precedes it ([7e3fd7b](https://github.com/dunecache/oyasumi-patches/commit/7e3fd7b266ce035cefe5f1756f050fa6b9d8d60a))
+
+### ✨ New Features
+
+* hide notifications nav button and pin comments; fix two defects in the search patch ([b904ff4](https://github.com/dunecache/oyasumi-patches/commit/b904ff427b5fd4f12a3f197756d0b20a0c0e36db))
+* wire the three UI patches to in-app Morphe settings toggles ([1a2a2fc](https://github.com/dunecache/oyasumi-patches/commit/1a2a2fc83aee086a054e068d98136d6a354a5b60))
+
 ## [0.6.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.10...v0.6.0-dev.11) (2026-10-03)
 
 ### 🐛 Bug Fixes
