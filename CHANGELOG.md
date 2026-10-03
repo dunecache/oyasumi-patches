@@ -1,3 +1,9 @@
+## [0.6.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.3...v0.6.0-dev.4) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* align settings toggle rows horizontally with the switch end-aligned ([ecbed39](https://github.com/dunecache/oyasumi-patches/commit/ecbed39e4091e9c53db4f811e4d315bf7ebf18c6))
+
 ## [0.6.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.2...v0.6.0-dev.3) (2026-10-02)
 
 ### ✨ New Features
