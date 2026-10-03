@@ -23,7 +23,7 @@ Every patch must declare compatibility with the exact package and versions that 
 
 ## Environment constraints
 
-Development happens in Termux on Android. Avoid heavy builds. Do not run a full Gradle build unless asked; prefer static reasoning and a targeted check such as `./gradlew :patches:compileKotlin`. Use CI or a device for full bundle application tests. Do not download large toolchains or APKs without approval, and keep file reads targeted.
+Development happens in Termux on Android. Avoid heavy builds. Do not run a full Gradle build unless asked; prefer static reasoning and a targeted check such as `./gradlew :patches:compileKotlin`. Use CI or a device for full bundle application tests. Do not download large toolchains or APKs without approval, and keep file reads targeted. On Termux, stop stale Gradle daemons after changing credentials or the environment: export `GITHUB_TOKEN`, `GITHUB_ACTOR`, and Java 21, then run `./gradlew --stop`, because a running daemon may otherwise reuse the old environment while reporting auth failures.
 
 ## Working cache
 

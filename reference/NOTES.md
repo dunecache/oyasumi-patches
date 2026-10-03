@@ -106,7 +106,7 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 ## Build environment
 
 - `openjdk-21` is installed at `/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk` and exported through `/data/data/com.termux/files/usr/etc/profile.d/openjdk.sh`.
-- A local Gradle build is not possible: `https://maven.pkg.github.com/MorpheApp/registry` returns `401` for the available `gh` token, which lacks the `read:packages` scope, so `app.morphe.patches` plugin `1.3.4` cannot be resolved. Compilation is delegated to CI.
+- Local `:patches:compileKotlin` now works: use Java 21, the Gradle 9.7.1 wrapper, a `GITHUB_TOKEN` with `read:packages`, and `GITHUB_ACTOR=dunecache`, then run `./gradlew --stop` before building after any credential or environment change. A stale Termux Gradle daemon can otherwise reuse the old environment and keep reporting auth failures. The Android `:extensions:extension` module still needs a real SDK through `ANDROID_HOME` or `local.properties`, so a complete local bundle build remains unavailable without one.
 
 ## Browser and remote data
 
