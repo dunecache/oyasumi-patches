@@ -33,7 +33,7 @@ import com.android.tools.smali.dexlib2.Opcode
  * `fetch()` below is the third piece: it is the only caller of `Appodeal.cache`, and it does
  * so four times, with the banner, the interstitial or both.
  *
- * A scan of every method outside `com/appodeal/**` for `Appodeal.initialize`,
+ * A scan of every method outside the SDK's own `com.appodeal` package for `Appodeal.initialize`,
  * `setBannerViewId`, `setAutoCache`, `setBannerCallbacks`, `cache`, `show` and `destroy`
  * returns these three methods and five others, and the five are all read-only or interstitial:
  * `Lidm/internet/download/manager/d;->ۦۡۗ`/`ۦۡۚ` ask `isLoaded(4)` and `show(Activity, 64)`,
