@@ -1,3 +1,9 @@
+## [0.6.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.16...v0.6.0-dev.17) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* declare the empty parameter list on the comments-button fingerprint ([87c5e36](https://github.com/dunecache/oyasumi-patches/commit/87c5e368671235eb3593c98a8536a6c383360cff))
+
 ## [0.6.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.15...v0.6.0-dev.16) (2026-10-03)
 
 ### 🐛 Bug Fixes
