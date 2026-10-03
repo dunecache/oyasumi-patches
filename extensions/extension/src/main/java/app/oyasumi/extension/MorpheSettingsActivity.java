@@ -2,15 +2,15 @@ package app.oyasumi.extension;
 
 import android.app.Activity;
 import android.content.SharedPreferences;
+import android.content.res.TypedArray;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.TextView;
 
-import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.divider.MaterialDivider;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.textview.MaterialTextView;
@@ -19,16 +19,24 @@ import com.google.android.material.textview.MaterialTextView;
  * The Morphe settings screen, opened from the "Morphe" row in Account Settings via the
  * `morphe://settings` intent-filter.
  *
- * <p>Material 3, using only components verified present in the target APK
- * (`MaterialToolbar`, `MaterialDivider`, `MaterialTextView`, `MaterialSwitch`) under the
- * `Theme.Material3.DayNight.NoActionBar` theme declared for this activity in the manifest.
- * Colors come from framework theme attributes (`windowBackground`, `textColorPrimary`,
- * `textColorSecondary`), so light and dark follow the system automatically with no hardcoded
- * palette. The selected switch tint comes from the theme's `colorPrimary` the same way.
+ * <p>Material 3 widgets under the `Theme.Material3.DayNight.NoActionBar` theme declared for this
+ * activity, so light and dark follow the system automatically. Colors come from framework theme
+ * attributes with dark fallbacks.
  *
- * <p>Deliberately no dynamic color: Pinterest does not bundle `DynamicColors`, so there is
- * nothing to resolve a wallpaper palette with. No Pinterest resources are referenced either,
- * for the same reason the activity keeps a framework theme.
+ * <p>Every widget call here was checked against Pinterest's own copy of the Material library,
+ * because that copy is R8-stripped to what Pinterest itself uses and anything else is a
+ * `NoSuchMethodError` at runtime. What survived the check: `MaterialTextView(Context)` plus the
+ * `TextView` methods it inherits, and the two-argument constructors of `MaterialDivider` and
+ * `MaterialSwitch` (called with a null `AttributeSet`, which is exactly what a single-argument
+ * constructor does internally). What did not survive and is therefore not used: `MaterialToolbar`
+ * entirely (its copy kept 10 methods, none of `setTitle`, navigation, or menu handling),
+ * single-argument `MaterialDivider`/`MaterialSwitch` constructors, and `DynamicColors`, which is
+ * absent, so there is no wallpaper-tinted dynamic color. All other calls (`setText`,
+ * `setChecked`, `addView`, layout params) resolve to framework superclasses that cannot be
+ * stripped.
+ *
+ * <p>No Pinterest resources are referenced, for the same reason the activity keeps a framework
+ * theme.
  *
  * <p>The switches here are placeholders for the settings-toggled patches that do not exist yet;
  * each of those patches will read its own key from the same preferences file. Adding a real
@@ -52,11 +60,12 @@ public final class MorpheSettingsActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setBackgroundColor(background);
 
-        MaterialToolbar toolbar = new MaterialToolbar(this);
-        toolbar.setTitle("Morphe");
-        // No navigation icon: the system back button/gesture already finishes the activity,
-        // and every icon would reference a drawable that must exist in Pinterest's resources.
-        root.addView(toolbar);
+        MaterialTextView title = new MaterialTextView(this);
+        title.setText("Morphe");
+        title.setTextSize(22);
+        title.setTextColor(textPrimary);
+        title.setGravity(Gravity.CENTER_HORIZONTAL);
+        root.addView(title);
 
         LinearLayout body = new LinearLayout(this);
         body.setOrientation(LinearLayout.VERTICAL);
@@ -68,9 +77,10 @@ public final class MorpheSettingsActivity extends Activity {
         subtitle.setText("Toggles appear here as their patches land.");
         subtitle.setTextSize(14);
         subtitle.setTextColor(textSecondary);
+        subtitle.setGravity(Gravity.CENTER_HORIZONTAL);
         body.addView(subtitle);
 
-        body.addView(new MaterialDivider(this));
+        body.addView(new MaterialDivider(this, null));
 
         // Placeholder. The first settings-toggled patch replaces this with a real switch
         // bound to its own key through isEnabled() below.
@@ -98,8 +108,7 @@ public final class MorpheSettingsActivity extends Activity {
                     && out.type <= TypedValue.TYPE_LAST_COLOR_INT) {
                 return out.data;
             }
-            try (android.content.res.TypedArray a =
-                         obtainStyledAttributes(new int[]{attr})) {
+            try (TypedArray a = obtainStyledAttributes(new int[]{attr})) {
                 return a.getColor(0, fallback);
             }
         }
@@ -140,7 +149,7 @@ public final class MorpheSettingsActivity extends Activity {
 
         row.addView(textBlock);
 
-        MaterialSwitch toggle = new MaterialSwitch(this);
+        MaterialSwitch toggle = new MaterialSwitch(this, null);
         toggle.setChecked(prefs.getBoolean(key, def));
         toggle.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean(key, isChecked).apply());
