@@ -19,13 +19,19 @@ private const val GONE = "0x8"
 @Suppress("unused")
 val disableHomeScreenAdsPatch = bytecodePatch(
     name = "Disable home screen ads",
-    description = "Keep 1DM's home screen banner from loading, rotating, or rendering, " +
-        "including the built-in \"install 1DM+\" banner ad.",
+    description = "Keep the home screen banner from loading, rotating, or rendering. The banner " +
+        "in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo " +
+        "banner, including the built-in \"install 1DM+\" ad, is suppressed at its source.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
 
     execute {
+        // The banner on the home screen footer is Appodeal's, so this is the edit that
+        // actually removes what is on screen. The three below it cover 1DM's own promo
+        // surface, which is a separate system that this patch also claims.
+        AppodealAdInitFingerprint.method.addInstructions(0, "return-void")
+
         // The app already has a no-ads state: `BrowserApp` calls `disable()` instead of
         // `load()` when the ad configuration says the banner is off, and `disable()` sets
         // `mDisabled`, empties `bannerInfoList`, drops the current ad, and cancels the
