@@ -10,40 +10,172 @@ import app.morphe.patcher.string
 import com.android.tools.smali.dexlib2.Opcode
 
 /**
- * The banner that is actually on the home screen footer is not one of 1DM's own banner
- * classes. It is Appodeal's `com.appodeal.ads.BannerView`, declared in
+ * The banner that is on the home screen footer is not one of 1DM's own banner classes.
+ * It is Appodeal's `com.appodeal.ads.BannerView`, declared in
  * `res/layout/activity_main_bottom.xml` as the last child of the drawer's content column,
- * `android:visibility="gone"` and `layout_height="wrap_content"`, with the id
+ * `android:visibility="gone"` and `android:layout_height="wrap_content"`, with the id
  * `appodealBannerView` (`0x7f0a018f`). A uiautomator dump of 18.2 shows that view populated
  * and on screen with the SDK's own `WebView` inside it, so nothing reached through
  * `BannerManager` or through the `Li/ru;` promo object can suppress it.
  *
- * `Lidm/internet/download/manager/e;-><init>()V` is the app's ad bootstrap and the only
- * place Appodeal is brought up: it registers the banner view id with
- * `Appodeal.setBannerViewId`, initializes the SDK with the publisher key, installs the
- * banner callbacks, and then caches the banner with `Appodeal.cache`. Suppressing the
- * method stops all three steps at once, and it is the smallest edit available because the
- * banner is requested nowhere else -- the app makes no other `Appodeal` call that names the
- * banner, and the two `Appodeal.show(Activity, 64)` sites are `BANNER_VIEW` *queries* that
- * only tell 1DM's own `BannerManager` that a network ad is on screen.
+ * **1DM brings Appodeal up twice, by two unrelated methods, and both register that same
+ * banner view id.** Getting this wrong is what made v0.6.0-dev.8 ineffective on a device:
+ * it suppressed the second one, the banner stayed. The two are:
  *
- * The class and the method name are obfuscated, so neither is pinned. What identifies the
- * method is the chain below, in which every anchor is an Appodeal SDK member name or the
- * publisher's own Appodeal key, both of which are fixed for this app. The chain is in
- * increasing instruction order: the view id at 34, the key at 45, `initialize` at 54,
- * `setBannerCallbacks` at 57 and `cache` at 67.
+ *  - `Li/rm;->ۦۖۢ(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/m15;)V` at start-up,
+ *    which is `AppodealStartupInitFingerprint` below. It calls `setAutoCache(false, 7)`,
+ *    `muteVideosIfCallsMuted(true)`, `setBannerViewId(2131362191)`, `initialize` with the
+ *    publisher key, and installs both the banner and the interstitial callbacks.
+ *  - `Lidm/internet/download/manager/e;-><init>()V`, reached only when Appodeal's consent
+ *    flow completes -- its sole caller is `MyAppCompatActivity$2`, the
+ *    `ConsentManagerError` callback. That is `AppodealAdInitFingerprint`.
  *
- * Returning early is safe rather than merely effective, because this method is already the
- * app's ads-enabled branch. Its only caller,
- * `Lidm/internet/download/manager/d;->ۦۜ۟(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/q15;)V`,
- * constructs this singleton only when the premium check fails and otherwise calls
- * `Li/a6;->ۦۖ۟(...)`, so a constructed-but-inert `e;` is a state the app already has a path
- * for. The class's two other instance methods are empty list callbacks, so no field left
- * unwritten is read afterwards, and the two consumers that outlive the bootstrap --
- * `Lidm/internet/download/manager/d;->ۦۤۥ(...)V` for interstitials and
- * `Lacr/browser/lightning/app/ActivityLifecycleListener;->onStateChanged(...)` for the
- * Amazon service -- both test `AmazonService.isInitialized()` or `Appodeal.isLoaded()`
- * before they touch either SDK.
+ * `fetch()` below is the third piece: it is the only caller of `Appodeal.cache`, and it does
+ * so four times, with the banner, the interstitial or both.
+ *
+ * A scan of every method outside `com/appodeal/**` for `Appodeal.initialize`,
+ * `setBannerViewId`, `setAutoCache`, `setBannerCallbacks`, `cache`, `show` and `destroy`
+ * returns these three methods and five others, and the five are all read-only or interstitial:
+ * `Lidm/internet/download/manager/d;->ۦۡۗ`/`ۦۡۚ` ask `isLoaded(4)` and `show(Activity, 64)`,
+ * where `64` is `BANNER_VIEW`, purely to tell 1DM's own `BannerManager` via
+ * `setNetworkAdShowingAndNotify` that a network ad is on screen;
+ * `d;->ۦۤۥ(...)V` and `Li/rm;->ۦۗۤ`/`ۦۗۡ` do the same for the interstitial. None of them can
+ * bring the SDK up or register the view.
+ *
+ * That scan has to cover the whole APK and not just `Lidm/` and `Lacr/`. `Li/rm;` is in the
+ * obfuscated `Li/` package, and a scan filtered to the app's own package prefixes reported
+ * that no code registered the banner -- which is what the first version of this file asserted.
+ */
+
+/**
+ * `Li/rm;->ۦۖۢ(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/m15;)V` is 1DM's
+ * start-up bring-up of the Appodeal SDK, and the only code path that makes the footer banner
+ * appear. It is a `BannerCallbacks` and `InterstitialCallbacks` implementation held in the
+ * singleton `Li/rm;`, reached through `Li/rm;->ۦۖۗ()`.
+ *
+ * The class, the method and both parameter types are obfuscated and change between releases,
+ * so none of them is pinned; only `returnType = "V"` is. The chain is what identifies it, and
+ * every anchor in it is an Appodeal member name, the publisher's own key, or the banner view
+ * id literal `2131362191` (`0x7f0a018f`), all fixed for this app. The chain is in increasing
+ * instruction order: `setAutoCache` at 20, the view id at 23, `setBannerViewId` at 24, the key
+ * at 33, `initialize` at 39, `setBannerCallbacks` at 40, `setInterstitialCallbacks` at 41.
+ *
+ * The last two filters are what keep this apart from
+ * `Lidm/internet/download/manager/e;-><init>()V`, which repeats the key, the view id,
+ * `initialize` and `setBannerCallbacks` but calls neither `setAutoCache` nor
+ * `setInterstitialCallbacks`.
+ *
+ * The patch returns from index 1 rather than index 0 on purpose. Index 0 stores the callback
+ * argument into `Li/rm;->ۦۖ۠Li/m15;`, and every one of `onBannerLoaded`, `onBannerShown`,
+ * `onBannerClicked`, `onBannerFailedToLoad`, `onInterstitialLoaded`, `onInterstitialShown` and
+ * `onInterstitialFailedToLoad` reads that field and calls through it. Leaving the store in
+ * place and stopping before the SDK is touched costs nothing and keeps those callbacks safe
+ * even if Appodeal were initialised by some path this patch does not see.
+ */
+object AppodealStartupInitFingerprint : Fingerprint(
+    // `parameters` is deliberately not declared. One of the two declared types is
+    // `Li/m15;`, which is obfuscated and changes between releases, and a partial parameter
+    // list is not a constraint Morphe can express; the chain below is what has to carry the
+    // specificity, and it resolves to exactly one method in all eleven DEX files.
+    returnType = "V",
+    filters = listOf(
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "setAutoCache",
+            parameters = listOf("I", "Z"),
+            returnType = "V"
+        ),
+        literal(2131362191, listOf(Opcode.CONST)),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "setBannerViewId",
+            parameters = listOf("I"),
+            returnType = "V"
+        ),
+        string("b1eafec41c5ab762a5acc356f9526305d05536819d4d0184"),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "initialize",
+            parameters = listOf(
+                "Landroid/content/Context;",
+                "Ljava/lang/String;",
+                "I",
+                "Lcom/appodeal/ads/initializing/ApdInitializationCallback;"
+            ),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "setBannerCallbacks",
+            parameters = listOf("Lcom/appodeal/ads/BannerCallbacks;"),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "setInterstitialCallbacks",
+            parameters = listOf("Lcom/appodeal/ads/InterstitialCallbacks;"),
+            returnType = "V"
+        )
+    )
+)
+
+/**
+ * `Li/rm;->fetch()V` is the only caller of `Appodeal.cache` in the whole APK, and it is what
+ * turns a cached ad into a request for one. It picks the mask from three gates -- whether the
+ * banner is loaded and can be shown, whether the premium check passed, and the persisted
+ * `AppodealNetwork` network preference -- and then calls `cache` with `4` (`BANNER`), `3`
+ * (`INTERSTITIAL`) or `7` (both).
+ *
+ * Suppressing it is redundant while `AppodealStartupInitFingerprint` holds, because an
+ * uninitialised SDK ignores `cache`, and it is kept anyway for the same reason the ADM patch
+ * suppresses both its initialiser and its display routines: the two claims are independent, and
+ * only one of them being wrong should not be enough to bring the banner back.
+ *
+ * The `AppodealNetwork` preference key and the two consecutive `cache` calls identify it. The
+ * obfuscated gate helpers `ۦۖۤ()Z` and `ۦۖۛ()Z` and the obfuscated preference accessors are
+ * deliberately not used.
+ */
+object AppodealFetchFingerprint : Fingerprint(
+    returnType = "V",
+    parameters = listOf(),
+    filters = listOf(
+        string("AppodealNetwork"),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "cache",
+            parameters = listOf("Landroid/app/Activity;", "I"),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Lcom/appodeal/ads/Appodeal;",
+            name = "cache",
+            parameters = listOf("Landroid/app/Activity;", "I"),
+            returnType = "V"
+        )
+    )
+)
+
+/**
+ * `Lidm/internet/download/manager/e;-><init>()V` is the *second* Appodeal bring-up, reached
+ * only after Appodeal's consent flow completes, and it repeats the whole sequence: the same
+ * publisher key, the same `setBannerViewId(2131362191)`, `initialize`, `setBannerCallbacks` and
+ * a `cache`. Suppressing only the start-up path is not enough, because this one re-registers
+ * the banner view afterwards; suppressing only this one, as v0.6.0-dev.8 did, is what left
+ * the banner on screen.
+ *
+ * It is also where 1DM starts `AmazonService` and initialises Smaato, so returning early stops
+ * those two as well. That is deliberate and in scope for an ad patch: `AmazonService`'s only
+ * two readers are `BannerView.setAd` and `d;->ۦۤۥ`, both already suppressed or guarded here,
+ * and `ActivityLifecycleListener.onStateChanged` tests `AmazonService.isInitialized()` before
+ * it calls `start`/`stop`.
+ *
+ * Returning at index 0 is safe because this singleton's only caller,
+ * `Lidm/internet/download/manager/d;->ۦۜ۟(...)V`, constructs it solely on the ads-enabled
+ * branch and otherwise calls `Li/a6;->ۦۖ۟(...)`, and the class's two other instance methods
+ * are empty list callbacks, so the `Random` field left unwritten is never read.
+ *
+ * The chain omits the `setBannerViewId` literal that `AppodealStartupInitFingerprint` uses,
+ * and ends at `cache` rather than `setInterstitialCallbacks`, which is what separates the two.
  */
 object AppodealAdInitFingerprint : Fingerprint(
     returnType = "V",

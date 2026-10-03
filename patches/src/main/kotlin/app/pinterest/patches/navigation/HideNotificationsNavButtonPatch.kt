@@ -16,6 +16,11 @@ private const val GONE = "0x8"
 
 private const val NOTIFICATIONS_TAB = "NOTIFICATIONS"
 
+/** Reads this patch's toggle from the Morphe settings. */
+private const val EXTENSION_CLASS = "Lapp/oyasumi/extension/MorpheSettingsActivity;"
+
+private const val SETTINGS_KEY = "morphe_hide_notifications_nav"
+
 @Suppress("unused")
 val hideNotificationsNavButtonPatch = bytecodePatch(
     name = "Hide Notifications nav button",
@@ -26,26 +31,34 @@ val hideNotificationsNavButtonPatch = bytecodePatch(
 
     dependsOn(versionCheckPatch)
 
+    extendWith("extensions/extension.mpe")
+
     execute {
         // Same seam, same shape and same reasoning as the search-button patch, keyed on a
-        // different enum constant. Both patches insert into this one method, so they compose:
-        // each block is self-contained, uses only `v0` and `v1`, and ends by falling through to
-        // the `nop` at its own label.
+        // different enum constant and reading a different toggle. Both patches insert into this
+        // one method, so they compose: each block is self-contained, uses only `v0` and `v1`, and
+        // falls through to the `nop` at its own label.
         //
         // They are separate patches rather than one because they are independent toggles:
         // hiding one button must not require enabling the other.
         //
-        // See the search patch for why the tab is hidden rather than skipped: the tab index
-        // comes from a loop counter, so skipping a tab desynchronises it from the bar's list.
+        // See the search patch for why the tab is hidden rather than skipped, and for why the
+        // preference read takes only a context and a key.
         BottomNavTabAdderFingerprint.method.addInstructionsWithLabels(
             4,
             """
             iget-object v0, v3, $DESCRIPTOR_TYPE->a $TAB_ENUM;
             sget-object v1, $TAB_ENUM->$NOTIFICATIONS_TAB $TAB_ENUM;
-            if-ne v0, v1, :morphe_not_notifications_tab
+            if-ne v0, v1, :morphe_end_hide_notifications_nav
+            invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
+            move-result-object v0
+            const-string v1, "$SETTINGS_KEY"
+            invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+            move-result v0
+            if-eqz v0, :morphe_end_hide_notifications_nav
             const/16 v1, $GONE
             invoke-virtual {v6, v1}, Landroid/view/View;->setVisibility(I)V
-            :morphe_not_notifications_tab
+            :morphe_end_hide_notifications_nav
             nop
             """.trimIndent()
         )

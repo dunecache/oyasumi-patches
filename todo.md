@@ -216,6 +216,22 @@ the bot challenge (`BotChallengeActivity`, 3-instruction `onCreate`), the onboar
 (`NUXActivity.goHome()`, two internal callers), and the `autoAnalytics` resume-event gate on
 `baseActivity.onResume`. Decide whether to add patches for them or leave them recorded and unused.
 
+## Settings toggles wired
+
+The three UI-hiding patches read their state from the in-app Morphe settings screen rather than
+only from the Manager's patch list, which is what the original descriptions specified.
+
+| Patch | Key | Reads at |
+| --- | --- | --- |
+| Hide Search nav button | `morphe_hide_search_nav` | `FloatingBottomNavBar.Q1` ins 4 |
+| Hide Notifications nav button | `morphe_hide_notifications_nav` | `FloatingBottomNavBar.Q1` ins 4 |
+| Hide comments | `morphe_hide_comments` | `UnifiedPinActionBarView` ctor ins 29 |
+
+Each injects `getContext()` then `MorpheSettingsActivity.isEnabled(Context, String)`. That helper
+takes two arguments and not three because the target methods have only two free registers: a
+default-value argument would need a third. All three patches are opt-in, so the shared default is
+false and lives in the extension.
+
 ## Naming
 
 The settings entry is **"Morphe"** everywhere: patch names, descriptions, the settings row

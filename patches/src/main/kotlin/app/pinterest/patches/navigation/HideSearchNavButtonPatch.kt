@@ -16,6 +16,11 @@ private const val GONE = "0x8"
 
 private const val SEARCH_TAB = "SEARCH"
 
+/** Reads this patch's toggle from the Morphe settings. */
+private const val EXTENSION_CLASS = "Lapp/oyasumi/extension/MorpheSettingsActivity;"
+
+private const val SETTINGS_KEY = "morphe_hide_search_nav"
+
 @Suppress("unused")
 val hideSearchNavButtonPatch = bytecodePatch(
     name = "Hide Search nav button",
@@ -25,6 +30,8 @@ val hideSearchNavButtonPatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_PINTEREST)
 
     dependsOn(versionCheckPatch)
+
+    extendWith("extensions/extension.mpe")
 
     execute {
         // Hide the tab's view, do NOT skip creating the tab.
@@ -43,8 +50,12 @@ val hideSearchNavButtonPatch = bytecodePatch(
         //
         // Instruction 3 leaves the tab's `View` in `v6`, and nothing between there and the
         // insertion point overwrites it. Eight registers with six declared parameters puts the
-        // descriptor in `v3` and `this` in `v2`, leaving only `v0` and `v1` free, so `v1` is
-        // reused for the visibility constant once the comparison has consumed it.
+        // descriptor in `v3` and `this` in `v2`, leaving only `v0` and `v1` free. That is why the
+        // preference read takes a `Context` and the key and nothing else: a default-value
+        // argument would need a third register, and every reader of a toggle is opt-in, so the
+        // shared default lives in the extension.
+        //
+        // The context comes from the tab's own view rather than from the method, which has none.
         //
         // The tab stays in the bar's lookup list, so navigation by identity still resolves and no
         // other code path loses a tab it expected to find.
@@ -53,10 +64,16 @@ val hideSearchNavButtonPatch = bytecodePatch(
             """
             iget-object v0, v3, $DESCRIPTOR_TYPE->a $TAB_ENUM;
             sget-object v1, $TAB_ENUM->$SEARCH_TAB $TAB_ENUM;
-            if-ne v0, v1, :morphe_not_search_tab
+            if-ne v0, v1, :morphe_end_hide_search_nav
+            invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
+            move-result-object v0
+            const-string v1, "$SETTINGS_KEY"
+            invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+            move-result v0
+            if-eqz v0, :morphe_end_hide_search_nav
             const/16 v1, $GONE
             invoke-virtual {v6, v1}, Landroid/view/View;->setVisibility(I)V
-            :morphe_not_search_tab
+            :morphe_end_hide_search_nav
             nop
             """.trimIndent()
         )

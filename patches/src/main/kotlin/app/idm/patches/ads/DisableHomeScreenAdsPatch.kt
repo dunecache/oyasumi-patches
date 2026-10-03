@@ -27,9 +27,18 @@ val disableHomeScreenAdsPatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_1DM)
 
     execute {
-        // The banner on the home screen footer is Appodeal's, so this is the edit that
-        // actually removes what is on screen. The three below it cover 1DM's own promo
-        // surface, which is a separate system that this patch also claims.
+        // The banner on the home screen footer is Appodeal's, so these three are the edits
+        // that actually remove what is on screen. 1DM brings the SDK up by two unrelated
+        // methods and both register the same banner view id, so both have to go: the
+        // start-up path, the consent-completion path, and the one caller of `Appodeal.cache`.
+        //
+        // Suppressing only the second of those is what left the banner on screen in
+        // v0.6.0-dev.8, so the start-up one is listed first and returns from index 1. That
+        // index is after the store into `Li/rm;->ۦۖ۠`, which every `onBanner*` and
+        // `onInterstitial*` callback in that class reads and calls through, so the callbacks
+        // stay safe even though the SDK is never brought up.
+        AppodealStartupInitFingerprint.method.addInstructions(1, "return-void")
+        AppodealFetchFingerprint.method.addInstructions(0, "return-void")
         AppodealAdInitFingerprint.method.addInstructions(0, "return-void")
 
         // The app already has a no-ads state: `BrowserApp` calls `disable()` instead of

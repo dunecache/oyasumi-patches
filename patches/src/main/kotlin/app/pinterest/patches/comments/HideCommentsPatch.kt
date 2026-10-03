@@ -1,12 +1,17 @@
 package app.pinterest.patches.comments
 
-import app.morphe.patcher.extensions.InstructionExtensions.addInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
 
 /** `View.GONE`. Needs `const/16`: `const/4` has a signed 4-bit literal and cannot encode 8. */
 private const val GONE = "0x8"
+
+/** Reads this patch's toggle from the Morphe settings. */
+private const val EXTENSION_CLASS = "Lapp/oyasumi/extension/MorpheSettingsActivity;"
+
+private const val SETTINGS_KEY = "morphe_hide_comments"
 
 @Suppress("unused")
 val hideCommentsPatch = bytecodePatch(
@@ -17,6 +22,8 @@ val hideCommentsPatch = bytecodePatch(
     compatibleWith(COMPATIBILITY_PINTEREST)
 
     dependsOn(versionCheckPatch)
+
+    extendWith("extensions/extension.mpe")
 
     execute {
         // The wrapper is already in `v6` when it is stored into field `d`, and the next
@@ -38,10 +45,20 @@ val hideCommentsPatch = bytecodePatch(
         // Static checks cannot see this; it is the same trap the 1DM ads patch documents.
         val iconLookup = CommentsModuleWrapperFingerprint.instructionMatches[1]
 
-        CommentsModuleWrapperFingerprint.method.addInstructions(
+        CommentsModuleWrapperFingerprint.method.addInstructionsWithLabels(
             iconLookup.index,
-            "const/16 v0, $GONE\n" +
-                "invoke-virtual {v6, v0}, Landroid/view/View;->setVisibility(I)V"
+            """
+            invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
+            move-result-object v0
+            const-string v1, "$SETTINGS_KEY"
+            invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+            move-result v0
+            if-eqz v0, :morphe_end_hide_comments
+            const/16 v0, $GONE
+            invoke-virtual {v6, v0}, Landroid/view/View;->setVisibility(I)V
+            :morphe_end_hide_comments
+            nop
+            """.trimIndent()
         )
     }
 }

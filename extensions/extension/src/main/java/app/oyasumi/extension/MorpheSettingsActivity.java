@@ -38,9 +38,9 @@ import com.google.android.material.textview.MaterialTextView;
  * <p>No Pinterest resources are referenced, for the same reason the activity keeps a framework
  * theme.
  *
- * <p>The switches here are placeholders for the settings-toggled patches that do not exist yet;
- * each of those patches will read its own key from the same preferences file. Adding a real
- * toggle later means adding one row here and one read there, nothing else.
+ * <p>Each switch here is read by a patch injected into the app through {@link #isEnabled}, keyed
+ * by the string passed to {@link #addToggleRow}. Adding a toggle means adding one row here and
+ * one injected read at the patch site; nothing else has to change.
  */
 public final class MorpheSettingsActivity extends Activity {
 
@@ -90,9 +90,16 @@ public final class MorpheSettingsActivity extends Activity {
         section.setTextColor(textSecondary);
         body.addView(section);
 
-        // Placeholder. The first settings-toggled patch replaces this with a real switch
-        // bound to its own key through isEnabled() below.
-        addToggleRow(body, "Placeholder", "No toggles yet.", "placeholder", false);
+        // Every key below is read by a patch injected into the app, not by this activity.
+        addToggleRow(body, "Hide search button",
+                "Hide the search button in the bottom navigation bar.",
+                "morphe_hide_search_nav");
+        addToggleRow(body, "Hide notifications button",
+                "Hide the notifications button in the bottom navigation bar.",
+                "morphe_hide_notifications_nav");
+        addToggleRow(body, "Hide comments",
+                "Hide the comments button on a pin.",
+                "morphe_hide_comments");
 
         root.addView(body);
         setContentView(root);
@@ -115,9 +122,19 @@ public final class MorpheSettingsActivity extends Activity {
         }
     }
 
-    /** Reads a Morphe toggle. Settings-toggled patches call this instead of reading prefs directly. */
-    public static boolean isEnabled(android.content.Context context, String key, boolean def) {
-        return context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(key, def);
+    /**
+     * Reads a Morphe toggle. Every settings-toggled patch injects a call to this.
+     *
+     * <p>Two arguments rather than three, and that is deliberate. The target methods these checks
+     * are injected into have only two free registers, so a default-value argument would have to be
+     * materialised into a third register, which does not exist without changing the method's
+     * register count. Every patch that reads a toggle is opt-in, so the shared default is false.
+     *
+     * <p>Taking the {@link Context} rather than a {@code SharedPreferences} keeps the call to two
+     * registers and avoids each patch having to know the preferences file name.
+     */
+    public static boolean isEnabled(android.content.Context context, String key) {
+        return context.getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(key, false);
     }
 
     private void resolveThemeColors() {
@@ -141,7 +158,7 @@ public final class MorpheSettingsActivity extends Activity {
     }
 
     private void addToggleRow(LinearLayout parent, String label, String description,
-                              final String key, boolean def) {
+                              final String key) {
         final SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
         final float density = getResources().getDisplayMetrics().density;
 
@@ -175,7 +192,7 @@ public final class MorpheSettingsActivity extends Activity {
         row.addView(textBlock);
 
         MaterialSwitch toggle = new MaterialSwitch(this, null);
-        toggle.setChecked(prefs.getBoolean(key, def));
+        toggle.setChecked(prefs.getBoolean(key, false));
         toggle.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean(key, isChecked).apply());
         row.addView(toggle);
