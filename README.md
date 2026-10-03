@@ -135,3 +135,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Further documentation
 
 See the [Morphe patcher documentation](https://github.com/MorpheApp/morphe-documentation) for the current patch API and [Morphe Desktop](https://github.com/MorpheApp/morphe-desktop) for applying a local bundle.
+
+## Credits
+
+The Pinterest settings patches (settings entry, label, manifest) adapt the mechanism proven in [browzomje-patches](https://github.com/browzomje/browzomje-patches): reusing Pinterest's own external-link settings row with a `morphe://` URL instead of building a custom row, renaming the row's existing string resource across all locales instead of adding a new one, declaring the settings activity with a framework theme and a `morphe://` intent-filter, and resolving obfuscated class names from the dex at patch time rather than pinning them. All fingerprints, the locale list, and the extension code here were re-derived and rewritten for the builds targeted by this repository; consult that project for the original implementation and its version-to-version obfuscation notes.
