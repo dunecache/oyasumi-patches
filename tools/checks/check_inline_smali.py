@@ -13,10 +13,18 @@ string constants, wraps the result in a stub method with the register count and 
 registers the real target method has, and hands it to `com.android.tools.smali`. The same
 `SmaliTestUtils.compileSmali` entry point the patcher uses.
 
-The register layout is the part worth keeping honest: a block that parses can still be wrong
-because it clobbers a live register. Each stub below declares the same `.registers` count and
-parameter count as the method the block is actually injected into, so the assembler rejects
-writes to a parameter register and out-of-range registers.
+What this does and does not catch, measured rather than assumed:
+
+  caught:     unknown opcodes, malformed operands, the `->member Type` field-reference form, and
+              stray or doubled `;` -- everything the real parser rejects, which is what produced
+              the `v0.6.0-dev.12` failure on device.
+  NOT caught: register correctness. `compileSmali` is a parser, not a verifier. It accepts a write
+              to a declared parameter register, and a write to `v12` in a nine-register method,
+              as readily as a correct one. Both were tried; both parsed.
+
+So the register layout below is documentation and a tripwire for structural mistakes, not
+enforcement. Whether a block clobbers something live in the target method still has to be reasoned
+about by hand or by a reviewer.
 
 Requires the smali library jars. Point SMALI_CP at them, or leave it unset to auto-discover:
 
@@ -40,33 +48,45 @@ PATCHES = ROOT / "patches/src/main/kotlin/app/pinterest/patches"
 # How to wrap each block so the assembler sees the real target method's register layout.
 # Keyed by the Kotlin file that contains the block.
 #
-#   registers:  total .registers for the method
-#   ins:        declared .registers minus parameters; the stub must have exactly this many
-#               leading NOPs so that `v<ins>` is the first free register
+#   registers:  total .registers for the real target method
+#   ins:        declared .registers minus parameters; the stub gets exactly this many leading
+#               NOPs, so the live map matches the method the block is injected into
+#   live:       what is live where. Read this before changing a block -- the parser will not
+#               tell you that v0 holds `this`.
 #   comment:    which method is being patched, and what is live where
 LAYOUTS = {
-    "navigation/HideSearchNavButtonPatch.kt": {
+    "navigation/HideSearchNavButtonPatch.kt": [{
         "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
         "registers": 8,
         "ins": 2,
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
-    },
-    "navigation/HideNotificationsNavButtonPatch.kt": {
+    }],
+    "navigation/HideNotificationsNavButtonPatch.kt": [{
         "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
         "registers": 8,
         "ins": 2,
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
-    },
-    "comments/HideCommentsPatch.kt": {
-        "signature": "(Landroid/content/Context;Landroid/util/AttributeSet;I)V",
-        "registers": 9,
-        "ins": 5,
-        # v5=this v6=Context(reused as the wrapper by ins 25) v7=attrs v8=int; v0..v4 free.
-        "live": "v5=this v6=comments wrapper v7=attrs v8=int; v0..v4 free",
-        "method": "UnifiedPinActionBarView.<init>",
-    },
+    }],
+    # One entry per injected block, in source order, because the two constructors have different
+    # register maps. Writing v0 in the two-parameter block would overwrite `this`.
+    "comments/HideCommentsPatch.kt": [
+        {
+            "signature": "(Landroid/content/Context;Landroid/util/AttributeSet;I)V",
+            "registers": 9,
+            "ins": 5,
+            "live": "v5=this v6=comments wrapper v7=attrs v8=int; v0..v4 free",
+            "method": "UnifiedPinActionBarView.<init>(Context, AttributeSet, int)",
+        },
+        {
+            "signature": "(Landroid/content/Context;Landroid/util/AttributeSet;)V",
+            "registers": 9,
+            "ins": 3,
+            "live": "v0=this v6=comments wrapper v7=ctx v8=attrs; v1..v5 free",
+            "method": "UnifiedPinActionBarView.<init>(Context, AttributeSet)",
+        },
+    ],
 }
 
 # private const val NAME = "value"  /  = 0x8  (unquoted numeric constants too)
@@ -153,7 +173,7 @@ def main() -> int:
         blocks = 0
         failures = 0
 
-        for relative, layout in sorted(LAYOUTS.items()):
+        for relative, layouts in sorted(LAYOUTS.items()):
             source = PATCHES / relative
             if not source.exists():
                 print(f"  MISSING  {relative}")
@@ -162,8 +182,18 @@ def main() -> int:
             files += 1
             text = source.read_text(encoding="utf-8")
             constants = collect_constants(text)
+            found = BLOCK_RE.findall(text)
 
-            for raw in BLOCK_RE.findall(text):
+            if len(found) != len(layouts):
+                failures += 1
+                print(
+                    f"  FAIL     {relative}: {len(found)} block(s) in source but "
+                    f"{len(layouts)} layout(s) declared. Every injected block needs a layout, "
+                    f"otherwise its register map goes unchecked."
+                )
+                continue
+
+            for raw, layout in zip(found, layouts):
                 blocks += 1
                 body = raw.strip("\n")
                 for name, value in constants.items():

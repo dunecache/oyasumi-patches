@@ -2491,3 +2491,50 @@ stub carrying the target method's real `.registers` and parameter count, and run
 `SmaliTestUtils.compileSmali` — the same entry point `InlineSmaliCompiler` uses. Reintroducing the
 space form makes it report the same `missing COLON` the device did. Run it before pushing any patch
 that injects smali; Kotlin compiling is not evidence that the smali parses.
+
+## Both action-bar constructors have to be patched, not just the three-parameter one
+
+`v0.6.0-dev.13` applied cleanly on a device and the navbar toggles worked, but the comments button
+was still there. Not a failed fingerprint and not a wrong seam: the patch matched the constructor
+that never runs.
+
+`UnifiedPinActionBarView` has two constructors and they are **siblings, not a delegating pair**.
+Neither calls the other. Each one runs its own super constructor, builds every child view, and
+stores field `d` (the comments wrapper) and `e` (the icon) itself:
+
+| constructor | regs / ins | stores `d` | returns at |
+| --- | --- | --- | --- |
+| `<init>(Context, AttributeSet)` | 9 / 3 | ins 134 | byte 380 |
+| `<init>(Context, AttributeSet, int)` | 9 / 4 | ins 124 | byte 368 |
+
+`LayoutInflater` inflates a custom view from XML through the **two-parameter** constructor, so on a
+real pin that is the one that executes. The three-parameter overload is never reached from
+inflation. Patching only it produced a patch that matched, applied, reported success and did
+nothing.
+
+Confirmed there is no later reset: the class contains no `setVisibility` call at all, so nothing
+undoes a constructor-time `GONE`. Both constructors are now patched, with a separate fingerprint
+each.
+
+The register maps differ between them, which is the second trap. The three-parameter constructor
+has four declared parameters, so `this` is `v5` and `v0`/`v1` are free. The two-parameter one has
+three and passes six registers to its super constructor with `invoke-direct/range`, so `this` is
+**`v0`** and the free scratch registers are `v1`/`v2`. Reusing the same block for both would
+overwrite `this` and crash the constructor at inflation. In both, the wrapper is in `v6` at the
+insertion point and the insertion index is the same: the `action_module_comments_icon` `sget`, which
+comes immediately after the store into `d`.
+
+## What the inline smali check does not do
+
+`compileSmali` is a parser, not a verifier. Measured, not assumed:
+
+| input | result |
+| --- | --- |
+| unknown opcode | rejected |
+| `->a Lde0/a;` space form, doubled `;` | rejected |
+| write to a declared parameter register (`v8`) | **accepted** |
+| out-of-range register (`v12`) in a nine-register method | **accepted** |
+
+So `tools/checks/check_inline_smali.py` guarantees syntax only. It will not tell you that a block
+writes over `this` or over a value the target method still needs. That has to be reasoned out, which
+is why the register map is recorded per block in the checker's `LAYOUTS` rather than left implicit.

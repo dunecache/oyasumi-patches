@@ -26,39 +26,66 @@ val hideCommentsPatch = bytecodePatch(
     extendWith("extensions/extension.mpe")
 
     execute {
+        // Both constructors are patched; see the fingerprint for why the three-parameter one alone
+        // is a no-op on a real pin.
+        //
         // The wrapper is already in `v6` when it is stored into field `d`, and the next
         // instruction reuses `v6` for the icon lookup, so the insertion goes at the index of the
-        // icon lookup: after the store, before `v6` is overwritten.
+        // icon lookup: after the store, before `v6` is overwritten. That holds for both overloads.
         //
-        // No null guard is added. The constructor already dereferences the result of the
-        // wrapper's `findViewById` two instructions earlier, at the `getClass()` call on the
-        // value it returns, so a missing wrapper would have thrown before reaching here. Adding
-        // a guard would widen a method that has branches in it for no behavioural gain.
-        //
-        // Nine registers with four declared parameters leaves `v0` through `v4` free; `v0` holds
-        // the visibility constant and the call needs only the receiver and that constant.
+        // No null guard is added. Each constructor already dereferences the result of the wrapper's
+        // `findViewById` two instructions earlier, at the `getClass()` call on the value it
+        // returns, so a missing wrapper would have thrown before reaching here. Adding a guard
+        // would widen methods that have branches in them for no behavioural gain.
         //
         // `const/16`, not `const/4`: `const/4` encodes a signed nibble, so `const/4 v0, 0x8`
         // assembles without complaint but decodes as `-8`, which stores `0xFFF8` in the visibility
         // bits. The view would then be neither VISIBLE, INVISIBLE nor GONE: it is not drawn, but
         // it keeps its layout slot, so the user sees a blank gap instead of a removed button.
         // Static checks cannot see this; it is the same trap the 1DM ads patch documents.
-        val iconLookup = CommentsModuleWrapperFingerprint.instructionMatches[1]
+        //
+        // Nothing in this class ever calls `setVisibility`, so the constructor-time change is not
+        // undone by a later bind pass.
+        //
+        // The free registers differ per overload. The three-parameter constructor has four
+        // declared parameters, so `this` is `v5` and `v0`/`v1` are free. The two-parameter
+        // constructor has three and passes six registers to its super constructor with
+        // `invoke-direct/range`, which puts `this` in `v0` and frees `v1`/`v2` instead — writing
+        // to `v0` there would overwrite `this` and crash the constructor.
+        CommentsModuleWrapperFingerprint.instructionMatches[1].let { iconLookup ->
+            CommentsModuleWrapperFingerprint.method.addInstructionsWithLabels(
+                iconLookup.index,
+                """
+                invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
+                move-result-object v0
+                const-string v1, "$SETTINGS_KEY"
+                invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+                move-result v0
+                if-eqz v0, :morphe_end_hide_comments
+                const/16 v0, $GONE
+                invoke-virtual {v6, v0}, Landroid/view/View;->setVisibility(I)V
+                :morphe_end_hide_comments
+                nop
+                """.trimIndent()
+            )
+        }
 
-        CommentsModuleWrapperFingerprint.method.addInstructionsWithLabels(
-            iconLookup.index,
-            """
-            invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
-            move-result-object v0
-            const-string v1, "$SETTINGS_KEY"
-            invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
-            move-result v0
-            if-eqz v0, :morphe_end_hide_comments
-            const/16 v0, $GONE
-            invoke-virtual {v6, v0}, Landroid/view/View;->setVisibility(I)V
-            :morphe_end_hide_comments
-            nop
-            """.trimIndent()
-        )
+        CommentsModuleWrapper2ArgFingerprint.instructionMatches[1].let { iconLookup ->
+            CommentsModuleWrapper2ArgFingerprint.method.addInstructionsWithLabels(
+                iconLookup.index,
+                """
+                invoke-virtual {v6}, Landroid/view/View;->getContext()Landroid/content/Context;
+                move-result-object v1
+                const-string v2, "$SETTINGS_KEY"
+                invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+                move-result v1
+                if-eqz v1, :morphe_end_hide_comments
+                const/16 v1, $GONE
+                invoke-virtual {v6, v1}, Landroid/view/View;->setVisibility(I)V
+                :morphe_end_hide_comments
+                nop
+                """.trimIndent()
+            )
+        }
     }
 }
