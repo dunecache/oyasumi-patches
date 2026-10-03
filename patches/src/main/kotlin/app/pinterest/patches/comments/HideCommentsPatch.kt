@@ -2,10 +2,11 @@ package app.pinterest.patches.comments
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
-import com.android.tools.smali.dexlib2.Opcode
-import com.android.tools.smali.dexlib2.iface.TwoRegisterInstruction
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
+import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.iface.reference.FieldReference
 
 /** `View.GONE`. Needs `const/16`: `const/4` has a signed 4-bit literal and cannot encode 8. */
 private const val GONE = "0x8"
@@ -72,10 +73,11 @@ val hideCommentsPatch = bytecodePatch(
         // instructions before the store. Reading `l` at either point yields null, and a null guard
         // would turn that into a silent no-op rather than a crash. So the anchor is found by
         // scanning for the store itself, which is the only position where `l` is guaranteed live.
-        val storeIndex = CommentsButtonFingerprint.method.instructions.indexOfFirst { instruction ->
+        val instructions = CommentsButtonFingerprint.method.implementation!!.instructions
+        val storeIndex = instructions.indexOfFirst { instruction ->
             instruction.opcode == Opcode.IPUT_OBJECT &&
-                (instruction as? TwoRegisterInstruction)?.reference?.let {
-                    it.name == "l" && it.type == MODULE_CLASS
+                (instruction as? ReferenceInstruction)?.reference?.let {
+                    it is FieldReference && it.name == "l" && it.type == MODULE_CLASS
                 } == true
         }
         check(storeIndex != -1) {
