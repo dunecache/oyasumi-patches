@@ -85,23 +85,43 @@ public final class MorpheSettingsActivity extends Activity {
     private void addToggleRow(LinearLayout parent, String label, String description,
                               final String key, boolean def) {
         final SharedPreferences prefs = getSharedPreferences(PREFS, MODE_PRIVATE);
+        final float density = getResources().getDisplayMetrics().density;
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        int rowPad = (int) (12 * density);
+        rowParams.setMargins(0, rowPad, 0, rowPad);
+        row.setLayoutParams(rowParams);
+
+        LinearLayout textBlock = new LinearLayout(this);
+        textBlock.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+        textBlock.setLayoutParams(textParams);
 
         TextView labelView = new TextView(this);
         labelView.setText(label);
         labelView.setTextSize(16);
         labelView.setTextColor(TEXT_PRIMARY);
-        parent.addView(labelView);
+        textBlock.addView(labelView);
 
         TextView descView = new TextView(this);
         descView.setText(description);
         descView.setTextSize(13);
         descView.setTextColor(TEXT_SECONDARY);
-        parent.addView(descView);
+        textBlock.addView(descView);
+
+        row.addView(textBlock);
 
         Switch toggle = new Switch(this);
         toggle.setChecked(prefs.getBoolean(key, def));
         toggle.setOnCheckedChangeListener((buttonView, isChecked) ->
                 prefs.edit().putBoolean(key, isChecked).apply());
-        parent.addView(toggle);
+        row.addView(toggle);
+
+        parent.addView(row);
     }
 }
