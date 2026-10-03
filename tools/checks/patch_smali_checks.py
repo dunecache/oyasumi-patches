@@ -380,6 +380,30 @@ def _locals_defined(body: str) -> set[str]:
     return out
 
 
+def check_kotlin_paren_balance(root: Path) -> list[str]:
+    """Flag unbalanced parentheses per Kotlin file.
+
+    Kotlin compiles on CI and nowhere else, so a stray paren costs a full release cycle to
+    find. This shipped once: an extra `)` at the end of CommentsFingerprints.kt made
+    `:patches:compileKotlin` fail on dev and took the release with it. Naive counting is
+    wrong on strings and comments, so a file is only reported when the imbalance survives
+    stripping both.
+    """
+    problems = []
+    for path in sorted(root.rglob("*.kt")):
+        text = path.read_text(encoding="utf-8")
+        stripped = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+        stripped = re.sub(r'"""(?:.|\n)*?"""', '""', stripped, flags=re.DOTALL)
+        stripped = re.sub(r"//[^\n]*", "", stripped)
+        stripped = re.sub(r"/\*(?:.|\n)*?\*/", "", stripped)
+        opened = stripped.count("(")
+        closed = stripped.count(")")
+        if opened != closed:
+            rel = path.relative_to(root.parent.parent.parent)
+            problems.append(f"{rel}: unbalanced parentheses ({opened} open, {closed} close)")
+    return problems
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2] / "patches/src/main/kotlin"
     if not root.is_dir():
@@ -392,6 +416,7 @@ def main() -> int:
         problems += check_branch_joins(path)
         problems += check_dollar_in_strings(path)
         problems += check_imports(path)
+    problems += check_kotlin_paren_balance(root)
     for p in problems:
         print("  FAIL", p)
     print(f"checked {len(list(root.rglob('*.kt')))} file(s): "

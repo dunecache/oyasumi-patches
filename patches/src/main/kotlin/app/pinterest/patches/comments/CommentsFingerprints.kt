@@ -65,4 +65,3 @@ object CommentsModuleWrapper2ArgFingerprint : Fingerprint(
         fieldAccess(name = "action_module_comments_icon", opcode = Opcode.SGET)
     )
 )
-)
