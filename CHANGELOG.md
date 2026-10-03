@@ -1,3 +1,9 @@
+## [0.6.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.12...v0.6.0-dev.13) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* use the colon field-reference form the inline smali parser accepts ([e1a2a2d](https://github.com/dunecache/oyasumi-patches/commit/e1a2a2da433b8ded12d8edfeb0682ba43ca19f6e))
+
 ## [0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.11...v0.6.0-dev.12) (2026-10-03)
 
 ### 🐛 Bug Fixes
