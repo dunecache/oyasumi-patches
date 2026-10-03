@@ -1,5 +1,5 @@
 {
-  "created_at": "2026-10-03T17:13:30",
+  "created_at": "2026-10-03T17:28:30",
   "description": "## [0.6.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.15...v0.6.0-dev.16) (2026-10-03)\n\n### 🐛 Bug Fixes\n\n* target LegacyPromotedCloseupActionButtonModule for hiding comments ([21f58a2](https://github.com/dunecache/oyasumi-patches/commit/21f58a24a055094fea2d32ff15db1bb3f5d9ef77))\n* use the instruction interfaces the patcher actually exposes ([e09db05](https://github.com/dunecache/oyasumi-patches/commit/e09db0597d9e8cdb948503eef28787fc0694ed00))",
   "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.16/patches-0.6.0-dev.16.mpp",
   "signature_download_url": "",
