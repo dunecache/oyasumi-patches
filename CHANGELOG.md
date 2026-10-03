@@ -1,3 +1,146 @@
+## [0.6.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.16...v0.6.0-dev.17) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* declare the empty parameter list on the comments-button fingerprint ([87c5e36](https://github.com/dunecache/oyasumi-patches/commit/87c5e368671235eb3593c98a8536a6c383360cff))
+
+## [0.6.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.15...v0.6.0-dev.16) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* target LegacyPromotedCloseupActionButtonModule for hiding comments ([21f58a2](https://github.com/dunecache/oyasumi-patches/commit/21f58a24a055094fea2d32ff15db1bb3f5d9ef77))
+* use the instruction interfaces the patcher actually exposes ([e09db05](https://github.com/dunecache/oyasumi-patches/commit/e09db0597d9e8cdb948503eef28787fc0694ed00))
+
+## [0.6.0-dev.16](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.15...v0.6.0-dev.16) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* target LegacyPromotedCloseupActionButtonModule for hiding comments ([21f58a2](https://github.com/dunecache/oyasumi-patches/commit/21f58a24a055094fea2d32ff15db1bb3f5d9ef77))
+* use the instruction interfaces the patcher actually exposes ([e09db05](https://github.com/dunecache/oyasumi-patches/commit/e09db0597d9e8cdb948503eef28787fc0694ed00))
+
+## [0.6.0-dev.15](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.14...v0.6.0-dev.15) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* hide the comments icon rather than its wrapper ([e48e571](https://github.com/dunecache/oyasumi-patches/commit/e48e57135c747b1c0fc1a28008e8c994c138eb74))
+
+## [0.6.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.13...v0.6.0-dev.14) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* drop the stray paren that failed compileKotlin, and check for it ([b8a2de8](https://github.com/dunecache/oyasumi-patches/commit/b8a2de8a3808db593ef4837fb5f4d9f3734d4c5a))
+* patch both action-bar constructors for hiding comments ([2665b0d](https://github.com/dunecache/oyasumi-patches/commit/2665b0d637415ddfe2dcfe57cfb035df316fc527))
+
+## [0.6.0-dev.13](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.12...v0.6.0-dev.13) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* use the colon field-reference form the inline smali parser accepts ([e1a2a2d](https://github.com/dunecache/oyasumi-patches/commit/e1a2a2da433b8ded12d8edfeb0682ba43ca19f6e))
+
+## [0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.11...v0.6.0-dev.12) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* keep the Appodeal package glob out of the KDoc that precedes it ([7e3fd7b](https://github.com/dunecache/oyasumi-patches/commit/7e3fd7b266ce035cefe5f1756f050fa6b9d8d60a))
+
+### ✨ New Features
+
+* hide notifications nav button and pin comments; fix two defects in the search patch ([b904ff4](https://github.com/dunecache/oyasumi-patches/commit/b904ff427b5fd4f12a3f197756d0b20a0c0e36db))
+* wire the three UI patches to in-app Morphe settings toggles ([1a2a2fc](https://github.com/dunecache/oyasumi-patches/commit/1a2a2fc83aee086a054e068d98136d6a354a5b60))
+
+## [0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.11...v0.6.0-dev.12) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* keep the Appodeal package glob out of the KDoc that precedes it ([7e3fd7b](https://github.com/dunecache/oyasumi-patches/commit/7e3fd7b266ce035cefe5f1756f050fa6b9d8d60a))
+
+### ✨ New Features
+
+* hide notifications nav button and pin comments; fix two defects in the search patch ([b904ff4](https://github.com/dunecache/oyasumi-patches/commit/b904ff427b5fd4f12a3f197756d0b20a0c0e36db))
+* wire the three UI patches to in-app Morphe settings toggles ([1a2a2fc](https://github.com/dunecache/oyasumi-patches/commit/1a2a2fc83aee086a054e068d98136d6a354a5b60))
+
+## [0.6.0-dev.12](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.11...v0.6.0-dev.12) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* keep the Appodeal package glob out of the KDoc that precedes it ([7e3fd7b](https://github.com/dunecache/oyasumi-patches/commit/7e3fd7b266ce035cefe5f1756f050fa6b9d8d60a))
+
+### ✨ New Features
+
+* hide notifications nav button and pin comments; fix two defects in the search patch ([b904ff4](https://github.com/dunecache/oyasumi-patches/commit/b904ff427b5fd4f12a3f197756d0b20a0c0e36db))
+* wire the three UI patches to in-app Morphe settings toggles ([1a2a2fc](https://github.com/dunecache/oyasumi-patches/commit/1a2a2fc83aee086a054e068d98136d6a354a5b60))
+
+## [0.6.0-dev.11](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.10...v0.6.0-dev.11) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* drop the pedometer hooks that crashed plugin registration ([b7e8272](https://github.com/dunecache/oyasumi-patches/commit/b7e8272abc5faccbe453ff6c6e74db3db853df52))
+
+## [0.6.0-dev.10](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.9...v0.6.0-dev.10) (2026-10-03)
+
+### ✨ New Features
+
+* force the stored Walk & Win total so the counter needs no walk ([f167991](https://github.com/dunecache/oyasumi-patches/commit/f167991e88a9b00db74b1bb8f1bfb992323e06d1))
+
+## [0.6.0-dev.9](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.8...v0.6.0-dev.9) (2026-10-03)
+
+### ✨ New Features
+
+* hide Pinterest search nav button ([b8e6f42](https://github.com/dunecache/oyasumi-patches/commit/b8e6f42ecc9213ff64915c6d6f16ecddc9365c58))
+
+## [0.6.0-dev.8](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.7...v0.6.0-dev.8) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* push the pair on every step, and stop feeding the detection channel ([7ae7b9c](https://github.com/dunecache/oyasumi-patches/commit/7ae7b9c94f7ac39f1dcb66d7b535bf15d034441d))
+
+## [0.6.0-dev.7](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.6...v0.6.0-dev.7) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* settings header below status bar with version subtitle ([d04e89c](https://github.com/dunecache/oyasumi-patches/commit/d04e89ced84840b59181e0a02a8593db0639ecfd))
+
+## [0.6.0-dev.6](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.5...v0.6.0-dev.6) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* use only Material methods present in Pinterest's stripped copy ([8902a94](https://github.com/dunecache/oyasumi-patches/commit/8902a94a3596fccdcb3dfa79bcf7f6c80e518cab))
+
+## [0.6.0-dev.5](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.4...v0.6.0-dev.5) (2026-10-03)
+
+### ✨ New Features
+
+* Material 3 settings screen with DayNight theme ([8f02975](https://github.com/dunecache/oyasumi-patches/commit/8f02975a6756e0da2c767e9b91c758f8efa5253b))
+
+## [0.6.0-dev.4](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.3...v0.6.0-dev.4) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* align settings toggle rows horizontally with the switch end-aligned ([ecbed39](https://github.com/dunecache/oyasumi-patches/commit/ecbed39e4091e9c53db4f811e4d315bf7ebf18c6))
+
+## [0.6.0-dev.3](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.2...v0.6.0-dev.3) (2026-10-02)
+
+### ✨ New Features
+
+* Pinterest settings entry, label rename, and manifest ([3c2900c](https://github.com/dunecache/oyasumi-patches/commit/3c2900c16d226e0df70f35231cd3b71bc6e4fe6b))
+
+## [0.6.0-dev.2](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.1...v0.6.0-dev.2) (2026-10-02)
+
+### ✨ New Features
+
+* disable Pinterest email confirmation dialog ([9b27995](https://github.com/dunecache/oyasumi-patches/commit/9b279952d561a5192fd2153e71353f8b772e656b))
+
+## [0.6.0-dev.1](https://github.com/dunecache/oyasumi-patches/compare/v0.5.3...v0.6.0-dev.1) (2026-10-02)
+
+### 🐛 Bug Fixes
+
+* resolve Pinterest patch compilation errors ([9f7bb6e](https://github.com/dunecache/oyasumi-patches/commit/9f7bb6e86b862c945b88a25e2870d5f69248d685))
+* use parameterless getRegisterC for the 35c register read ([4cee037](https://github.com/dunecache/oyasumi-patches/commit/4cee0372b155963a5c2398d61d5aed28c93a6a39))
+
+### ✨ New Features
+
+* Pinterest 14.38.0 disassembly, six patches, and patch plan ([3a609fa](https://github.com/dunecache/oyasumi-patches/commit/3a609fa439b43c783865895fae949e3012ec75d2))
+
 ## [0.5.3](https://github.com/dunecache/oyasumi-patches/compare/v0.5.2...v0.5.3) (2026-09-30)
 
 ### 🐛 Bug Fixes

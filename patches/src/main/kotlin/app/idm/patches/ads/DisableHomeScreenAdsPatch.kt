@@ -19,13 +19,28 @@ private const val GONE = "0x8"
 @Suppress("unused")
 val disableHomeScreenAdsPatch = bytecodePatch(
     name = "Disable home screen ads",
-    description = "Keep 1DM's home screen banner from loading, rotating, or rendering, " +
-        "including the built-in \"install 1DM+\" banner ad.",
+    description = "Keep the home screen banner from loading, rotating, or rendering. The banner " +
+        "in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo " +
+        "banner, including the built-in \"install 1DM+\" ad, is suppressed at its source.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
 
     execute {
+        // The banner on the home screen footer is Appodeal's, so these three are the edits
+        // that actually remove what is on screen. 1DM brings the SDK up by two unrelated
+        // methods and both register the same banner view id, so both have to go: the
+        // start-up path, the consent-completion path, and the one caller of `Appodeal.cache`.
+        //
+        // Suppressing only the second of those is what left the banner on screen in
+        // v0.6.0-dev.8, so the start-up one is listed first and returns from index 1. That
+        // index is after the store into `Li/rm;->ۦۖ۠`, which every `onBanner*` and
+        // `onInterstitial*` callback in that class reads and calls through, so the callbacks
+        // stay safe even though the SDK is never brought up.
+        AppodealStartupInitFingerprint.method.addInstructions(1, "return-void")
+        AppodealFetchFingerprint.method.addInstructions(0, "return-void")
+        AppodealAdInitFingerprint.method.addInstructions(0, "return-void")
+
         // The app already has a no-ads state: `BrowserApp` calls `disable()` instead of
         // `load()` when the ad configuration says the banner is off, and `disable()` sets
         // `mDisabled`, empties `bannerInfoList`, drops the current ad, and cancels the

@@ -106,7 +106,7 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 ## Build environment
 
 - `openjdk-21` is installed at `/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk` and exported through `/data/data/com.termux/files/usr/etc/profile.d/openjdk.sh`.
-- A local Gradle build is not possible: `https://maven.pkg.github.com/MorpheApp/registry` returns `401` for the available `gh` token, which lacks the `read:packages` scope, so `app.morphe.patches` plugin `1.3.4` cannot be resolved. Compilation is delegated to CI.
+- Local `:patches:compileKotlin` now works: use Java 21, the Gradle 9.7.1 wrapper, a `GITHUB_TOKEN` with `read:packages`, and `GITHUB_ACTOR=dunecache`, then run `./gradlew --stop` before building after any credential or environment change. A stale Termux Gradle daemon can otherwise reuse the old environment and keep reporting auth failures. The Android `:extensions:extension` module still needs a real SDK through `ANDROID_HOME` or `local.properties`, so a complete local bundle build remains unavailable without one.
 
 ## Browser and remote data
 
@@ -411,6 +411,56 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 - Own services: `DownloadService`, `MediaScannerService`, `CheckAppVersion`, `IDMFirebaseMessagingService`, `TempFilesDeletionService`, `LogcatCaptureService`, and four quick-settings tile services.
 - Bundled mediation stack: AdMob, AppLovin MAX, Unity Ads, IronSource, Chartboost, Vungle, Pangle, BidMachine, Moloco, MobileFuse, Smaato, InMobi, Bigo, MyTarget, PubMatic, Fyber, Verve, Mintegral, plus the Amazon APS banner (`com.amazon.device.ads`).
 - The reference is user-supplied and has not been independently verified as the original publisher build.
+- **A second, complete 18.2 artifact exists, and it is what everything below was re-derived
+  from**: the installed app's own `base.apk`, at
+  `/data/app/~~WHrUNUEWf-QcrR98fn1o6g==/idm.internet.download.manager-LYZjVSMnmWC9nmwe13xo4Q==/base.apk`.
+  65,504,886 bytes, mode 0644, a single unsplit APK carrying all eleven DEX files
+  (`classes.dex` through `classes11.dex`) and the whole of `res/`. Its manifest metadata is
+  identical to the APKM's: `idm.internet.download.manager`, `18.2`, `30249`, minSdk `24`,
+  targetSdk `34`, application class `acr.browser.lightning.app.BrowserApp`. This closes the
+  "a complete `base.apk` is needed" gap recorded under unverified risks.
+- **It is a different build of 18.2, not the same artifact.** Re-inflating the APKM's damaged
+  `base.apk` up to the failure point and walking its local file headers shows most of its DEX
+  files are byte-identical to this APK's under a renumbering, verified by SHA-256:
+
+  | APKM entry | this APK | note |
+  | --- | --- | --- |
+  | `classes10.dex` | `classes3.dex` | identical |
+  | `classes2.dex` | `classes4.dex` | identical |
+  | `classes3.dex` | `classes5.dex` | identical |
+  | `classes4.dex` | `classes6.dex` | identical |
+  | `classes5.dex` | `classes7.dex` | identical |
+  | `classes6.dex` | `classes8.dex` | identical |
+  | `classes7.dex` | `classes9.dex` | identical |
+  | `classes8.dex` | `classes10.dex` | same 8,706,412 bytes; the APKM copy is truncated by the damage |
+  | `classes9.dex` | `classes11.dex` | never reached by the recovery; sizes agree |
+  | `classes.dex` | `classes2.dex` | **same 10,713,976 bytes, different content** |
+
+  Only the Lightning core differs: `BannerManager.load(Z)V` has 37 instructions in the APKM
+  build and 39 in this one, and `BannerView.setAd` has 210 against 213. So these are two
+  releases of 18.2 from the same publisher, not one release in two containers.
+- Consequence for this patch: the three fingerprints that already existed were derived from
+  the APKM build and were re-resolved against the on-device build. All four match, which is
+  the evidence that they are not over-fitted to one build's instruction layout. Anything
+  under `Lidm/`, and every layout, can only ever be checked against the on-device build,
+  because the APKM's copies are exactly the DEX files its damaged download lost.
+
+## Where the app's own code lives (on-device build)
+
+The damaged-download inventory below is superseded for anything under `Lidm/`. On the
+on-device build the split is:
+
+| DEX | bytes | classes | contents |
+| --- | --- | --- | --- |
+| `classes.dex` | 142,764 | 3 | `R` and `BuildConfig` |
+| `classes2.dex` | 10,713,976 | 9,198 | `Lacr/browser/**` (914), `androidx.compose/**` (5,195) |
+| `classes11.dex` | 7,557,860 | 6,732 | `Lidm/internet/**` (669), `io.bidmachine/**` (3,357) |
+
+So `Lidm/internet/download/manager/BannerView` and `manager/NewBannerView` are in
+`classes11.dex`, `Lacr/browser/lightning/view/BannerManager` and `BannerView` are in
+`classes2.dex`, and the Appodeal SDK itself is `classes5.dex` and `classes6.dex`. A scan of
+app-owned classes in `classes.dex`, `classes2.dex` and `classes11.dex` is enough to cover all
+of the app's own code.
 
 ## The reference file is damaged, and what that allowed
 
@@ -464,19 +514,158 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 
 - `GONE` is `8`, which `const/4` cannot encode, so the app itself loads it with `const/16 v2, 8` (index 22). A patch that writes the constant must use `const/16` too.
 
+## The banner on the home screen is Appodeal's, and 1DM starts it twice (v0.6.0-dev.8, corrected v0.6.0-dev.10)
+
+This is the finding behind two failed attempts, and both failures had the same cause: the
+banner is a different ad system, and 1DM brings it up from two unrelated methods.
+
+Evidence, in the order it was obtained:
+
+1. A uiautomator dump of the installed build (`/storage/emulated/0/1dm_main_hierarchy.xml`)
+   shows the footer of the download list as
+   `LinearLayout id=footer` -> `FrameLayout id=appodealBannerView` -> `RelativeLayout` ->
+   `RelativeLayout` -> `WebView`, sized `[0,2170][1080,2308]`. The leaf is a `WebView`, which is
+   how the Appodeal SDK renders a banner. Nothing in the dump is a `BannerView`, an `ImageView`
+   icon, a `Button` or an `AmazonService` view, so none of the four app-owned banner classes is
+   on screen.
+2. `res/layout/activity_main_bottom.xml` decodes to a `com.appodeal.ads.BannerView` as the last
+   child of the drawer's content column: `android:id="@+id/appodealBannerView"`,
+   `android:visibility="gone"`, `android:layout_width="match_parent"`,
+   `android:layout_height="wrap_content"`, `android:layout_gravity="top|left"`. Because it is
+   `wrap_content` and `gone` in the layout, never loading it removes the strip rather than
+   leaving a gap, which is why the fix does not have to resize anything.
+3. `Appodeal`'s own constants, read out of `classes5.dex`: `BANNER = 4`, `BANNER_VIEW = 64`,
+   `INTERSTITIAL = 3`, `REWARDED_VIDEO = 128`, `ALL = 4095`. The SDK is therefore asked for
+   `BANNER` through `Appodeal.cache(Activity, 4)`, and `2131362191` (`0x7f0a018f`) is the
+   `appodealBannerView` entry in `resources.arsc`.
+4. A scan of every method outside `com/appodeal/**`, in all eleven DEX files, for
+   `Appodeal.initialize`, `setBannerViewId`, `setAutoCache`, `setBannerCallbacks`, `cache`,
+   `show` and `destroy` returns exactly eight methods. Three of them write SDK state:
+
+   | method | Appodeal calls | reached from |
+   | --- | --- | --- |
+   | `Li/rm;->ۦۖۢ(MyAppCompatActivity, Li/m15;)V` | `setAutoCache`, `setBannerViewId`, `initialize`, `setBannerCallbacks`, `setInterstitialCallbacks` | start-up, through `Li/rm;->ۦۖۗ()` |
+   | `Lidm/internet/download/manager/e;-><init>()V` | `setBannerViewId`, `initialize`, `setBannerCallbacks`, `cache` | only from `MyAppCompatActivity$2`, the `ConsentManagerError` callback, via `d;->ۦۜ۟(...)` |
+   | `Li/rm;->fetch()V` | `cache` x4, with `4`, `3` or `7` | `Li/rm;` itself |
+
+   The other five are read-only or interstitial-only: `Lidm/internet/download/manager/d;->ۦۡۗ`
+   and `ۦۡۚ` call `isLoaded(4)` then `show(Activity, 64)`, where `64` is `BANNER_VIEW`, purely to
+   tell 1DM's own `BannerManager` through `setNetworkAdShowingAndNotify` that a network ad is
+   on screen; `d;->ۦۤۥ(...)V` and `Li/rm;->ۦۗۤ`/`ۦۗۡ` do the same for the interstitial. None of
+   them can bring the SDK up or register the view.
+
+`Li/rm;` is 1DM's Appodeal ad manager: a singleton (`public static ۦۖۡ Li/rm;`) that implements
+both `BannerCallbacks` and `InterstitialCallbacks`, with `onBannerLoaded(IZ)`, `onBannerShown`,
+`onBannerClicked`, `onInterstitialLoaded(Z)` and the rest. Its `ۦۖۢ` is the real bootstrap:
+`setAutoCache(false, 7)`, `muteVideosIfCallsMuted(true)`, `setBannerViewId(2131362191)`,
+`initialize(context, "b1eafec41c5ab762a5acc356f9526305d05536819d4d0184", 4 or 7, Li/qm)`,
+`setBannerCallbacks(this)`, `setInterstitialCallbacks(this)`. `fetch()` then picks its cache mask
+from three gates -- `ۦۖۤ()Z` for a loaded, showable banner, the premium check from
+`d;->ۦۤ۠(...)`, and the persisted `AppodealNetwork` network preference.
+
+Also settled here: the four app-owned banner classes are `Lacr/browser/lightning/view/BannerView`
+(Lightning's, `classes2.dex`), `Lidm/internet/download/manager/BannerView` and
+`Lidm/internet/download/manager/manager/NewBannerView` (both `classes11.dex`), plus the Lightning
+`default_banner` layout pair. None of them appears in `activity_main_bottom.xml`, which is the
+layout the footer is inflated from.
+
+### What the device test proved, and the mistake behind it
+
+v0.6.0-dev.8 suppressed `Lidm/internet/download/manager/e;-><init>()V` on the reasoning that it
+was the app's only ad bootstrap. It applied cleanly, CI was green, and the banner was still on
+screen in the next dump. Pulling the installed APK and reading its DEX settled it:
+
+- The patched build's `classes.dex` is 144,148 bytes and holds exactly the four classes the
+  patch rewrites -- `BannerManager`, `BannerView`, `Lidm/…/d;` and `Lidm/…/e;` -- which is how
+  the patcher emits patched classes. So the patch really had been applied.
+- `Lidm/…/e;-><init>()V` begins `return-void`; `BannerManager.load` begins
+  `invoke-virtual {v1}, …->disable()V`; `BannerView.setAd` begins the `setVisibility(GONE)`
+  block; `d;->ۦۜۡ()` begins `const/4 v0, 0 / return-object v0`. All four edits were present.
+
+So the edits were right and the *choice of class* was wrong. The cause is a filter in the
+scratch tooling, not in the fingerprint: `idmscan.py` scanned only classes whose name starts
+with `Lidm/` or `Lacr/`, on the assumption that the app's own code lives under those two
+prefixes. `Li/rm;` is in the obfuscated `Li/` package, so the one class that registers the banner
+was invisible to every scan that produced the first two attempts. Both of those attempts are
+recorded here as failures, and the lesson generalises: **for a fingerprint, "no caller in the
+app's own packages" is not evidence of absence.** Scan the whole APK and exclude the SDK by its
+own package, not by a guess about where the app's code lives.
+
 ## Disable home screen ads (1DM 18.2)
 
 - Compatibility: `idm.internet.download.manager`, version `18.2`, `ApkFileType.APKM` (non-required, so the plain APK is accepted too).
+- **Three edits suppress Appodeal, because 1DM starts it twice**, and all three are needed:
+  `Li/rm;->ۦۖۢ(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/m15;)V` gets `return-void`
+  at index **1**, `Li/rm;->fetch()V` gets it at index 0, and
+  `Lidm/internet/download/manager/e;-><init>()V` gets it at index 0. Nothing is resized or
+  hidden: the `BannerView` stays `visibility="gone"` from `activity_main_bottom.xml` and the
+  footer collapses, because the view is `wrap_content`.
+- The index-1 return is deliberate. Index 0 of `ۦۖۢ` stores the callback argument into
+  `Li/rm;->ۦۖ۠Li/m15;`, and every one of `onBannerLoaded`, `onBannerShown`, `onBannerClicked`,
+  `onBannerFailedToLoad`, `onInterstitialLoaded`, `onInterstitialShown` and
+  `onInterstitialFailedToLoad` reads that field and calls through it, so the store is kept and
+  only the SDK bring-up is skipped. `.registers 5`, so `p0` is `v4` and the two declared
+  parameters are `v3` and `v2`.
+- Suppressing `e;` at index 0 is safe because that singleton's only caller,
+  `Lidm/internet/download/manager/d;->ۦۜ۟(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/q15;)V`,
+  constructs it solely on the ads-enabled branch and otherwise calls `Li/a6;->ۦۖ۟(...)`, and
+  the class's two other instance methods are empty list callbacks (`ۦۖۨ(List)V` is a bare
+  `return-void`, `ۦۖ۫(List)V` calls it and returns), so the `Random` field left unwritten is
+  never read. The consumers that outlive it are guarded: `d;->ۦۤۥ(...)V` tests
+  `Appodeal.isLoaded(3)`, and `ActivityLifecycleListener.onStateChanged(...)` tests
+  `AmazonService.isInitialized()` before calling `AmazonService.start`/`stop`. Suppressing `e;`
+  also stops `AmazonService.start(true)` and `SmaatoSdk.init`, which is deliberate and in
+  scope: `AmazonService`'s only two readers are `BannerView.setAd` and `d;->ۦۤۥ`, both already
+  suppressed or guarded here.
+- None of the three fingerprints declares a `definingClass`, because `Li/rm;` and
+  `Lidm/internet/download/manager/e;` are both obfuscated and change between releases. Each
+  pins only `returnType = "V"` plus an ordered chain of anchors that are not obfuscated --
+  Appodeal member names, the publisher key, the `AppodealNetwork` preference key, and the
+  banner view id literal. Offline resolution against all eleven DEX files of the installed
+  build returns exactly one method for each:
+  - `AppodealStartupInitFingerprint` -> `Li/rm;->ۦۖۢ(...)V`, 43 instructions, `.registers 5`,
+    `public`, filter indices `[20, 23, 24, 33, 39, 40, 41]`: `setAutoCache` -> the view id
+    `2131362191` -> `setBannerViewId` -> the key -> `initialize` -> `setBannerCallbacks` ->
+    `setInterstitialCallbacks`.
+  - `AppodealFetchFingerprint` -> `Li/rm;->fetch()V`, 38 instructions, `.registers 5`, `public`,
+    filter indices `[13, 23, 28]`: the `AppodealNetwork` string -> `cache` -> `cache`. The two
+    consecutive `cache` filters force two distinct call sites, which is what makes the chain
+    specific rather than merely plausible.
+  - `AppodealAdInitFingerprint` -> `Lidm/internet/download/manager/e;-><init>()V`,
+    69 instructions, `.registers 8`, `public constructor`, filter indices
+    `[34, 45, 54, 57, 67]`: `setBannerViewId` -> the key -> `initialize` -> `setBannerCallbacks`
+    -> `cache`.
+
+  One caveat about those indices: `idm_fp_check.py` currently reads the *installed* build,
+  which already has the `return-void` this patch inserts, so the Appodeal chain resolves one
+  index later there -- `[35, 46, 55, 58, 68]` in 70 instructions rather than `[34, 45, 54, 57,
+  67]` in 69. The unpatched numbers are the ones above, because a patch run resolves against
+  unpatched input. The `Li/rm;` chains are unaffected, as nothing in this patch touches that
+  class.
+
+  The first chain ends at `setInterstitialCallbacks` and the third at `cache`, which is what
+  keeps the two bring-ups apart. The shape is the same "pin the contract, not the obfuscated
+  name" one the Pinterest `AdvertisingIdInfoFingerprint` uses.
 - `BannerManager.load(Z)V` is redirected to `BannerManager.disable()V`, which is the exact state 1DM enters when its ad configuration reports the banner as disabled. Consequences: `bannerInfoList` is never populated, `currentBannerInfo` stays null, and `resume()` returns at its `mDisabled` check, so the 500 ms rotation timer never starts and nothing is ever published to the banner view. Nothing else in the ad path is changed.
 - The inserted call runs before the method's own `monitor-enter`, so `disable()` is not executed under the method's monitor. That is safe because after the patch every entry into the list and the current ad goes through `disable()`, and the two fields it writes with `AtomicBoolean.set` are the ones `resume()` reads. `disable()` has its own try/catch around the `Timer` access.
 - `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5, v0}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
-- Fingerprints, both resolved against the recovered `classes.dex` with a re-implementation of Morphe's matcher:
-  - `BannerManagerLoadFingerprint` → `load(Z)V`, 37 instructions, `public synchronized`, filter indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
-  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 210 instructions, `private`, filter indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
-  - Both fingerprints declare the defining class with a trailing `;`, which Morphe's type comparison resolves to an exact class match, so each is pinned to a single method by construction.
+- Fingerprints, all six resolved with `.scratch/idm_fp_check.py`, a re-implementation of
+  Morphe's matcher. The indices below are the installed build's; the APKM build's, recorded
+  before that artifact was available, are in the commit that introduced each fingerprint. The
+  three Appodeal fingerprints are listed above rather than repeated here.
+  - `BannerManagerLoadFingerprint` → `load(Z)V`, 39 instructions, `public synchronized`, filter indices `[2, 5, 6, 10, 12, 14, 16, 17, 18, 22, 31]`. On the APKM build: 37 instructions, indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
+  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 213 instructions, `private`, filter indices `[3, 5, 7, 9, 23, 48, 49, 55, 205]`. On the APKM build: 210 instructions, indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
+  - `IdmPlusBannerFingerprint` → `Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;`, 37
+    instructions, `.registers 3`, `public static`, filter indices
+    `[2, 13, 16, 19, 22, 25]`. This is the one fingerprint that had to be written blind,
+    because its target class was in one of the DEX files the damaged download lost; it is now
+    verified against the on-device build.
+  - The three fingerprints that declare a defining class do so with a trailing `;`, which
+    Morphe's type comparison resolves to an exact class match, so each is pinned to a single
+    method by construction.
 - The `Li/ru;` parameter in `setAd`'s signature and the `Lidm/internet/download/manager/amazon/AmazonService;` call are release-specific, as documented for every obfuscated name in this file. Both are acceptable only because the compatibility declaration is pinned to 18.2/30249.
-- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, the `Lidm/` ad configuration, billing, or the download service.
-- The inserted smali was assembled against the same smali build Morphe uses, so both blocks are known to parse. See the pitfalls section below for the method and for the brace requirement that 0.3.0 violated.
+- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, billing, or the download service. Suppressing the bootstrap does mean the Appodeal and Smaato SDKs are never initialized and `AmazonService` is never started, which is a deliberate widening: those three exist only to serve the banner, the interstitials and the Amazon backfill.
+- The three blocks that existed before v0.6.0-dev.8 were assembled against the same smali build Morphe uses, so they are known to parse. The three Appodeal blocks are one-line `return-void`s with no interpolation, no 35c register list and no arity, so none of the three failure modes recorded below can apply to them. See the pitfalls section for the method and for the brace requirement that 0.3.0 violated.
 
 ## 1DM launch crash: `setAd` invoke arity (v0.3.4)
 
@@ -672,16 +861,18 @@ chain against the DEX rather than by reading it.
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
 - **Layout, ADM.** Still unconfirmed. The ADM reference DEX was read from a sound APKM, but its `res/` was never walked for the AppBrain container, so whether that strip leaves an empty gap behind is untested.
-- **Other ad surfaces are out of scope and unexamined.** The interstitial, rewarded, and "network ad" show paths are driven from `Lidm/internet/download/manager/` classes that live in `classes8.dex`/`classes9.dex`, which were not recovered. `BannerManager.setNetworkAdShowingAndNotify(Activity, boolean)` is the visible trace of that path; callers of it could not be read. This patch claims the banner only.
+- **Other ad surfaces are now readable but still out of scope.** The on-device build has the `Lidm/` DEX, so the interstitial path can be read for the first time: it is `Lidm/internet/download/manager/d;->ۦۤۥ(MyAppCompatActivity, c$a, Runnable)V`, which asks `Appodeal.isLoaded(3)`, installs `d$z` as the interstitial callback and shows, with an `AmazonService.getInterstitialAd("any")` fallback. Suppressing the bootstrap disables it in practice, but the patch does not target that method, so any future interstitial entered from outside Appodeal would still show. The rewarded path is still unexamined.
+- **The APKM build's `Lidm/` code can never be verified.** Both 18.2 builds are declared compatible, but the APKM's `Lidm/` classes are in the two DEX files its damaged download lost, so `AppodealAdInitFingerprint` and `IdmPlusBannerFingerprint` are verified against the on-device build only. If the APKM build turns out to register its banner differently, those two fingerprints will fail to resolve there rather than misfire: neither declares a `definingClass`, and both are pinned to SDK member names that have to be present for the ad path to work at all.
 - **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved locally: `maven.pkg.github.com` returns `401` for the configured `gh` token, whose scopes are `gist`, `read:org`, `repo` and do not include `read:packages`. Compilation and bundle application are delegated to CI, as with the ADM patches.
-- **No device test.** Nothing has been applied to 18.2. The fingerprints resolve and the inserted smali is width-correct and register-safe by inspection, but the runtime effect is unconfirmed.
-- **A complete `base.apk` is needed** before adding any further 1DM patch that touches the app's own classes.
+- **One device test has been done and it failed; its replacement has not.** The v0.6.0-dev.8 bundle was applied to 18.2 on a device and the banner survived it. Pulling the installed APK showed all four edits present in its DEX, which moved the failure from "did it apply" to "was the right method patched", and that in turn produced the `Li/rm;` findings above. The three-fingerprint replacement resolves offline and passes `tools/checks/patch_smali_checks.py`, but **it has not been applied to a device and the banner has not been seen to disappear.** That is the one claim in this file that still needs a device.
+- **Do not trust a scan that filtered by app package prefix.** See "What the device test proved" above. `idmscan.py`'s `Lidm/`/`Lacr/` allowlist is what hid `Li/rm;`; it survives only as a convenience for quick lookups, and its results must not be used to argue that something does not exist. `idm_appodeal_scan.py` is the whole-APK replacement.
+- **The offline smali harness has to be rebuilt before it means anything.** `.scratch/check_smali.py` compiles its helper into `/usr/tmp/opencode/jars/out`, and that directory did not survive; the script now fails with an explicit message instead of quietly skipping. Its `CALLS` table also listed two `addInstructions` sites when the patch had four, so it had been exiting on the count check rather than assembling anything. Both are fixed. Rebuild `SmaliTest` per the recipe below before relying on it.
 
 ## Patcher pitfalls (1DM 18.2)
 
 - **`addInstructions` smali must be parsed, and 35c invokes need braces.** `addInstructions` routes the string through `InlineSmaliCompiler`, which wraps it in a dummy `.method` built from the matched method's own parameters, register count, and static flag, and then parses it with smali's ANTLR grammar. The 0.3.0 bundle shipped `invoke-virtual v1, L...;->disable()V` and died on-device with `Encountered 2 parser syntax errors and 0 lexer syntax errors!`. The grammar rule is `instruction_format35c_method : INSTRUCTION_FORMAT35c_METHOD OPEN_BRACE register_list CLOSE_BRACE COMMA method_reference` (`smaliParser.g`, line 1088), so the register list is mandatory and must be braced: `invoke-virtual {v1}, ...`. Only 35c/3rc/45cc invoke forms take braces; 22c forms such as `iput v5, v0, L...;->a:I` take a bare register pair, which is why the ADM patches parse.
 - **A register list holds register names, not numbers, and the `v` prefix does not come from the interpolation.** `getRegisterA()` and `getRegisterB()` return integers, so writing `invoke-virtual {$receiver}` renders `invoke-virtual {1}` and 0.3.1 died on-device with `Encountered 1 parser syntax errors` (`no viable alternative at input '1'`). The rendered text has to be `{v$receiver}`. The two failures are distinguishable by the reported count: two errors is a missing brace, one error is a bare number inside braces.
-- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake.
+- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake. Two things about it are load-bearing and were both got wrong at least once: the `CALLS` table must list **every** `addInstructions` site in the patch, in source order, with that method's `.registers` and declared parameters, or it exits on the count check without assembling anything; and the helper class has to be compiled into the `out` directory it names on the classpath, or every result is a failure to exec rather than a parse result. It guards the second case explicitly now.
 - **The dummy method means the register numbers are the real ones.** Because the template uses the matched method's `.registers` and parameter list, `p0` resolves to the receiver: in `load(Z)V` (`.registers 3`, one declared parameter) `p0` and `v1` are the same register, and in `setAd` (`.registers 8`, two declared parameters) `p0` and `v5` are the same. Verified by assembling both forms, so the explicit `v`-register form used by the patch is equivalent and does not depend on the template's parameter list being passed correctly.
 - **How to verify smali offline without the Morphe plugin.** The forks' smali is published on JitPack at `com.github.MorpheApp.smali:<module>/<commit>/<module>-<commit>.jar` (not the flat Maven path, which 404s), and Morphe tracks `com.github.MorpheApp.smali:smali` at commit `d856bad65f`. With `smali`, `smali-dexlib2`, `smali-util`, `antlr-runtime:3.5.2`, `stringtemplate:3.2.1`, `guava:31.1-android`, and `jsr305:1.3.9` on the classpath, a ~60-line Java program that copies `METHOD_TEMPLATE` from `InlineSmaliCompiler.kt` reproduces the exact parse, the exact error count, and the assembled instruction registers. That is how the brace fix was proven without a Gradle build, and it should be the first step for any new smali here. The same tool reproduces the numbers in the table above.
 
@@ -1340,3 +1531,1111 @@ surfaced this. The arity fix had passed the local suite and still did not build.
   *still* holds at a given index. The raw Dalvik does, and it is the only way to catch the
   `v4` sink/SensorManager reuse described above. The decoder used is
   `.scratch/dexdump.py`, which is throwaway but is the thing that found the bug.
+# Pinterest 14.38.0 reference notes
+
+Disassembly record for the reference build and the six Pinterest patches written against it.
+Patch status and remaining work are tracked in `todo.md` on the branch that carries this work.
+
+## Source and target record
+
+- Reference: `~/apks/com.pinterest_14.38.0-14388010_minAPI29(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk`
+- SHA-256: `af6b383adb445cebee1ca43f14ac409f91475c1d62e0e11ef52ef52e29fb0553`
+- Size: `133,740,741` bytes.
+- Format: regular APK/ZIP with 7,581 entries, not a split APKM container. The manifest carries
+  `STAMP_TYPE_STANDALONE_APK` and `com.android.vending.derived.apk.id` `2`, confirming this is the
+  APKMirror standalone re-pack rather than a Play-delivered split set.
+- Package: `com.pinterest`.
+- Version name: `14.38.0`.
+- Version code: `14388010`.
+- Minimum SDK: `29`.
+- Target SDK: `36`, compile SDK `36` (Android 16).
+- Application class: `com.pinterest.ReleaseHiltApplication`, which extends `Lf62/a;`.
+- Launcher: the `activity-alias` for `com.pinterest.activity.PinterestActivity`; the real
+  `activity/task/activity/MainActivity` is separate.
+- The reference is user-supplied and has not been independently verified as the original
+  publisher build. Because it is a standalone all-ABI re-pack, it may contain code that differs
+  from the Play split APK even at the same version code.
+
+## APK structure
+
+- DEX files: `classes.dex`, `classes2.dex`, `classes3.dex`, `classes4.dex`, `classes5.dex`,
+  `classes6.dex`, `classes7.dex`, `classes8.dex` — 60,061,368 bytes total.
+- Class counts: 7,562 / 1 / 11,365 / 9,730 / 12,876 / 8,184 / 20,519 / 3,483. Total 73,720.
+- `classes2.dex` is 868 bytes and holds a single class. It is a leftover empty multidex slot;
+  nothing in this build resolves through it.
+- App-owned classes (`Lcom/pinterest/`, `Lcom/linecorp/`, `Linfo/mqtt/android/`) by DEX:
+  `classes.dex` 1,625 / `classes3.dex` 676 / `classes4.dex` 751 / `classes5.dex` 5,593 /
+  `classes6.dex` 3,112 / `classes7.dex` 2,181 / `classes8.dex` 161. Total 14,099.
+- 64 native libraries, 137,722,368 bytes, for `arm64-v8a`, `armeabi-v7a`, `x86`, `x86_64`.
+- Notable native libraries: `libquikklycore.so` and `libquikklycore-jni.so` (Pinterest's own
+  QUIC stack), `libcronet.143.0.7445.0.so` (HTTP), `libbugsnag-ndk.so` plus its
+  `plugin-android-anr`, `root-detection` siblings (crash reporting), `librive-android.so`,
+  `libxrenderer.so`, `libzune_jpeg-*.so`, `libsurface_util_jni.so`, `libdatastore_shared_counter.so`.
+- `res/` holds 7,182 entries. `assets/` holds 46, including a 94,534-byte `dexopt/baseline.prof`,
+  `adChoicesRemoval.js` (6,565 bytes), `om_static.js` (49,724 bytes), `pinmarklet.js`, and eight
+  `real_feed_*.jsonl` files totalling roughly 22 MB.
+- The manifest declares 32 permissions. Notable ones: `AD_ID`,
+  `ACCESS_ADSERVICES_AD_ID`, `ACCESS_ADSERVICES_ATTRIBUTION`, `VENDING.BILLING`,
+  `DETECT_SCREEN_CAPTURE`, `READ_CONTACTS`, `POST_NOTIFICATIONS`, and the custom
+  `com.pinterest.account.Credentials` guarding `CredentialsContentProvider`.
+
+## Obfuscation is partial and per-package
+
+This is the single most useful structural fact about this build, and it differs from the
+obfuscated targets in this repo.
+
+- 14,052 classes sit under `Lcom/pinterest/`. 9,285 of them (66.1%) have short, obfuscated simple
+  names; 4,767 are fully readable.
+- Obfuscation is applied per package, not per build: every package checked is either 0% or
+  100% short-named. `com/pinterest/identity/core/error` (62), `com/pinterest/api/model/deserializer`
+  (51), and `com/pinterest/feature/core/view` (42) are entirely readable, while
+  `com/pinterest/collage/effects` (74), `com/pinterest/feature/nux/usecasepicker` (50), and
+  `com/pinterest/boardShopTool/sba` (50) are entirely obfuscated.
+- Consequence for fingerprints: a readable package can be anchored on class name plus method
+  signature, but an obfuscated package can only be anchored on literals, parameter and return
+  types, access flags, and instruction shape. Never assume a readable class name exists.
+
+## Application surface
+
+- Base class for every activity is the abstract `Lcom/pinterest/baseActivity/a;`. This is the
+  central per-activity object and the most useful single class in the build.
+- `BotChallengeActivity` extends `Lcom/pinterest/baseActivity/a;` directly.
+- `NUXActivity` (onboarding) extends it and is the only class named in the `autoAnalytics` check
+  at `baseActivity.onResume`.
+- Other readable activities: `MainActivity`, `CreationActivity`, `RepinActivity`, `CameraActivity`,
+  `PinItActivity` (exported, handles `SEND` and `com.pinterest.action.PIN_IT`), `NavActivity`,
+  `WebViewActivity`, `CommentActivity`, `MediaGalleryActivity`, `ComponentBrowserActivity`,
+  `ScrapedImagesResultsActivity`, `UserSetImageActivity`, `WebhookActivity` (NDEF/VIEW),
+  `SendShareActivity`, `ExperimentsReloaderActivity`, `AuthenticatorActivity`, `SSOActivity`.
+- Services: `MessagingService` and `FirebaseMessagingService` both on `MESSAGING_EVENT`,
+  `PinUploaderService`, `MqttService` (`info.mqtt.android.service.MqttService`), plus
+  `AppMeasurementService` / `AppMeasurementJobService` (Firebase Analytics) and the WorkManager
+  trio.
+- Broadcast receiver `com.pinterest.engage.GoogleEngageBroadcastReceiver` is exported on
+  `com.google.android.engage.action.PUBLISH_RECOMMENDATION`.
+- Exported providers: only `com.pinterest.account.CredentialsContentProvider`, protected by the
+  custom `com.pinterest.account.Credentials` permission.
+
+## Base activity as a patch anchor
+
+`Lcom/pinterest/baseActivity/a;` carries the infrastructure a patch usually wants:
+
+- Analytics: `analyticsApi : Lg20/a;` with `getAnalyticsApi()`/`setAnalyticsApi()`;
+  `pinalyticsFactory : Lx30/c;`; `pinalyticsScheduler : Lmi2/a;`; `getPinalytics()Lx30/b;`;
+  `networkPinalytics : Lf20/z;`; `autoAnalytics : Z` with `getAutoAnalytics()`/
+  `setAutoAnalytics()`; `trackingParamAttacher`; `timeSpentLoggingManager : Lv30/n;`.
+- Ads: `adFormats : Lj33/a;` with `getAdFormats()`/`setAdFormats()`; `adDataEventData : Lqo2/e;`
+  plus the constants `AUXDATA_IS_THIRD_PARTY_AD` and six `AuxDataKey_*` / `DL_AD_CLOSEUP_*` fields.
+- Lifecycle and other hooks: `setupActivity()V`, `onCreate`, `onResume`, `onStart`, `onDestroy`,
+  `init()V`, `injectDependencies()V`, `configureTheme()V`, `generateLoggingContext()Lqo2/x0;`,
+  `getViewType()Lqo2/b8;`, `showToast`, `showError`, `showInlineAlert`, `showInlineEducation`.
+- `setupActivity()V` is virtual on the base and called from the base's own `onCreate`, so it has
+  no in-code callers of its own. Fingerprints must not rely on a caller of `setupActivity`.
+
+## Verified candidate surfaces
+
+### Disable the bot challenge
+
+Cleanest surface found so far, and the most likely first patch.
+
+- `Lcom/pinterest/securityChallenge/ui/BotChallengeActivity;` (classes3.dex), 20 classes in the
+  package, public final, extends `Lcom/pinterest/baseActivity/a;`.
+- `onCreate(Landroid/os/Bundle;)V` has 2 registers and exactly three instructions:
+  `invoke-virtual inject()`, `invoke-super Lcom/pinterest/baseActivity/a;->onCreate`,
+  `return-void`. Trivial to replace with an immediate `return-void`.
+- `setupActivity()V` has 3 registers and 18 instructions. It loads
+  `sget Luq2/b;->bot_challenge_host I` and passes it to `setContentView(I)`, sets
+  `Window.setFlags(8192, 8192)` (`FLAG_SECURE`), registers a back-pressed callback through
+  `new-instance Lcom/pinterest/securityChallenge/ui/b;`, and finishes with
+  `const/4 v0, 1` + `D(Z)V`.
+- `onNewIntent(Intent)` has 4 instructions: `getClass`, `invoke-super onNewIntent`,
+  `setIntent`, then `const/4 v1, 0` + `D(Z)V`.
+- `D(Z)V` and `E(String)V` are the internal navigation helpers; `getFragment()` returns
+  `La0/f;`, which is constructed with `Lcom/pinterest/securityChallenge/ui/BotChallengeActivity;`
+  as its only parameter, and `Lop0/b;->H(BotChallengeActivity, Lpr/b9;)V` is the presenter.
+- Unverified: making the activity a no-op leaves the caller that started it without a result, so
+  a complete patch also has to short-circuit whatever launched the challenge. That launch site is
+  not yet identified, and `D(Z)V` is the likely place the completion is signalled.
+
+### Skip onboarding NUX
+
+- `Lcom/pinterest/activity/nux/NUXActivity;` (classes.dex) is fully readable and large.
+- Useful methods: `goHome()V`, `dismissExperience()V`, `completeExperience()V`, `exitNUX()V`,
+  `logNuxStart(Lbp0/y;)V`, `logNuxEnd(Lbp0/y;)V`, `goToStep(...)V`, `restoreStepIndex(Integer)V`,
+  `incrementAndGetNUXStep()`, `decrementNUXStep()`.
+- `goHome()V` is 11 instructions: it puts the boolean extra
+  `com.pinterest.EXTRA_REQUEST_LOCATION_PERMISSION` with value `1` on the intent, calls
+  `Lz72/c;->g(Activity, Z)V`, then `finish()`. Its only two callers are `goToStep` (index 176)
+  and `dismissExperience` (index 98), both inside `NUXActivity`.
+- `dismissExperience()V` resolves the current experience from `getExperiences()` plus
+  `getPlacement()` with a `LinkedHashMap` fallback before calling `Lbp0/y;->c()V`.
+- The supporting package is `Lcom/pinterest/feature/nux/` (163 classes), which is a mix: the
+  `usecasepicker` sub-package is 100% obfuscated.
+
+### Analytics
+
+- `baseActivity.onResume()` reads `autoAnalytics` at instruction 17, compares against
+  `const/4 v2, 0` at 18, branches at 19, then excludes `NUXActivity` via `instance-of` at 20 and
+  calls `getPinalytics()` plus `Lx30/b;->t(HashMap)` at 22-24. Setting `autoAnalytics` false
+  suppresses exactly that one resume event and nothing else.
+- `setAutoAnalytics(Z)V` has exactly one caller:
+  `Lcom/pinterest/activityLibrary/activity/task/activity/MainActivity;.onCreate(Bundle)V` at
+  instruction 672.
+- The field is read in only four methods total: `baseActivity.<init>`, `getAutoAnalytics`,
+  `onResume`, and `setAutoAnalytics`. So this boolean is narrow, not a master switch.
+- `baseActivity.setContentView(I)V` is 5 instructions and wraps every activity layout in the
+  `baseActivityLayout : Landroid/widget/FrameLayout;` field, inflating into it rather than
+  replacing the decor content view.
+- A readable analytics surface worth noting: `Lcom/pinterest/component/board/view/BoardRep;` is
+  fully readable and its `markImpressionEnd()Ljava/lang/Object;` builds a 19-register
+  impression proto including the literal `board_id`.
+
+### Ads
+
+Weakest area so far, and the one most likely to need real work.
+
+- No global ad kill-switch literal exists. `ads_enabled`, `enable_ads`, `hide_ads`, `no_ads`,
+  `ad_free`, `adBlock` and variants return nothing across all eight DEX files.
+- The literal `ad_block` exists exactly once, at `Lads_mobile_sdk/jp;-><clinit>()V` in
+  classes3.dex. That is obfuscated Google Mobile Ads SDK internals, not Pinterest code, so it is
+  a poor fingerprint and a poor patch target.
+- `ads_offramp_ads_only` looks promising by name but is not an ad gate.
+  `Lfq0/c;->b(String, Lfq0/w0;)Z` is 7 instructions that forward the literal to
+  `Lfq0/a0;->h(String, String, Lfq0/w0;)Z`, i.e. it selects an analytics filter for an
+  "ads only" offramp session. Four sibling methods in `Lh03/h0;` and the key provider
+  `Let1/b;->a()String` use it the same way.
+- `is_sponsored_content` is used in four places, and the only readable one is
+  `BoardRep.markImpressionEnd()`; the rest are protobuf serialization in the obfuscated
+  `Lcom/pinterest/api/model/s7$b;` and a map builder at `Lhg2/b;->q(...)`.
+- Pinterest-owned ad code is spread over many small packages rather than one module:
+  `Lcom/pinterest/ads/` (184), `Lcom/pinterest/adPreview/` (69, mostly obfuscated),
+  `Lcom/pinterest/adFormatsLibrary/` (11), `Lcom/pinterest/adsGmaLibrary/` (2),
+  `Lcom/pinterest/adsStlUiLibrary/` (2), `Lcom/pinterest/adsWebViewPin/` (9),
+  `Lcom/pinterest/adsOpenMeasurement/` (2), `Lcom/pinterest/adsCollageHeroCutout/` (50),
+  `Lcom/pinterest/pinBoost/` (40), `Lcom/pinterest/bundledCart/` (36).
+- `Lcom/pinterest/ads/screen/AdsLocation;` is readable and enumerates 17 surfaces
+  (`ADS_CORE`, `ADS_SHOPPING`, `ADS_COLLAGE`, `ADS_DEBUGGER`, `ADS_STORY`, `LEAD_GEN_COUNTRY_MODAL`,
+  `WEIGHT_LOSS_OPT_OUT_MODAL`, and so on). It is an analytics location enum, not a gate, but it is
+  the best available map of where ads appear.
+- The central rendering entry point has not been located. Until it is, an ad patch should be
+  expected to need several narrow edits rather than one.
+
+## Not yet done
+
+- No Pinterest patch, fingerprint, or patch-list entry has been written.
+- No Gradle build, bundle application, or device test has been run.
+- The bot-challenge launch site, the ad render entry point, the notification/push gate, the
+  cookie-consent entry point, and the `feature/settings` preference keys are all unmapped.
+
+## Why the Phase 0 settings patches cannot work on this build
+
+The four "Morphe settings" patches that a Pinterest patch bundle is expected to carry (settings
+entry, settings screen label, settings screen manifest, runtime state) were traced to their
+counterparts in the official bundle, `MorpheApp/morphe-patches`. They are implemented on top of
+`androidx.preference`, and this build has none of it:
+
+- `Landroidx/preference/` contributes **0** classes, and no method anywhere in the APK references
+  any type in that package.
+- `res/xml/` holds 10 entries and none is a preference screen: `authenticator.xml`,
+  `file_provider_paths.xml`, `ga_ad_services_config.xml`, `gallery_wall_widget_info.xml`,
+  `locales_config.xml`, `network_security_config.xml`, `single_image_widget_info.xml`,
+  `splits0.xml`, and two AppsFlyer backup/data-extraction files.
+- `Landroidx/compose/` contributes 221 classes, so the settings UI is Compose-based.
+
+The official mechanism, in outline, is a `resourcePatch` that copies the Morphe preference
+resources in and rewrites one existing `strings.xml` element's `textContent` to `"Morphe"`, plus a
+`bytecodePatch` that hooks `PreferenceManagerLegacyFingerprint` and
+`PreferenceDestinationLegacyFingerprint` to insert the row and intercept its navigation into a
+settings activity supplied by an extension. All of those hooks need a `PreferenceFragment`, a
+`PreferenceScreen` XML document and an `res/xml/*_prefs.xml`. Pinterest's settings live in
+`Lcom/pinterest/feature/settings/` (1,183 classes) behind a custom UI, so there is nothing for
+those fingerprints to match.
+
+This template also has none of the supporting framework: no `extensions/` directory, no
+`app.morphe.patches.shared.*` or `app.morphe.patches.all.*`, no `app.morphe.util.*` DOM helpers and
+no settings resources. Porting the framework would not fix the missing `PreferenceFragment`.
+
+Decision taken: defer the settings UI, start the patches that do not depend on it, and treat the
+settings screen as its own piece of work once the set of toggles that are actually wanted is
+known. Every patch written in the meantime is a plain `default = true` toggle, which is already
+how every patch in this repository behaves.
+
+## Advertising identifier
+
+### The app-owned wrapper
+
+`Lvi2/b;` in classes3.dex is Pinterest's own wrapper around Google's advertising identifier. Its
+three methods are `a()`, `b(Context)` and `c(Activity, boolean, int)`.
+
+- `b(Context)` returns the `AdvertisingIdClient$Info`. It calls `c(...)` first, which runs a
+  consent and permission-request flow built on `Lxi/c;` and `Lxi/d;`, returning `false` and so a
+  `null` identifier when the user declines. Otherwise it calls
+  `AdvertisingIdClient.getAdvertisingIdInfo(Context)`, stores the result in the field `b`, and
+  returns it. A `catch` handler logs `Log.getStackTraceString` and returns the cached field.
+- `a()` is the cached getter. It returns the field when it is set and otherwise builds an
+  `Lvi2/a;`, launches it through `Lhi0/c;->a()V`, and returns `null`.
+- `c(Activity, boolean, int)` is the consent flow and has no callers other than `b(Context)`.
+
+`a()` has **eight** callers, which is what decides the shape of the patch:
+
+```
+Lf20/d0;.C(Lnb1/h;)V                                  classes.dex
+Lf20/d0;.R(Lqo2/e2;String;ArrayList;HashMap;...)V       classes.dex
+Lf20/d0;.q(Lqo2/b8;Map;)V                             classes.dex
+Lf20/k0;.a(Lf20/k0;Lx30/a;HashMap;)V                   classes.dex
+Lv70/g;.intercept(Lr93/b0;)Lr93/r0;                    classes.dex
+Lm21/b;.u(Lt30/n;)V                                    classes5.dex
+Lds1/b;.t3()V                                           classes6.dex
+Ljv2/c;.b()V                                            classes7.dex
+```
+
+Because all eight read only the cache, a replacement that returns early without writing the field
+would leave the cache permanently `null` and make every one of them relaunch the asynchronous
+fetch on every call. The patch therefore replaces the fetch and leaves the caching in place.
+
+### Consumers tolerate a missing or empty identifier
+
+`Lur/j;.b()V` in classes.dex is the one consumer that has been read in full. It calls
+`b(Context)`, then handles three separate degenerate cases before using the value: a `null`
+`Info` at index 10, a `null` id at index 11, and an id of length zero at index 18. Only after all
+three does it put the value into a `LinkedHashMap` under the literal `advertising_identifier` and
+read `isLimitAdTrackingEnabled()`.
+
+An empty identifier is therefore a state the app already has a path for, and it drops the
+parameter from the request entirely. The patch still supplies a random UUID rather than an empty
+string, because the other seven readers of the same cache have not been read and an empty
+identifier is a legal `getId()` result that no reader has a particular reason to expect. A random
+value in the usual shape cannot fault a caller, is not derived from the device or the account,
+and is constant for the process.
+
+### Paths this does not cover
+
+`AdvertisingIdClient.getAdvertisingIdInfo` has six call sites in five methods, and only one of
+them is Pinterest's. The rest belong to bundled third-party code and are excluded by their own
+signatures:
+
+| method | returns | parameters | verdict |
+| --- | --- | --- | --- |
+| `Lvi2/b;->b` | `AdvertisingIdClient$Info` | `(Context)` | the target |
+| `Lads_mobile_sdk/ez;->w` | `Object` | `(Lk53/a;)` | Google Mobile Ads SDK |
+| `Lcom/appsflyer/internal/AFe1eSDK;->getCurrencyIso4217Code` | `Z` | `(Context, AFe1eSDK$AFa1ySDK)` | AppsFlyer |
+| `Luk/o2;->f2` | `Pair` | `(String)` | GMS measurement, called twice |
+| `Luk/x0;->j` | `Z` | `()` | GMS measurement |
+
+This is consistent with the patch list, which carries "Disable AppsFlyer tracking" and "Disable
+third party trackers" as separate items. Neutralising the identifier at `Lvi2/b;` does not affect
+the AppsFlyer, Google Mobile Ads or measurement paths, and those patches must not be assumed to
+cover Pinterest's own use.
+
+## Patch 1 — Neutralize advertising ID
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- `AdvertisingIdInfoFingerprint` matches on the return type
+  `Lcom/google/android/gms/ads/identifier/AdvertisingIdClient$Info;`, the parameter list
+  `(Landroid/content/Context;)` and a `methodCall` to
+  `AdvertisingIdClient.getAdvertisingIdInfo(Context)`. Neither the obfuscated defining class
+  `Lvi2/b;` nor the method name `b` is pinned.
+- Verified uniqueness in the reference: the return type alone matches four methods
+  (`AdvertisingIdClient->d()`, `AdvertisingIdClient->getAdvertisingIdInfo(Context)`,
+  `Lvi2/b;->a()` and `Lvi2/b;->b(Context)`); adding the single-`Context` parameter list and the
+  `getAdvertisingIdInfo` call filter leaves exactly one.
+- The replacement is one `invoke-static` over one register, the same opcode and the same width as
+  the instruction it replaces. `b(Context)` branches at index 4 and index 9, so a wider
+  replacement would shift its branch targets. The register is read from the matched invoke with
+  `ThirtyFiveCInstruction.getRegisterC(0)` rather than hardcoded, because a 35c invoke carries its
+  arguments in the C slots and has no receiver.
+- The synthetic value is cached by the app's own `move-result-object` and `iput-object` at indices
+  7 and 8, so the eight readers of the cache keep working.
+- The extension exists because the logic cannot be expressed inline at the same width: smali has
+  no way to construct an `AdvertisingIdClient$Info` inside one `invoke-static`, and widening the
+  replacement is not safe in a method that branches.
+- Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 17
+  files including the three new ones, and `tools/checks/test_invoke_arity.py` passes 19/19. This
+  covers the invoke arity and the escaped `$` in `AdvertisingIdClient$Info`.
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device, and
+  `extensions/` was the first extension module in this repository, so its wiring is unproven
+  beyond compiling. The extension also has never been run on a
+  device, and the `AdvertisingIdClient.Info` constructor has not been checked against a compiled
+  artifact.
+
+## AppsFlyer
+
+### Layout
+
+432 classes under `Lcom/appsflyer/`, split 280 in classes.dex and 152 in classes4.dex. The public
+API is not obfuscated (`AppsFlyerLib`, `AFLogger`, `AppsFlyerConsent`, `AppsFlyerProperties`,
+`AFInAppEventType`, `PurchaseHandler`, the `deeplink` and `share` packages), while
+`Lcom/appsflyer/internal/` is renamed to an `AF<letter>1<letter>SDK` scheme. Member names inside
+those classes are obfuscated too, including **method** names: several carry the readable names of
+completely unrelated SDK methods, so a method name in this package is never a reliable signal.
+
+`assets/com/appsflyer/internal/` holds six asset files.
+
+### The concrete implementation
+
+`Lcom/appsflyer/AppsFlyerLib;` is abstract and declares `init`, `start`, `logEvent`, `stop`,
+`onPause` and `getInstance`. Exactly one class extends it:
+
+```
+Lcom/appsflyer/internal/AFa1tSDK;  extends  Lcom/appsflyer/AppsFlyerLib;
+```
+
+That is where every real method body lives. **This class name is the one genuinely fragile element
+in the patch**, because it is obfuscated and changes when the SDK is updated. Everything else in
+the fingerprints is the exact signature and the `public final` access flag.
+
+### What Pinterest actually calls
+
+Twelve `AppsFlyerLib` members are called from Pinterest code, from five call sites:
+
+| member | Pinterest call site |
+| --- | --- |
+| `init(String, AppsFlyerConversionListener, Context)` | `Lvs1/k0;.invoke(Object)Object` ins 2878 |
+| `setAdditionalData(Map)` | `Lvs1/k0;` ins 2826 |
+| `setSharingFilterForPartners(String[])` | `Lvs1/k0;` ins 2848 and 2868 |
+| `setConsentData(AppsFlyerConsent)` | `Lvs1/k0;` ins 2976, 2996 and 3016 |
+| `setCustomerIdAndLogSession(String, Context)` | `Lvs1/k0;` ins 3100 |
+| `logEvent(Context, String, Map)` | `Lvs1/k0;` ins 3110 and `Lw20/h;.a(String, Map)V` ins 50 |
+| `start(Context)` | `Lvs1/k0;` ins 3116 |
+| `getAppsFlyerUID(Context)` | `Lvs1/k0;` ins 3130 |
+| `getInstance()` | `Lvs1/k0;` 2724, `Lnf/h;.v()V` 28, `Lw20/h;` 42, `MessagingService.onNewToken` 46 |
+| `unregisterConversionListener()` | `Lnf/h;.v()V` ins 36 |
+| `stop(boolean, Context)` | `Lnf/h;.v()V` ins 44 |
+| `updateServerUninstallToken(Context, String)` | `MessagingService.onNewToken` ins 62, `Lvr/g;.invoke(Object)` ins 2598 |
+
+The initialisation sequence is one Kotlin lambda, `Lvs1/k0;.invoke(Object)Object`, which calls
+`getInstance` and then works down the list in order. Patching the lambda would mean editing a
+coroutine body thousands of instructions long, so the SDK side is patched instead.
+
+### The transmit path, and why `init` alone is not enough
+
+`AFa1tSDK.init` is only ten instructions. It marshals its three arguments into an `Object[]` with
+`filled-new-array`, loads two large integer constants, calls
+`System.identityHashCode`, and hands all of that to a private static. Returning early loses
+nothing.
+
+Suppressing `init` alone would also crash. The SDK's core is fetched through the accessor
+`AFAdRevenueData()Lcom/appsflyer/internal/AFc1dSDK;`, and `getAppsFlyerUID` uses it like this:
+
+```
+ 8  invoke-virtual   AFAdRevenueData()Lcom/appsflyer/internal/AFc1dSDK;
+ 9  move-result-object v0
+10  invoke-interface v0, Lcom/appsflyer/internal/AFc1dSDK;->copy()Lcom/appsflyer/internal/AFd1pSDK;
+```
+
+There is no null check between the fetch and the dereference, and Pinterest calls
+`getAppsFlyerUID` itself at `Lvs1/k0;` ins 3130. With `init` suppressed the core would be null and
+that read would throw.
+
+### R8 noise
+
+Every public method in `AFa1tSDK` is wrapped in the same pattern before doing anything:
+
+```
+sget  AFa1tSDK;->AFInAppEventParameterName I
+add-int/lit8   v0, v0, 103
+rem-int/lit16  v0, v0, 128
+sput  AFa1tSDK;->AFInAppEventType I
+```
+
+The three obfuscated member names in that sequence are static ints used as junk counters; they
+say nothing about the method. `getAppsFlyerUID` is 41 instructions of which roughly half is this.
+Any fingerprint built from that traffic would be pinning obfuscation artefacts, so none is.
+
+## Patch 2 — Disable AppsFlyer tracking
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- Six methods on `Lcom/appsflyer/internal/AFa1tSDK;` are replaced with a type-correct immediate
+  return: `init` returns `this`, `start`, `logEvent`, `setCustomerIdAndLogSession` and
+  `updateServerUninstallToken` return `void`, and `getAppsFlyerUID` returns `null`.
+- Every replacement is `addInstructions` at index 0, which is what the existing patches in this
+  repository already do on branching methods. The bodies become unreachable but the branch targets
+  inside them are recalculated by the patcher.
+- `init` returns `v0`, which is `this`: the method has four registers and all four are declared
+  parameters. A plain register is used rather than smali's `p0`. `p0` is accepted by the patcher's
+  smali renderer, as the official bundle uses it, but nothing in this repository's checks exercises
+  a parameter register, so the checked spelling is the one the existing patches already use.
+- Verified in the reference that each fingerprint resolves to exactly one method. `start` has three
+  overloads and `logEvent` has two; the parameter list separates them and the extra overloads are
+  left alone deliberately.
+- `getInstance` is untouched. It is the singleton accessor, every call site chains on it, and
+  AppsFlyer's own internals use it, so suppressing it would break the SDK's plumbing without
+  stopping anything.
+- `setAdditionalData`, `setSharingFilterForPartners` and `setConsentData` are untouched: they only
+  mutate local configuration that the suppressed methods would have read. `stop` and
+  `unregisterConversionListener` are untouched because they only tear the SDK down.
+- `getAppsFlyerUID` returning `null` is safe because `Lur/j;->b()V` tests an identifier for `null`,
+  then again for `null` after the getter, then for zero length, before using it.
+- No extension is used, so this patch does not depend on the untested `extensions/` wiring.
+- Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 19
+  files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device. `init` is the method most likely to change
+  between AppsFlyer releases, and the whole patch hangs off one obfuscated class name.
+
+## Google Engage
+
+### Layout
+
+The Google Engage SDK is bundled: about 90 classes under `Lcom/google/android/engage/` in
+classes4.dex, covering `audio`, `books`, `common`, `food`, `service`, `shopping`, `social` and
+`video` datamodels. `Lcom/google/android/engage/service/` holds only `AppEngageException`,
+`ClusterList` and `ClusterMetadata`; the transport itself is the obfuscated
+`Lcom/google/android/gms/internal/engage/zzp;`.
+
+Pinterest's own code is two classes, both in classes.dex, both with readable names:
+
+```
+Lcom/pinterest/engage/GoogleEngageBroadcastReceiver;   extends Lec2/a;
+Lcom/pinterest/engage/GoogleEngageWorker;              extends Landroidx/work/RxWorker;
+```
+
+The manifest registers the receiver as exported on
+`com.google.android.engage.action.PUBLISH_RECOMMENDATION`, `com.pinterest.unauth.ACTION_USER_LOG_IN_SUCCESS`
+and `com.pinterest.unauth.ACTION_USER_LOG_OUT_SUCCESS`.
+
+### The receiver only enqueues a job
+
+`GoogleEngageBroadcastReceiver.onReceive(Context, Intent)` is 49 instructions, 15 registers, two
+declared parameters and one declared parameter used nowhere. It does not read the intent action.
+Its whole body is:
+
+```
+ 2  invoke-static   Ld63/e0;->w()V
+ 5  new-instance    LinkedHashSet
+21  invoke-direct   Lbd/e;-><init>(NetworkRequest, State, Z Z Z Z, J J, Set)V
+23  const-class     Lcom/pinterest/engage/GoogleEngageWorker;
+25  const-string    "google_engage_one_time_publish_job"
+29  invoke-virtual  Lbd/d0;->m(Lbd/e;)Lbd/s0;
+32  sget-object     Lbd/a;->EXPONENTIAL
+33  const-wide/16   30000
+34  invoke-virtual  Lbd/s0;->l(Lbd/a; J)Lbd/s0;
+47  invoke-virtual  ... ->c(String, KEEP, Lbd/e0;)V
+48  return-void
+```
+
+So the receiver is not where publishing happens, it is what schedules publishing. `google_engage_one_time_publish_job`
+occurs **exactly once in the whole APK**, in this method.
+
+### The worker is the thing that publishes
+
+`GoogleEngageWorker` extends `androidx.work.RxWorker` and overrides its `doWork`, here named `g()`
+because R8 renames methods in this app. It returns `Lc43/v;`, an obfuscated RxJava `Single`, and is
+28 instructions of pure construction: a `Context`, a `Schedulers` selector at index 19, a
+`CompositeException` holder, an `o1/o1` collaborator taking the literal `25`, a retry/timeout
+selector at `14` and `15`, and two `flatMap`/`compose`-shaped wrappers, finishing with
+`subscribeOn(Lb53/f;->c)`. No literal identifies it, and every collaborator is obfuscated, so this
+method is the weakest target in the bundle so far.
+
+`GoogleEngageWorker` is constructed in exactly two places and neither schedules it: `Lpr/n9;` is
+the WorkManager `WorkerFactory` that rebuilds a worker, and `Lpo0/f;` holds the injected instance.
+The only `const-class` for it in the APK is index 23 of the receiver's `onReceive`. The receiver is
+therefore the only enqueue point, which is what makes suppressing it sufficient on its own.
+
+## Patch 3 — Disable Google Engage
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- `GoogleEngageReceiverFingerprint` pins `Lcom/pinterest/engage/GoogleEngageBroadcastReceiver;`,
+  which is **not** obfuscated, the `onReceive` signature, and the literal
+  `google_engage_one_time_publish_job`.
+- Verified in the reference: the APK has 33 methods with the signature `onReceive(Context, Intent)V`
+  and exactly one of them contains that literal, so the filter is unique. The surrounding WorkManager
+  types are all obfuscated (`Lbd/d0;`, `Lbd/e;`, `Lbd/e0;`, `Lbd/a;`) and none is used as an anchor.
+- The replacement is `addInstructions(0, "return-void")`. `onReceive` returns `void`, so no value
+  register is involved, and neither parameter is read by the original body.
+- This is the first patch in the bundle that needs no obfuscated anchor at all, and the first that
+  needs no extension either.
+- Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 21
+  files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
+- Build verified: compiles clean in CI (`v0.6.0-dev.1`). Not verified on device.
+
+## Phase 0 — runtime state, and a bug in the official version check
+
+### What the runtime state patch is
+
+`patches/src/main/kotlin/app/pinterest/patches/shared/VersionState.kt`. It is an **unnamed**
+`bytecodePatch`, which matters: `PatchLoader` only loads patches that carry a name, so an unnamed
+patch is invisible in the Manager's patch list and cannot be toggled, while still being usable as a
+`dependsOn` target by every other Pinterest patch. It changes no code.
+
+The official bundle does this as `app.morphe.patches.<app>.misc.version.VersionCheckPatch`. It reads
+`context.packageMetadata.versionName` inside `execute`, which is the real API:
+`PackageMetadata` exposes `packageName`, `versionName` and `versionCode` as `String`, with
+`versionCode` notably a **string**, not an integer.
+
+All three Pinterest patches that exist now declare `dependsOn(versionCheckPatch)`, so the version
+is recorded before their own `execute` blocks run.
+
+### The official comparison is wrong for Pinterest's own version numbers
+
+The official helper is:
+
+```kotlin
+fun isEqualsOrGreaterThan(version: String): Boolean = versionName >= version
+```
+
+That is Kotlin's string comparison. It is wrong as soon as a component reaches two digits, which
+Pinterest passed long ago. Checked against real Pinterest version numbers:
+
+| patched version | compared to | correct | official `>=` |
+| --- | --- | --- | --- |
+| `14.38.0` | `14.38.0` | true | true |
+| `14.38.0` | `14.9.0` | **true** | **false** |
+| `14.9.0` | `14.38.0` | **false** | **true** |
+| `14.38` | `14.38.0` | **true** | **false** |
+| `14.100.0` | `14.38.0` | **true** | **false** |
+| `14.38.0` | `14.38.1` | false | false |
+| `15.0.0` | `14.99.99` | true | true |
+| `14.38.0` | `14.38.0.1` | false | false |
+
+Four of eight are inverted, in both directions. `14.38.0` sorts below `14.9.0` as text because
+`'3'` is less than `'9'`, so any predicate written against `14.9.0` or `14.10.0` would be
+permanently false and any predicate written against `14.38.0` would also be false on `14.38.0`
+itself once compared against a shorter form. The failure is silent: the patch simply takes the
+other branch.
+
+`compareVersions` in `VersionState.kt` compares component by component instead. A missing
+component counts as zero, so `14.38` equals `14.38.0`. A component that is not numeric reads as
+zero rather than throwing, so an unexpected version string degrades to a numeric-prefix comparison
+instead of aborting the whole patch run.
+
+Verified by reimplementing the same algorithm and running the table above: all eight cases agree
+with the correct answer. That validates the logic; the Kotlin file itself compiles clean in CI
+(`v0.6.0-dev.1`).
+
+### Only one predicate exists
+
+`is_14_38_0_or_greater`, matching the single `AppTarget` in `COMPATIBILITY_PINTEREST`. No
+speculative predicates for versions this bundle does not target were added, per `AGENTS.md`.
+
+## Phase 0 — status
+
+| item | state |
+| --- | --- |
+| Morphe runtime state | **done** |
+| Settings entry | blocked |
+| Settings screen (label) | blocked |
+| Settings screen (manifest) | blocked |
+
+The three settings items remain blocked for the reason recorded earlier: they hook
+`androidx.preference`, which Pinterest 14.38.0 does not contain. Building them would require a
+bespoke settings activity, an anchor inside Pinterest's own Compose settings list, and a set of
+string resources, none of which can be compiled or device-tested in this environment.
+
+The runtime state patch does **not** make a failing fingerprint survive an app update. It makes the
+patch able to know which version it is running against, which is the prerequisite for noticing that
+a fingerprint has stopped matching.
+
+
+## Third party trackers: the description does not match this build
+
+Enumerated the SDKs actually bundled rather than trusting the patch description, which names
+"Google, MoPub, Adjust, Nielsen, Segment, etc.".
+
+**Absent entirely** (0 classes): MoPub, Adjust, Nielsen, Segment, the Facebook SDK, AppLovin,
+Unity Ads, IronSource, Vungle, Pangle, Mintegral, Appbrain, Appodeal, Branch, Singular, Amplitude,
+Mixpanel, Firebase Crashlytics, Google Tag Manager.
+
+**Present**:
+
+| SDK | classes | dex | disposition |
+| --- | --- | --- | --- |
+| Google Mobile Ads SDK | 3,337 | classes.dex | advertising, not tracking; belongs to the "Disable ads" item |
+| Google Measurement (Firebase Analytics) | 289 | classes4.dex | self-initialising, see below |
+| AppsFlyer | 432 | classes.dex + classes4.dex | already patch 2 |
+| Google Engage | 85 | classes4.dex | already patch 3 |
+| Bugsnag | 172 | classes.dex | crash reporting, not an advertising tracker |
+
+Other bundled third-party code is not tracking: `com/bumptech/glide` (43, image loading),
+`com/airbnb/lottie` (35, animation), `com/linecorp/linesdk` (41, Line login),
+`com/amazonaws/*` (about 290, Amazon Shopping).
+
+So for this build the two trackers that are actually disableable are AppsFlyer and Google Engage,
+and both are already implemented as separate patches.
+
+### Pinterest never calls the measurement package
+
+Checked every method in the APK for calls into the obfuscated GMS measurement package:
+
+- Pinterest methods calling anything in `Luk/`: **0**.
+- Callers of `AppMeasurement.logEventInternal(String, String, Bundle)`: **0**.
+- Callers of `Luk/a2;->e(String, String, Bundle)`, the internal event dispatch it calls: **0**.
+
+`AppMeasurement.getInstance(Context)` is 51 instructions and returns a live object that the
+manifest-declared `AppMeasurementService`, `AppMeasurementReceiver` and
+`AppMeasurementJobService` all depend on, so it cannot be made to return `null`. The SDK is
+driven entirely by its own manifest components and content providers through
+`androidx.startup.InitializationProvider`, not by Pinterest code.
+
+There is therefore no clean Pinterest-side gate for it. Disabling it would mean either patching
+`Luk/` internals, whose uploader has not been identified — `Luk/j0;` turned out to be a protobuf
+and `Uri` helper class rather than the uploader — or removing manifest components, which is a
+resource patch and changes app startup behaviour. Neither is a narrow, verifiable edit, so no patch
+was written for it.
+
+**Conclusion**: "Disable third party trackers" as described does not map onto Pinterest 14.38.0.
+Its real content is already covered by patches 2 and 3. The Google Mobile Ads SDK is
+"advertising" rather than a tracker and belongs to the "Disable ads" item, whose central render
+entry point is still unmapped.
+
+## Pinterest's settings UI is workable, just not Preference-based
+
+The blocker recorded earlier is specific: there is no `androidx.preference`. What there is instead
+is a typed, View-based settings list with readable row classes, which is a better anchor than a
+`PreferenceFragment` would have been.
+
+```
+Lcom/pinterest/feature/settings/menu/SettingsMenuFeatureLocation
+    $SETTINGS_MAIN
+    $SETTINGS_APP_ABOUT
+    $SETTINGS_PRIVACY_MODAL
+Lcom/pinterest/feature/settings/shared/view/
+    SettingsListActionItemView      <- a row that navigates to a sub-page
+    SettingsToggleItemView
+    SettingsTextItemView
+    SettingsPageItemView
+    SettingsSectionHeaderView
+    SettingsHeaderSubHeaderItemView
+Lcom/pinterest/feature/settings/menu/model/     <- 36 classes, ALL obfuscated (a..l, each with 0/1)
+```
+
+The list package holds only two readable classes, `SettingsMenuFeatureLocation` and
+`AccountSwitcherFeatureLocation`; `Lcom/pinterest/feature/settings/menu/a` and `b` are the
+obfuscated builders. `SETTINGS_MAIN` is referenced from exactly one place,
+`SettingsMenuFeatureLocation.<clinit>()V`, so it is a singleton screen location.
+
+Binding works through `SettingsListActionItemView.h1(SettingsListActionItemView, model/h)`, called
+from two builders, `Lnw/a;.e(Liu1/l;Ljava/lang/Object;I)V` and `Lh71/e;.e(...)V`. The view is
+constructed by `Lak1/g;.invoke()V` through a ten-argument constructor that takes two
+`Function1` click handlers, so the click behaviour is injected at construction rather than looked
+up.
+
+### What this means for the three blocked settings patches
+
+The official mechanism hooks `PreferenceManagerLegacyFingerprint` and
+`PreferenceDestinationLegacyFingerprint`, neither of which can match here. A Pinterest-native
+equivalent would instead be:
+
+1. **Entry**: append a row to the list that `SETTINGS_MAIN` renders. The append point is the
+   obfuscated builder in `Lcom/pinterest/feature/settings/menu/`, which is the weak link — every
+   candidate is a single-letter class in an obfuscated package.
+2. **Label**: this half is unchanged and still straightforward. The official patch walks `res` for
+   every `strings.xml` and rewrites one element's `textContent` by attribute name; the equivalent
+   here is to add a string resource and point the new row at it. Nothing about the label depends on
+   `androidx.preference`.
+3. **Manifest**: a settings activity supplied by an extension, declared through the decoded
+   manifest in a `resourcePatch`. The API to confirm is `document("AndroidManifest.xml")`, since
+   the documented DOM helper is `document(String)` and `get(String, Boolean)` returns a `File` for
+   decoded resource paths.
+
+None of this is written. The blocker moved from "the mechanism is impossible" to "the entry anchor
+is obfuscated and unverified", which is a smaller problem but still a real one.
+
+## Settings entry: the anchor hunt
+
+The `SETTINGS_MAIN` list that would carry a "Morphe" row was traced as far as it goes.
+
+`SettingsMenuFeatureLocation$SETTINGS_MAIN` is referenced from exactly one place,
+`SettingsMenuFeatureLocation.<clinit>()V`. `SettingsMenuFeatureLocation` itself is referenced from
+exactly one place outside itself: a `Parcelable.Creator` at
+`Lcom/pinterest/feature/board/d;.createFromParcel(Object)Object`, which round-trips it through
+`valueOf(String)`. So the screen location is passed around as a parcel, not navigated to by name,
+and there is no call site that names `SETTINGS_MAIN` to hook.
+
+Rows are models in `Lcom/pinterest/feature/settings/menu/model/`, all obfuscated (`a` through `l`,
+each with `0` and `1` subclasses). The navigable row `SettingsListActionItemView` is bound by
+`h1(SettingsListActionItemView, model/h)` from exactly three callers: `Lnw/a;.e(...)V`,
+`Lh71/e;.e(...)V` and `model/z;.e(...)V`. The type is dispatched by `getItemViewType(I)I` in
+eight adapter classes, of which only `model/a0;` is in the settings package.
+
+The view is constructed in exactly one place, `Lak1/g;.invoke()Object` (114 instructions, ten
+constructor arguments including two `Function1` click handlers). `Lcom/pinterest/feature/settings/menu/a`
+and `b`, the only other classes in the list package, are both empty marker classes with no fields
+and no methods — not builders.
+
+So the list is built by obfuscated code outside the settings package, dispatched through generic
+adapters, and bound by three separate callers. No single seam names `SETTINGS_MAIN`,
+`SettingsListActionItemView`, or any model in a way a fingerprint can pin without using an
+obfuscated class name. That is where the hunt stops: the entry needs either a fingerprint on an
+obfuscated builder, or a different strategy entirely, such as intercepting at the parcel boundary.
+
+## Patch 5 — Morphe settings screen (label)
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- A `resourcePatch` that appends `<string name="morphe_settings_entry">Morphe</string>` to the
+  decoded `res/values/strings.xml` through `document(String)`, which is a documented patcher API.
+- Only the default locale is touched. The description promises all languages, and the official
+  bundle does that by walking `res` for every `values-*/strings.xml`. No documented API enumerates
+  the decoded resource tree from inside a patch — `get` addresses one file by name and
+  `listApkEntries` lists the input APK — so the multi-locale walk is not written.
+- A dedicated `res/values/morphe_settings.xml` would be tidier than appending to the shared file,
+  but writing a file that does not exist in the reference hits the same unconfirmed-API problem,
+  so the shared file is used.
+- No extension and no obfuscated anchor. This is the one Phase 0 settings item that is finishable
+  as described.
+- Not verified: resource recompilation, because the patcher build does not run here.
+
+## Patch 6 — Morphe settings screen (manifest)
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- A `resourcePatch` that adds an `activity` element for
+  `app.oyasumi.extension.MorpheSettingsActivity`, `exported=false`, to the decoded manifest
+  through `document("AndroidManifest.xml")`.
+- That component name is a contract with the extension that does not exist yet: the settings
+  activity must be written under exactly that name in the `app.oyasumi.extension` namespace for
+  this declaration to resolve to anything. Until then this patch declares an activity with no code.
+- No theme is declared, so the activity inherits the application theme (`@7F150341` in the
+  reference) rather than guessing at a style that may not exist.
+- `document("AndroidManifest.xml")` is an inference, not a confirmed pattern: the documented DOM
+  helper is shown on `res/values/strings.xml` and no official example applies it to the manifest.
+  Whether the rebuilt manifest still parses cannot be checked here: CI compiles the patch
+  code but does not apply it to an APK, so resource recompilation is still unverified.
+- Not verified: the manifest path, resource recompilation, and the missing activity.
+
+### Settings entry: anchor hunt, completed without a seam
+
+Traced to the end, in order:
+
+1. `SETTINGS_MAIN` is referenced only from `SettingsMenuFeatureLocation.<clinit>()V`. The location
+   class itself is referenced from one place: a `Parcelable.Creator` at
+   `Lcom/pinterest/feature/board/d;.createFromParcel(Object)Object`. It travels as a parcel, and
+   nothing names it to navigate to.
+2. `Com/pinterest/feature/settings/menu/a` and `b`, the only other classes in the list package,
+   are both empty (no fields, no methods). Not builders.
+3. The list models in `menu/model/` are all obfuscated single letters. `model/h` implements
+   `Lmu1/s;` and declares exactly one method, `getViewType()I`. `model/a` declares nothing.
+   Neither has an indexed constructor call, consistent with deserialized or server-shaped data.
+4. The row binder `SettingsListActionItemView.h1(view, model/h)` is called from exactly three
+   methods (`Lnw/a;`, `Lh71/e;`, `model/z;`), all generic multi-screen binders.
+5. Eight adapters dispatch on the models' `getViewType()`. `Lex0/a;` is constructed from five
+   unrelated places, including an onboarding/experiences flow, so it is shared, not
+   settings-specific. `Lfz0/b;` has a single construction site, `Lhs/d;.invoke()Object`, but that
+   method makes 329 invokes and 175 field references with zero settings-related targets — a generic
+   factory, not a settings builder.
+6. The row view is constructed in exactly one place, `Lak1/g;.invoke()Object`, a synthetic lambda.
+
+No class in this chain names the settings screen, its list, or a Morphe-relevant seam in a way a
+fingerprint can pin without using an obfuscated name. Appending a row needs the list at build
+time, and the list is built by obfuscated code outside the settings package through generic
+adapters. The entry patch is therefore not writable as a verifiable static patch from this
+reference. The viable unblockers are dynamic analysis on a device to find the live builder, or
+intercepting at the parcel boundary where the screen location is materialised.
+
+## Email confirmation dialog
+
+The prompt is gated by an experiment flag, not by user state. `Lfq0/r0;->b()Z` reads the key
+`android_settings_email_verification`, compares it against the literal `"enabled"`, then reads
+the key again through `Lfq0/a0;->i(String)Z`, and returns the conjunction. Five call sites all
+take the prompt path on `true` and the normal path on `false`:
+
+```
+Lak1/k;.z9()Liu1/k;                                     ins 182
+Lvj1/v;.onCreateView(LayoutInflater, ViewGroup, Bundle)  ins 330
+Lvj1/v;.z9()Liu1/k;                                     ins 154
+Lvj1/u0;.F1(Z)V                                         ins 8
+Lvj1/u0;.dismiss()V                                     ins 8
+```
+
+`Lvj1/u0;.F1(Z)V` was read in full to confirm the polarity: on `false` it branches past the
+email-verification UI block straight to `super.F1(Z)V`. `has_confirmed_email`, by contrast, is a
+protobuf field on the user model (`api/model/cq`), not a gate, so it was not used.
+
+## Patch 7 — Disable email confirmation dialog
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- `EmailVerificationGateFingerprint` pins the return type `Z`, an empty parameter list, and the
+  two literals `android_settings_email_verification` and `enabled`. Neither the obfuscated
+  defining class `Lfq0/r0;` nor the method name `b` is used.
+- Verified in the reference: the key literal occurs in three code methods plus one interning
+  `<clinit>`; the other two return `Object`, so the return type isolates the target exactly.
+- The replacement is `const/4 v0, 0` plus `return v0` at index 0. Five registers with one
+  incoming parameter, so `v0` is a free local.
+- Static validation passed: `tools/checks/patch_smali_checks.py` reports 0 problems across 26
+  files including the two new ones, and `tools/checks/test_invoke_arity.py` passes 19/19.
+- Build verified: compiles clean in CI. Not verified on device.
+
+## Settings entry: live hierarchy and resource IDs (from device dump)
+
+A `uiautomator` dump of the live Account Settings screen, confirmed as `com.pinterest`, gives
+ground truth the static analysis could not:
+
+- The list is a real `androidx.recyclerview.widget.RecyclerView` with id
+  `com.pinterest:id/recycler_adapter_view` (`0x7F0A1143`), bounds `[0,308][1080,2311]`.
+- Rows are `ViewGroup` with id `com.pinterest:id/page_list_action` (`0x7F0A0E9D`), each holding
+  `list_action_header` (`0x7F0A0C4C`, title), `list_action_end_text` (trailing value) and
+  `list_action_subheader` (subtitle). Section headers use `settings_section_header_text`.
+- The screen also shows the email-verification banner (`banner_message` +
+  `banner_primary_action_button` with "Confirm email"). If that banner is visible on a patched
+  install, patch 7 is not suppressing it at runtime — noted, not concluded, since the dump may be
+  from a stock install.
+- `res/layout/lego_fragment_settings_menu.xml` is **not** this screen. It hosts a
+  `com.pinterest.ui.grid.PinterestRecyclerView` (which extends `LinearLayout`, not
+  `RecyclerView`) with a different id (`0x7F0A0E91`). Do not fingerprint against that layout.
+
+Resource-ID tracing:
+
+- `recycler_adapter_view` is read as `Lxu1/k;->recycler_adapter_view` from four methods, none in
+  a settings context (`ideaPinCreation`, `Lqr1/f;.onCreateView`, `Ld11/g;.run`, and
+  `PinterestRecyclerView.<init>` itself). It is a shared generic list-container id, so it does not
+  isolate the settings screen. `Lqr1/f;.onCreateView` makes 61 invokes and 31 field reads with zero
+  settings-related targets — a generic host, not the settings fragment.
+- `page_list_action` is read from exactly one place,
+  `SettingsListActionItemView.<init>` via `Lnr2/c;->page_list_action`. It is settings-specific.
+- `list_action_header` is read via `Lh02/b;->list_action_header` from eight places including
+  `GestaltListAction` and the unified inbox. Shared, not settings-specific.
+- No `RecyclerView.setAdapter`, `swapAdapter`, `setLayoutManager` or `onBindViewHolder` appears in
+  the call index under those names, because the `androidx.recyclerview.widget` classes are
+  R8-renamed in this build. Adapter calls cannot be found by those names.
+
+Static analysis ends here. The remaining step is dynamic: trace which adapter serves the live
+`recycler_adapter_view` while Account Settings is open, and read back its class name. That single
+class name is the anchor the entry patch needs.
+
+## Patch 8 — Morphe settings entry
+
+- Compatibility: `com.pinterest`, version `14.38.0`, version code `14388010`, regular APK.
+- Mechanism adapted from `browzomje/browzomje-patches` (older Pinterest versions), whose comments
+  document two failures that shaped it: anchoring on a conditional section misses accounts, and
+  anchoring on the first `<init>(int)` in program order can land on a conditional spacer. Both are
+  avoided here by requiring the header class to be built at least twice.
+- `SettingsMenuListBuilderFingerprint` matches `Object invoke(Object)` with a `custom` matcher
+  requiring at least five `invoke-direct <init>` in `menu/model/`, including one `(int)` and one
+  `(String)`. No class or method name is pinned. Uses the patcher 1.13.0 `custom` API, confirmed
+  present in that version.
+- On 14.38.0 this resolves to `labs/s;.invoke`: 17 model constructions, header `f1` built 4x,
+  external-link `k1` built 1x, the only single-`String` constructor in the package.
+- Two injections: `appendMorpheSettingsEntry(list)` after the header's `List.add` (register read
+  from the matched invoke via `FiveRegisterInstruction.registerC`, no scratch register needed),
+  and `setSettingsRowClass(name)` at index 0 where `v0` is certainly free.
+- The extension holds `MorpheRuntimeNames` (resolved names + `morphe://settings`), `SettingsEntry`
+  (reflection row construction with full error handling), and a minimal `MorpheSettingsActivity`
+  (framework widgets only, `SharedPreferences`-backed placeholder toggles, `isEnabled()` helper
+  for future settings-toggled patches).
+- The label and manifest patches were rewritten to the same proven design: the label renames the
+  existing `settings_menu_teen_safety_resources` (confirmed present in 14.38.0's ARSC) across 48
+  locales instead of adding a resource, and the manifest uses a framework theme with
+  `exported=true` plus the `morphe://` intent-filter. The earlier versions (new string, inherited
+  theme, no intent-filter) would have failed repackaging or crashed on open.
+- Static validation passed, and the build compiles clean in CI. Not verified: the fingerprint
+  matches the live builder, the row appears, or the activity opens on device.
+
+## Release workflow: recovering a wedged semantic-release run
+
+Observed on `dev` while releasing the three UI-hiding patches. The failure is not in our code;
+it is a self-inflicted wedge in the Release workflow, and it is worth writing down because
+`gh run rerun` cannot clear it.
+
+The order inside the `Release` step matters:
+
+1. `generatePatchesList` runs `./gradlew generatePatchesList`, which compiles `:patches` only.
+2. semantic-release `prepare` commits and pushes `chore: Release v<X> [skip ci]` to `dev`,
+   then creates and pushes the tag, then pushes `refs/notes/semantic-release-v<X>`.
+3. `publish` creates the GitHub release.
+4. Only after `Release` does the workflow run `Attest` and `Verify project compiles`.
+
+Two consequences:
+
+- If `Release` fails at step 2 or 3, `Verify project compiles` is **skipped**, so a green
+  `:patches:compileKotlin` is *not* evidence that `extensions` or the bundle built. Read the
+  step conclusions, not just the run conclusion.
+- If `Release` fails *after* step 2, `dev` has advanced but no tag or GitHub release exists.
+  semantic-release derives the next version from the last **GitHub release**, not from tags, so
+  the next run recomputes the same version and `git tag` fails with exit 128.
+
+Recovery, in order:
+
+1. Check `gh release list` and `git ls-remote --tags origin` together. A tag with no matching
+   GitHub release is the orphan to remove:
+   `git push origin :refs/tags/v<X>`.
+2. Push a **new** commit. Do not use `gh run rerun`. A re-run re-checkouts the original
+   triggering SHA, while the remote is now ahead by the release commit from the failed attempt,
+   so semantic-release logs `The local branch dev is behind the remote one, therefore a new
+   version won't be published` and exits green having published nothing.
+3. Watch for that exact message. A green run containing it is a no-op, not a release.
+
+## The inline smali dialect: `->member:Type`, and never a doubled `;`
+
+Found the hard way. `v0.6.0-dev.12` compiled in CI, released cleanly, and then threw on device
+while applying patches:
+
+```
+PatchException: Encountered 2 parser syntax errors and 2 lexer syntax errors!
+  at InlineSmaliCompiler$Companion.compile
+  at HideNotificationsNavButtonPatch.kt:47
+```
+
+Two independent faults, both in the two nav patches, which were the first patches in this project
+to inject **field** references. Every earlier patch injects only `invoke-*` method references, which
+is why nothing else was affected.
+
+1. **Field references need a colon.** This grammar wants `Lae0/o;->a:Lde0/a;`. The
+   space-separated `Lae0/o;->a Lde0/a;` that baksmali prints and that every disassembly listing and
+   every fingerprint comment in `reference/` shows is rejected with `missing COLON`. Method
+   references are unaffected. Verified against the parser, not inferred:
+
+   | field reference | result |
+   | --- | --- |
+   | `->a Lde0/a;` space | fails |
+   | `->a:Lde0/a;` colon | parses |
+   | either, with `;;` | fails |
+
+2. **A doubled `;` is invalid.** The `private const val` descriptors already end in `;`, so the
+   smali template must not add another. `$DESCRIPTOR_TYPE->a:$TAB_ENUM;` expands to
+   `Lae0/o;->a:Lde0/a;;` and fails with `Invalid text` on the `;`.
+
+So a baksmali listing is the right place to *read* an instruction and the wrong place to *copy* one
+from. The dialect difference only shows up at patch time.
+
+`tools/checks/check_inline_smali.py` now guards this. It pulls each triple-quoted block out of the
+patch sources, substitutes the file's `private const val`s exactly as Kotlin would, wraps it in a
+stub carrying the target method's real `.registers` and parameter count, and runs it through
+`SmaliTestUtils.compileSmali` — the same entry point `InlineSmaliCompiler` uses. Reintroducing the
+space form makes it report the same `missing COLON` the device did. Run it before pushing any patch
+that injects smali; Kotlin compiling is not evidence that the smali parses.
+
+## Both action-bar constructors have to be patched, not just the three-parameter one
+
+`v0.6.0-dev.13` applied cleanly on a device and the navbar toggles worked, but the comments button
+was still there. Not a failed fingerprint and not a wrong seam: the patch matched the constructor
+that never runs.
+
+`UnifiedPinActionBarView` has two constructors and they are **siblings, not a delegating pair**.
+Neither calls the other. Each one runs its own super constructor, builds every child view, and
+stores field `d` (the comments wrapper) and `e` (the icon) itself:
+
+| constructor | regs / ins | stores `d` | returns at |
+| --- | --- | --- | --- |
+| `<init>(Context, AttributeSet)` | 9 / 3 | ins 134 | byte 380 |
+| `<init>(Context, AttributeSet, int)` | 9 / 4 | ins 124 | byte 368 |
+
+`LayoutInflater` inflates a custom view from XML through the **two-parameter** constructor, so on a
+real pin that is the one that executes. The three-parameter overload is never reached from
+inflation. Patching only it produced a patch that matched, applied, reported success and did
+nothing.
+
+Confirmed there is no later reset: the class contains no `setVisibility` call at all, so nothing
+undoes a constructor-time `GONE`. Both constructors are now patched, with a separate fingerprint
+each.
+
+The register maps differ between them, which is the second trap. The three-parameter constructor
+has four declared parameters, so `this` is `v5` and `v0`/`v1` are free. The two-parameter one has
+three and passes six registers to its super constructor with `invoke-direct/range`, so `this` is
+**`v0`** and the free scratch registers are `v1`/`v2`. Reusing the same block for both would
+overwrite `this` and crash the constructor at inflation. In both, the wrapper is in `v6` at the
+insertion point and the insertion index is the same: the `action_module_comments_icon` `sget`, which
+comes immediately after the store into `d`.
+
+## What the inline smali check does not do
+
+`compileSmali` is a parser, not a verifier. Measured, not assumed:
+
+| input | result |
+| --- | --- |
+| unknown opcode | rejected |
+| `->a Lde0/a;` space form, doubled `;` | rejected |
+| write to a declared parameter register (`v8`) | **accepted** |
+| out-of-range register (`v12`) in a nine-register method | **accepted** |
+
+So `tools/checks/check_inline_smali.py` guarantees syntax only. It will not tell you that a block
+writes over `this` or over a value the target method still needs. That has to be reasoned out, which
+is why the register map is recorded per block in the checker's `LAYOUTS` rather than left implicit.
+
+## The comments wrapper is not the comments button
+
+`v0.6.0-dev.14` applied cleanly, the toggle was on, and the comments button was still there. A
+uiautomator dump of the patched pin settles it:
+
+```
+com.pinterest:id/action_bar_root                 LinearLayout  [0,0][1080,2388]
+  com.pinterest:id/action_module_react_icon_sab   ImageView     [11,1179][143,1311]
+  com.pinterest:id/reaction_count                 TextView      [127,1225][206,1265]
+  com.pinterest:id/action_module_comments_icon    LinearLayout  [206,1157][358,1333]
+  com.pinterest:id/action_module_share_icon_sab    LinearLayout  [358,1157][490,1333]
+```
+
+`action_module_comments_wrapper` is **absent from the tree**, while
+`action_module_comments_icon` is present, visible, and sitting exactly where a comments button
+belongs — between react and share.
+
+So the patch *ran*; it was hiding the wrong view. A `GONE` view is dropped from a uiautomator dump,
+which is why the wrapper's absence proves the earlier patch worked as written. The wrapper is a
+**sibling** of the icon, not its parent, so hiding it changed nothing visible.
+
+The constructors corroborate this. Each one does, in sequence:
+
+```
+sget  action_module_comments_wrapper -> findViewById -> check-cast ViewGroup -> iput ->d
+sget  action_module_comments_icon    -> findViewById -> check-cast GestaltIcon -> iput ->e
+```
+
+`d` is the wrapper and `e` is the icon. The patch now hides `e`. It reads the field off `this`
+rather than reusing `v6`, because `v6` has already been reused for the id by the time the icon
+lookup runs, and `e` is written by the immediately preceding `iput-object`.
+
+Note the dump reports `action_module_comments_icon` as a `LinearLayout` while the constructor casts
+it to `GestaltIcon`. The accessibility class in a dump is not always the runtime type, and the cast
+in the constructor is what the app itself relies on, so `e` is the right handle regardless.
+
+Lesson worth keeping: a patch can match, apply, report success, and still be a no-op. The only
+thing that settled two separate wrong-target bugs here was a view dump from the running app.
+
+## Retraction: the wrapper's absence proved nothing
+
+An earlier entry in this file claims the wrapper being missing from the uiautomator dump is "itself
+evidence the earlier patch ran". **That reasoning is wrong and is retracted.**
+
+It assumed the wrapper would appear in that dump if the patch had not run. There is no basis for
+that. The dump is of a *different view*, so the wrapper may never have been in it. Absence of an
+expected node is not evidence unless you have independently established that it should be present.
+
+## The real target: `LegacyPromotedCloseupActionButtonModule`
+
+The dump's ids end in `_sab`:
+
+```
+action_module_react_icon_sab      in the dump
+action_module_share_icon_sab      in the dump
+action_module_comments_wrapper    what the patch targets   (no _sab)
+```
+
+Those are a different, smaller action bar. The dump reports `action_bar_root` and
+`action_module_comments_icon` as `android.widget.LinearLayout`, but `UnifiedPinActionBarView` is a
+custom ViewGroup and would appear under its own class name. So the view being screenshotted was
+never the one being patched.
+
+Indexing every read of the two R fields gives five classes. Only two constructors read the wrapper,
+and both belong to `UnifiedPinActionBarView` — the wrong class:
+
+| class | reads |
+| --- | --- |
+| `UnifiedPinActionBarView.<init>` x2 | wrapper + comments_icon |
+| `LegacyPromotedCloseupActionButtonModule.createView` | `action_module_comment_icon` (singular "comment") |
+| `EducationNewContainerView.e`, `Lho0/c;.<init>`, `Lsa1/i;.<init>` | comments_icon only |
+
+`LegacyPromotedCloseupActionButtonModule.createView` is the real target. It owns
+`action_buttons_center`, `promote_button`, `menu_react`, `menu_send`, `overflow_button` — which is
+exactly the set of views in the dump — and it is named for the *promoted* closeup action bar, i.e.
+the legacy variant. In it:
+
+```
+registers=6 ins=1
+102  sget                     v1, Lvf0/c;->action_module_comment_icon I
+103  invoke-virtual           v5, v1, Landroid/view/View;->findViewById(I)Landroid/view/View;
+104  move-result-object       v1
+105  check-cast               v1, Lcom/pinterest/gestalt/iconbutton/GestaltIconButton;
+106  iput-object              v1, v5, ...->l Lcom/pinterest/gestalt/iconbutton/GestaltIconButton;
+```
+
+So the comments button is field **`l` : `GestaltIconButton`**, not `e : GestaltIcon`, and the id is
+`action_module_comment_icon` — singular, no `s`, and no `_sab`.
+
+Three separate near-misses stacked up here, and each was individually plausible:
+
+1. `action_module_comments_wrapper` and `action_module_comments_icon` read like the comments module,
+   and they are — of the *other* action bar.
+2. `action_module_comments_icon` appears in the dump, so it looks like the right anchor, but the dump
+   shows the accessibility class rather than the runtime type, and this field is a
+   `GestaltIconButton` while the dump reports a `LinearLayout`.
+3. Two sibling constructors that both had to be patched, which was real work that changed nothing.
+
+A patch applied cleanly against the wrong class will do exactly this forever. The only reliable
+discriminator was the class name in the dump, and it was the one thing I did not check first.

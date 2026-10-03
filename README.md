@@ -61,7 +61,31 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.5.3](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.5.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;5 patches total
+> **[v0.6.0-dev.17](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.17)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;15 patches total
+<details open>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;10 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 14.38.0 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Disable AppsFlyer tracking](#disable-appsflyer-tracking) | Neutralize the AppsFlyer attribution SDK, so no state is returned to the external data tracker. |  |
+| [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
+| [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
+| [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
+| [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |
+| [Hide comments](#hide-comments) | Hide the comments button on a pin, so comments cannot be opened from the pin. |  |
+| [Morphe settings entry](#morphe-settings-entry) | Add the "Morphe" entry to the Account Settings list, opening the Morphe settings screen. |  |
+| [Morphe settings screen (label)](#morphe-settings-screen-label) | Rename the reused string resource to "Morphe" in every shipped language, so the settings entry is identifiable. |  |
+| [Morphe settings screen (manifest)](#morphe-settings-screen-manifest) | Register the Morphe settings activity in the manifest, with an intent-filter for the morphe:// scheme. |  |
+| [Neutralize advertising ID](#neutralize-advertising-id) | Return a random advertising ID instead of the real one, so the app has no advertising identifier to hand to Pinterest or to any bundled tracker. |  |
+
+</details>
+
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -90,7 +114,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering, including the built-in "install 1DM+" banner ad. |  |
+| [Disable home screen ads](#disable-home-screen-ads) | Keep the home screen banner from loading, rotating, or rendering. The banner in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo banner, including the built-in "install 1DM+" ad, is suppressed at its source. |  |
 
 </details>
 
@@ -105,7 +129,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Report 10,000 steps to Djezzy's Walk & Win campaign, both on every step-counter event and once when the step stream is first subscribed. The subscribe push is a zero followed by 10,000, because one value cannot both open the counter's accumulation window and jump through it. |  |
+| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Make Djezzy's Walk & Win counter read 10,000 with no walk at all, by forcing the stored step total itself rather than the pedometer event stream. The card's figures are lifetime accumulators read back out of storage, so an event delivered before a walk is never counted. |  |
 
 </details>
 
@@ -114,3 +138,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Further documentation
 
 See the [Morphe patcher documentation](https://github.com/MorpheApp/morphe-documentation) for the current patch API and [Morphe Desktop](https://github.com/MorpheApp/morphe-desktop) for applying a local bundle.
+
+## Credits
+
+The Pinterest settings patches (settings entry, label, manifest) adapt the mechanism proven in [browzomje-patches](https://github.com/browzomje/browzomje-patches): reusing Pinterest's own external-link settings row with a `morphe://` URL instead of building a custom row, renaming the row's existing string resource across all locales instead of adding a new one, declaring the settings activity with a framework theme and a `morphe://` intent-filter, and resolving obfuscated class names from the dex at patch time rather than pinning them. All fingerprints, the locale list, and the extension code here were re-derived and rewritten for the builds targeted by this repository; consult that project for the original implementation and its version-to-version obfuscation notes.
