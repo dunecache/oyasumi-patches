@@ -1,3 +1,9 @@
+## [0.6.0-dev.15](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.14...v0.6.0-dev.15) (2026-10-03)
+
+### 🐛 Bug Fixes
+
+* hide the comments icon rather than its wrapper ([e48e571](https://github.com/dunecache/oyasumi-patches/commit/e48e57135c747b1c0fc1a28008e8c994c138eb74))
+
 ## [0.6.0-dev.14](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.13...v0.6.0-dev.14) (2026-10-03)
 
 ### 🐛 Bug Fixes
