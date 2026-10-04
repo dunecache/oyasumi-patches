@@ -225,7 +225,7 @@ only from the Manager's patch list, which is what the original descriptions spec
 | --- | --- | --- |
 | Hide Search nav button | `morphe_hide_search_nav` | `FloatingBottomNavBar.Q1` ins 4 |
 | Hide Notifications nav button | `morphe_hide_notifications_nav` | `FloatingBottomNavBar.Q1` ins 4 |
-| Hide comments | `morphe_hide_comments` | `UnifiedPinActionBarView` ctor ins 29 |
+| Hide comments | `morphe_hide_comments` | `LegacyPromotedCloseupActionButtonModule.createView` ins 106, `Lsa1/i.<init>` ins 108, injected `Lsa1/i.setVisibility` |
 
 Each injects `getContext()` then `MorpheSettingsActivity.isEnabled(Context, String)`. That helper
 takes two arguments and not three because the target methods have only two free registers: a

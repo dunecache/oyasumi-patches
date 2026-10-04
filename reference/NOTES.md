@@ -2817,3 +2817,194 @@ hook after — the patch sets `GONE` on `this` (`v13`) before the sole `return-v
 using dead `v1`/`v2` as scratch. `View` (not `GestaltIconButton`) is the call type,
 `const/16 0x8` as before. All three names (`Lsa1/i`, `Lbb1/u0`, `Lsf0/b`) are
 obfuscated and version-pinned to 14.38.0/14388010.
+
+## Why the constructor hook lost the race (device, 14.38.0)
+
+The patch hid the cell in `Lsa1/i.<init>` and it still appeared on screen. Not a
+fingerprint failure and not the `GONE` encoding this file already documents twice: the
+host's presenter re-shows the cell after the constructor has returned.
+
+`Ltt/b2;.i(Lyt/b;)V` (`classes4.dex`, `registers=46`, the UAB presenter, a
+Dagger-generated class so the name is version-pinned too) at ins 255-266:
+
+```
+255  iget-object       v1, v2, Lbb1/u0;->g Lsa1/i;      // the comments cell
+256  invoke-virtual    v1, Object;->getClass()Ljava/lang/Class;
+258  iget-boolean      v3, v10, Lsa1/a;->a Z
+259  if-nez            v20, +009h
+260  const/16          v4, 8                              // logged out -> GONE
+261  invoke-virtual    v1, v4, View;->setVisibility(I)V
+263  const/4           v11, 0                             // logged in  -> VISIBLE
+264  invoke-virtual    v1, v11, View;->setVisibility(I)V  <- restores the cell
+266  iput-boolean      v4, v1, Lsa1/i;->h Z
+```
+
+Found by intersecting the prebuilt `refs.json.gz`: the methods that both call
+`View.setVisibility` and read `Lbb1/u0;->g` are `Lbb1/u0;.<init>` (which sets
+visibility on the *sibling* `Lua1/h`, not on the cell), `Ltt/b2;.i`, `Lr31/f;.invoke`
+and `Lsa1/i;.<init>` itself. `Lbb1/u0;.a(Lbb1/u0;I)V` looks like a binder by name and
+is not: it is a width-measurement helper for the count.
+
+Only ins 264 undoes the patch, and only for a signed-in user, which matches the
+report: the count `84` renders, so the cell is up.
+
+Patching that call site was rejected on purpose. There are 2,305
+`View.setVisibility` call sites app-wide, the presenter is reached through an
+obfuscated Dagger component, and any other caller added by a later release would
+re-show the cell the same way. The choke point is the method itself, so the patch
+now injects a `setVisibility(I)V` override into `Lsa1/i` that rewrites the argument
+to `GONE` when the toggle is on and then re-dispatches with `invoke-super`. The
+constructor hook stays, because an override cannot hide a view that nobody calls
+`setVisibility` on, and `Lsa1/i` is `VISIBLE` by default with nothing in its own
+constructor changing that.
+
+`Lsa1/i` is `public final` and declares exactly one method (`<init>`, verified in
+`classes6.dex`), so nothing can shadow the override and there is no existing
+definition to collide with. The patch `check`s for a pre-existing
+`setVisibility(I)V` anyway, since a duplicate definition makes dexlib2 reject the
+class at write time.
+
+## Injecting a method with morphe-patcher 1.13.0
+
+No `addMethod` helper exists, and the ones that look like it are write-time traps.
+Verified by a standalone harness against the real `classes6.dex` with
+`morphe-patcher-1.13.0.jar`, `smali-dexlib2-d92701d947.jar` and the same
+`internClass` → `writeTo(FileDataStore)` path `DexReadWrite` uses:
+
+- `BytecodePatchContext.mutableClassDefBy(String)` returns Morphe's `MutableClass`
+  proxy (cached per type in `PatchClasses.ClassDefWrapper`, so repeated calls return
+  the same instance the fingerprint's method came from).
+- `MutableClass.getMethods()` is a `LinkedHashSet` (`toMutableSet()` in
+  `_methods_delegate`), so `add` is the only way to add a method. It is typed
+  `Set<MutableMethod>`, so an `ImmutableMethod` needs a cast.
+- **It must be Morphe's `MutableMethod`.** `getDirectMethods` casts every element of
+  that set while `PoolClassDef` pools the class, so an `ImmutableMethod` throws
+  `ClassCastException: ImmutableMethod cannot be cast to MutableMethod` from
+  `MutableClass._directMethods_delegate` at write time, not at patch time. Wrap it:
+  `MutableMethod(ImmutableMethod(...))`, no setters needed since the immutable
+  method already carries the right name, parameters, flags and implementation.
+- Instructions come from `InlineSmaliCompiler.compile(instructions, parameters,
+  registerCount, isStatic)`, the same ANTLR parser `addInstructionsWithLabels` uses.
+  It wraps the text in `.method %s dummyMethod(%s)V` / `.registers %d`, which is what
+  makes `p0`/`p1` resolve — with `.registers 4` and `(I)` they are `v2` and `v3`, not
+  `v3`/`v2`. Both forms assemble, and a `p`-register mistake here writes the
+  visibility argument into `this`.
+- `MutableMethodImplementation(registerCount)` plus `addInstruction` each parsed
+  instruction; the constructor takes no instruction list.
+- Verified output, re-read from a written dex:
+
+```
+public setVisibility(I)V          registers=4 ins=2 outs=2
+   0 invoke-virtual    v2, View;->getContext()Landroid/content/Context;
+   1 move-result-object v0
+   2 const-string      v1, "morphe_hide_comments"
+   3 invoke-static     v0, v1, MorpheSettingsActivity;->isEnabled(Context;String;)Z
+   4 move-result       v0
+   5 if-eqz            v0, +004h
+   6 const/16          v3, 8
+   7 invoke-super      v2, v3, Lqc1/b;->setVisibility(I)V
+   8 return-void
+```
+
+`Lqc1/b` (`Lsa1/i`'s direct superclass, `classes6.dex`) is `public abstract` and
+declares no `setVisibility`, so `invoke-super` resolves through it to
+`View.setVisibility` — the same target d8 would emit.
+
+Not verified: the Gradle build. `./gradlew :patches:compileKotlin` cannot run in
+this environment — `SettingsPlugin.kt:48` throws `IllegalArgumentException` while
+configuring the GitHub Packages credentials because `GITHUB_TOKEN`/`GITHUB_ACTOR`
+are unset. The module was compiled instead with `kotlinc -jvm-target 11` against the
+Gradle-cached jars, and the dex behaviour was proven by the harness above. Neither
+replaces applying the patch to the pinned APK on a device.
+
+# Djezzy HTTP interceptor investigation (no patch — negative result)
+
+Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging
+requests/responses with method, headers and URL. Investigated via
+morphe-helpers against `base.apk` extracted from
+`~/storage/0/Documents/VInstall/Backups/com.djezzy.internet_3.0.9.apkv`
+(`com.djezzy.internet`, 3.0.9/40076; helpers cache
+`~/.cache/com.djezzy.internet/3.0.9`, 12,214 classes). Verdict: **not
+implementable as a Dalvik `bytecodePatch` on this target**, so no patch
+was written and no target was declared. What follows is the evidence and
+the capture recipe that replaces the patch.
+
+## The app has no Java HTTP stack
+
+- `find-class --package okhttp3`: no results. `find-string` for
+  `cronet`/`Cronet`, `volley`/`Volley`, `retrofit`/`Retrofit`,
+  `HttpClient`/`httpClient`: no results. The only `okhttp` strings are
+  two `com.android.okhttp.internal.http.HttpTransport$...` references in
+  `q1/o.smali` (framework-internal transport names, not an app client).
+- `find-string HttpURLConnection`: no `const-string` results — nothing in
+  app code names it as a string. Type references to `HttpURLConnection`
+  exist in exactly five smali files: `FirebaseInstallationServiceClient`
+  (Firebase Installations API client), `zzlm`/`zzgx`/`zbb`/`zzc` (GMS
+  measurement/auth/ads internals), `Util`/`ContentBlockerHandler`
+  (flutter_inappwebview plugin), and obfuscated `l5/b`, `q1/o`, `t5/h`
+  (transport/data-store internals, not app API code).
+- `find-string apim.djezzy` and `walk/campaign`: no results in DEX. No
+  API URL, no endpoint path, no auth header name lives in Dalvik code.
+
+## All API traffic is Dart dio in libapp.so
+
+- `split_config.arm64_v8a.apk` → `lib/arm64-v8a/libapp.so`
+  (14,681,008 bytes) contains: `package:dio` x24, `DioMixin` x3,
+  `InterceptorsWrapper` x1, `pretty_dio_logger` x2, `PrettyDioLogger`
+  x2, `apim.djezzy.dz` x11, `/services/walk/campaign/` x1.
+- Dio's default `IOHttpClientAdapter` runs on `dart:io`'s VM-native
+  sockets (BoringSSL/POSIX), never passing through `java.net`. There is
+  therefore no Dalvik instruction to fingerprint: no call site, no
+  choke point, nothing `matchFilters` could resolve. A "generic"
+  Dalvik interceptor here would at best log Firebase/GMS/WebView
+  internals and silently miss every Djezzy API call — the exact
+  confident-but-wrong outcome this repo's ground rules exist to prevent.
+- The closest readable generic helper,
+  `Util;->makeHttpRequest(String, String, Map)HttpURLConnection`
+  (unobfuscated, method+headers-map+URL signature), serves only the
+  content-blocker list download: its only two callers (per `xrefs
+  --callers`) are in `ContentBlockerHandler`. Hooking it would log
+  ad-block-list fetches, not app traffic. Deliberately not patched.
+
+## The requested logging already exists: PrettyDioLogger
+
+The app bundles `package:pretty_dio_logger`, and its box-drawing output
+is already visible in device logcat from the earlier Walk & Win run:
+
+```
+I flutter : GET https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I flutter : ╔╣ Response ║ GET ║ Status: 200 OK  ║ Time: 612 ms
+I flutter : ║  https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I flutter : ║ Body
+I flutter : ║    { "message": "Waw campaign", ... }
+```
+
+That is method + URL + status + body, emitted per request/response by
+the app's own Dart interceptor. No patch is needed to obtain it.
+
+## Capture recipe (replaces the patch)
+
+```sh
+adb logcat -c
+# exercise the Djezzy flow on device, then:
+adb logcat -d -v brief | rg 'flutter|PrettyDio|apim\.djezzy' > djezzy-http.log
+```
+
+`scripts/logcat-filter` in morphe-helpers is crash-oriented (filters by
+package PID plus FATAL/VerifyError); for HTTP capture the `rg` line
+above is the right filter because PrettyDioLogger writes through
+Flutter's `print`, tagged `flutter`, not through the app PID pattern.
+Request lines start with the method (`GET`/`POST`), response blocks
+with `╔╣ Response`, each carrying the full URL; headers print inside
+the `║ Headers` block when the logger's `requestHeader` flag is on. If
+a future build stops emitting these lines, that means the logger was
+compiled out or gated — which is a Dart-build change no Dalvik patch
+can reverse, and the correct response is a proxy/VPN capture, not
+another fingerprint.
+
+## Cache note
+
+`~/apks/` holds no `com.djezzy.internet/` cache (only Pinterest, 1DM,
+Substack artifacts). The helpers decompile cache above is the working
+copy; per `AGENTS.md` nothing derived was committed to this repo beyond
+this note, and no `~/apks` extraction was created or overwritten.

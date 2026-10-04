@@ -2,11 +2,17 @@ package app.pinterest.patches.comments
 
 import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
 import app.morphe.patcher.patch.bytecodePatch
+import app.morphe.patcher.util.proxy.mutableTypes.MutableMethod
+import app.morphe.patcher.util.smali.InlineSmaliCompiler
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
+import com.android.tools.smali.dexlib2.AccessFlags
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.builder.MutableMethodImplementation
 import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
 import com.android.tools.smali.dexlib2.iface.reference.FieldReference
+import com.android.tools.smali.dexlib2.immutable.ImmutableMethod
+import com.android.tools.smali.dexlib2.immutable.ImmutableMethodParameter
 
 /** `View.GONE`. Needs `const/16`: `const/4` has a signed 4-bit literal and cannot encode 8. */
 private const val GONE = "0x8"
@@ -26,6 +32,64 @@ private const val MODULE_CLASS = "Lcom/pinterest/activity/pin/view/modules/Legac
  * be a doubled `;`, which the inline parser rejects.
  */
 private const val BUTTON_TYPE = "Lcom/pinterest/gestalt/iconbutton/GestaltIconButton"
+
+/** The unified action bar comments cell: a plain `LinearLayout` holding icon plus count. */
+private const val UAB_CLASS = "Lsa1/i;"
+
+/** `UAB_CLASS`'s direct superclass, which is where `setVisibility` has to be re-dispatched to. */
+private const val UAB_SUPER_CLASS = "Lqc1/b;"
+
+private const val SET_VISIBILITY = "setVisibility"
+
+/**
+ * Registers in the injected [SET_VISIBILITY]: `v0` the `Context`, `v1` the key, and the two
+ * parameters the parser places at the top, `p0` = `v2` (`this`) and `p1` = `v3` (the visibility
+ * being set). Four is therefore the minimum: two scratch registers plus the two parameters.
+ */
+private const val SET_VISIBILITY_REGISTERS = 4
+
+/**
+ * The override, which is what actually keeps the cell hidden.
+ *
+ * `UAB_CLASS` is `VISIBLE` by default and nothing in its own constructor sets it otherwise, so the
+ * constructor block below is what hides it initially. It is not enough on its own, and the reason
+ * is a single instruction in the host's presenter, `Ltt/b2;.i(Lyt/b;)V` (`classes4.dex`,
+ * ins 255-266, verified in `~/apks/dex_files/pinterest_v14.38.0`):
+ *
+ * ```
+ * 255  iget-object       v1, v2, Lbb1/u0;->g Lsa1/i;   // the comments cell
+ * 259  if-nez            v20, +009h
+ * 260  const/16          v4, 8                            // logged out -> GONE
+ * 261  invoke-virtual    v1, v4, View;->setVisibility(I)V
+ * 263  const/4           v11, 0                            // logged in  -> VISIBLE
+ * 264  invoke-virtual    v1, v11, View;->setVisibility(I)V
+ * ```
+ *
+ * That runs once the comment count has been bound, long after `<init>` returned, which is why
+ * hiding in the constructor left the cell on screen. Rewriting the argument inside the cell's own
+ * `setVisibility` covers ins 261 and 264 and every other caller at once, which matters because the
+ * app has 2,305 `View.setVisibility` call sites and this one is reached through a Dagger-generated
+ * presenter whose name changes every release. The override cannot hide a view nobody calls
+ * `setVisibility` on, though, which is why the constructor block stays.
+ *
+ * `invoke-super`, never `invoke-virtual`: the override is the target of the very call it
+ * intercepts, so a virtual dispatch here would recurse until the stack blew.
+ *
+ * `UAB_SUPER_CLASS` is `abstract` and declares no `setVisibility` of its own, so this resolves
+ * through it to `View.setVisibility`, the same target the compiler would have emitted.
+ */
+private val SET_VISIBILITY_BODY = """
+    invoke-virtual {p0}, Landroid/view/View;->getContext()Landroid/content/Context;
+    move-result-object v0
+    const-string v1, "$SETTINGS_KEY"
+    invoke-static {v0, v1}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+    move-result v0
+    if-eqz v0, :morphe_hide_comments_passthrough
+    const/16 p1, $GONE
+    :morphe_hide_comments_passthrough
+    invoke-super {p0, p1}, $UAB_SUPER_CLASS->setVisibility(I)V
+    return-void
+""".trimIndent()
 
 @Suppress("unused")
 val hideCommentsPatch = bytecodePatch(
@@ -128,6 +192,11 @@ val hideCommentsPatch = bytecodePatch(
                 "the end-of-constructor anchor needs re-analysis before patching."
         }
 
+        // Its own `setVisibility` call below now goes through the override added further down, so
+        // the toggle gets read twice when the patch is on. That is harmless: the override rewrites
+        // the argument to the same `GONE`, and `isEnabled` is an in-memory `SharedPreferences`
+        // read. Left alone rather than switched to `invoke-super`, which would trade a redundant
+        // read for a second super-chain resolution in the constructor.
         UabCommentsButtonFingerprint.method.addInstructionsWithLabels(
             uabReturns.single(),
                 """
@@ -143,5 +212,48 @@ val hideCommentsPatch = bytecodePatch(
                 nop
                 """.trimIndent()
             )
+
+        // Adds the override that the constructor block above provably cannot replace: the parent
+        // presenter calls `setVisibility(VISIBLE)` once it has bound the comment count, which
+        // restores the cell after `<init>` has returned. Verified against the class in
+        // `classes6.dex` — `Lsa1/i` is `public final`, so nothing can shadow the override, and
+        // every call site in the app reaches it by virtual dispatch.
+        val uabClass = mutableClassDefBy(UAB_CLASS)
+        check(uabClass.methods.none { it.name == SET_VISIBILITY && it.parameterTypes == listOf("I") }) {
+            "$UAB_CLASS already declares $SET_VISIBILITY(I)V, so this patch would add a duplicate " +
+                "method definition and the dex writer would reject the class. Re-check whether " +
+                "the upstream class grew the override itself."
+        }
+
+        // Built through `InlineSmaliCompiler` rather than `addInstructionsWithLabels` because that
+        // one only inserts into a method that already exists. It wraps the text in a throwaway
+        // `.method public dummyMethod(I)V` with these register counts, which is what lets `p0` and
+        // `p1` resolve the way they do here.
+        val implementation = MutableMethodImplementation(SET_VISIBILITY_REGISTERS)
+        InlineSmaliCompiler.compile(
+            SET_VISIBILITY_BODY,
+            "I",
+            SET_VISIBILITY_REGISTERS,
+            false
+        ).forEach(implementation::addInstruction)
+
+        // Morphe's `MutableClass` hands out a `LinkedHashSet`, so this is the only way to add a
+        // method to a class. It has to be Morphe's own `MutableMethod`, though: `getDirectMethods`
+        // casts every element of that set to `MutableMethod` while dexlib2 pools the class, so
+        // adding a plain `ImmutableMethod` here fails with a `ClassCastException` at write time.
+        uabClass.methods.add(
+            MutableMethod(
+                ImmutableMethod(
+                    UAB_CLASS,
+                    SET_VISIBILITY,
+                    listOf(ImmutableMethodParameter("I", null, null)),
+                    "V",
+                    AccessFlags.PUBLIC.value,
+                    emptySet(),
+                    emptySet(),
+                    implementation
+                )
+            )
+        )
     }
 }
