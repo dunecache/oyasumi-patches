@@ -427,3 +427,98 @@ object IdmPlusBannerFingerprint : Fingerprint(
         string("utm_source=1DM&utm_medium=App&utm_campaign=DefaultBanner")
     )
 )
+
+/**
+ * `Lidm/internet/download/manager/manager/NewBannerView;->ۦۖۦ(Li/ru;)V` is the renderer
+ * for 1DM's own fallback banner -- the view that is actually on screen in the
+ * uiautomator dump (`defaultBannerViewNew` -> `default_banner` with `icon`, `title`
+ * "Play fun Quizzes and Get Rewards" and an `action` "PLAY" button). It is not
+ * Appodeal's `WebView`, not the `Lacr/.../BannerView` that `BannerViewSetAdFingerprint`
+ * hides, and not the "Install 1DM+" promo that `IdmPlusBannerFingerprint` nulls: that
+ * copy comes from the server-side ad config, and `Li/s82` drives this renderer directly,
+ * bypassing `BannerManager.load()` entirely.
+ *
+ * Measured against the on-device 18.2 build (`classes11.dex`): 122 instructions,
+ * `.registers 6`, `this` in `v4` and the `Li/ru;` ad in `v5`. The first three
+ * instructions read the three child views whose ids `ۦۖۡ()V` binds with `findViewById`
+ * (`2131362838` icon, `2131364059` title, `2131361850` action), then the method paints
+ * the bitmap, the text and the button, installs the click listener (index 116) and
+ * reveals itself.
+ *
+ * Neither the method name (`ۦۖۦ`) nor the field names (`ۦۖۡ`/`ۦۖۦ`/`ۦۖۧ`) nor the
+ * `Li/ru;` accessor names are pinned beyond the 18.2 parameter declaration: all are
+ * obfuscated and change between releases. The chain is four unobfuscated SDK calls in
+ * increasing instruction order -- `setImageBitmap` (29), `TextUtils.isEmpty` (34),
+ * `TextView.setText` (54), `setOnClickListener` (116) -- which resolves to exactly this
+ * method inside `NewBannerView` and to nothing else there.
+ */
+object FallbackBannerRendererFingerprint : Fingerprint(
+    definingClass = "Lidm/internet/download/manager/manager/NewBannerView;",
+    returnType = "V",
+    parameters = listOf("Li/ru;"),
+    filters = listOf(
+        methodCall(
+            definingClass = "Landroid/widget/ImageView;",
+            name = "setImageBitmap",
+            parameters = listOf("Landroid/graphics/Bitmap;"),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Landroid/text/TextUtils;",
+            name = "isEmpty",
+            parameters = listOf("Ljava/lang/CharSequence;"),
+            returnType = "Z"
+        ),
+        methodCall(
+            definingClass = "Landroid/widget/TextView;",
+            name = "setText",
+            parameters = listOf("Ljava/lang/CharSequence;"),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Landroid/view/View;",
+            name = "setOnClickListener",
+            parameters = listOf("Landroid/view/View\$OnClickListener;"),
+            returnType = "V"
+        )
+    )
+)
+
+/**
+ * `Li/s82;->ۦۖۦ(Lacr/browser/lightning/activity/MyAppCompatActivity;)Z` is the driver
+ * that puts the fallback banner on screen. Measured against the on-device 18.2 build
+ * (`classes11.dex`): 116 instructions, `.registers 11` (`this` in `v9`, the activity in
+ * `v10`). At indices 78-81 it loads `const v3, 2131362504` (`defaultBannerViewNew`,
+ * `0x7f0a02c8`) and calls `AppCompatActivity.findViewById`, casting to `NewBannerView`;
+ * the `IdmPlus` factory result is null-checked at 73-77, but the server-side ad that is
+ * actually on screen never passes through that factory, so nulling it does not stop
+ * this path.
+ *
+ * The class and method names are obfuscated and change between releases, so neither is
+ * pinned; only `returnType = "Z"` and the unobfuscated activity parameter are. The
+ * chain is what identifies it: the `defaultBannerViewNew` literal, the `findViewById`
+ * call, and `Class.getName` (index 111). The literal's little-endian bytes appear
+ * exactly three times in the whole `base.apk`, all in `classes11.dex` -- the three
+ * `Li/s82` helpers that read this container (`ۦۖۦ`, `ۦۖ¨`, `ۦۖ¬`) -- and only this one
+ * of the three reaches `Class.getName`, so the chain resolves to exactly one method
+ * across all eleven DEX files.
+ */
+object FallbackBannerDriverFingerprint : Fingerprint(
+    returnType = "Z",
+    parameters = listOf("Lacr/browser/lightning/activity/MyAppCompatActivity;"),
+    filters = listOf(
+        literal(2131362504, listOf(Opcode.CONST)),
+        methodCall(
+            definingClass = "Landroidx/appcompat/app/AppCompatActivity;",
+            name = "findViewById",
+            parameters = listOf("I"),
+            returnType = "Landroid/view/View;"
+        ),
+        methodCall(
+            definingClass = "Ljava/lang/Class;",
+            name = "getName",
+            parameters = listOf(),
+            returnType = "Ljava/lang/String;"
+        )
+    )
+)

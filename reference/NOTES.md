@@ -876,6 +876,98 @@ chain against the DEX rather than by reading it.
 - **The dummy method means the register numbers are the real ones.** Because the template uses the matched method's `.registers` and parameter list, `p0` resolves to the receiver: in `load(Z)V` (`.registers 3`, one declared parameter) `p0` and `v1` are the same register, and in `setAd` (`.registers 8`, two declared parameters) `p0` and `v5` are the same. Verified by assembling both forms, so the explicit `v`-register form used by the patch is equivalent and does not depend on the template's parameter list being passed correctly.
 - **How to verify smali offline without the Morphe plugin.** The forks' smali is published on JitPack at `com.github.MorpheApp.smali:<module>/<commit>/<module>-<commit>.jar` (not the flat Maven path, which 404s), and Morphe tracks `com.github.MorpheApp.smali:smali` at commit `d856bad65f`. With `smali`, `smali-dexlib2`, `smali-util`, `antlr-runtime:3.5.2`, `stringtemplate:3.2.1`, `guava:31.1-android`, and `jsr305:1.3.9` on the classpath, a ~60-line Java program that copies `METHOD_TEMPLATE` from `InlineSmaliCompiler.kt` reproduces the exact parse, the exact error count, and the assembled instruction registers. That is how the brace fix was proven without a Gradle build, and it should be the first step for any new smali here. The same tool reproduces the numbers in the table above.
 
+## The fallback banner is 1DM's own view, and the patch never touched it
+
+A uiautomator dump of the patched build (`/storage/emulated/0/1dm_main_hierarchy.xml`)
+shows the footer as `footer` -> `defaultBannerViewNew` (`LinearLayout`,
+`[0,2129][1080,2322]`) -> `default_banner` (`[0,2143][1080,2308]`) -> `icon`
+(`ImageView`), `title` (`TextView` "Play fun Quizzes and Get Rewards"), `action`
+(`Button` "PLAY"). That is 1DM's own fallback banner, and none of the six existing
+edits touches the view that draws it:
+
+- It is not Appodeal's. Appodeal's banner would hold a `WebView`, and it is the one
+  the fingerprint file says is on screen. Appodeal is suppressed, and the app falls
+  back to its own banner. (`gone` views do not appear in uiautomator dumps, so a
+  hidden Appodeal view proves nothing either way.)
+- It is not the "Install 1DM+" promo. `IdmPlusBannerFingerprint` nulls the
+  `d;->ۦۜۡ()Li/ru;` factory, but this ad's copy comes from the server-side ad config,
+  not from that factory.
+- `BannerManager.load()` -> `disable()` does not stop it. `Li/s82;->ۦۖۢ` and `ۦۖۦ`
+  drive `manager.NewBannerView` directly, bypassing `BannerManager`.
+  `BannerViewSetAdFingerprint` patches `acr.browser...BannerView`, a different class.
+
+Resource ids, read out of the on-device `resources.arsc` (`ARSCParser.get_res_id_by_key`):
+`defaultBannerViewNew` 2131362504 (`0x7f0a02c8`), `default_banner` 2131362506,
+`icon` 2131362838, `title` 2131364059, `action` 2131361850, `offer_vpnLL` 2131363548.
+The `icon`/`title`/`action`/`aps_banner` numbers agree with the `BannerView.setAd`
+notes, which is expected: both banner layouts bind the same ids.
+
+Organized cache (per `AGENTS.md`, created once from the available artifact, not
+re-extracted): `~/apks/idm.internet.download.manager/18.2/` holds
+`idm.internet.download.manager-18.2-30249_apkv-base.apk` (65,504,886 bytes, SHA-256
+`5784871b01259be7f7ca4694e8c33bb892c50ed9b5fb0f9f56063f1515cbef5a`, byte-identical
+to the installed `base.apk` and to the `base.apk` inside
+`~/apks/idm.internet.download.manager_18.2.apkv`), `apk.sha256`, `dex/` with
+`classes.dex`/`classes2.dex`/`classes11.dex`, and the decoded `resources.arsc` plus
+`res/layout/default_banner.xml`, `default_banner_new.xml`, `banner_view.xml`. The
+flat `~/apks/idm.internet.download.manager_18.2.apkv` (manifest SHA
+`5784871b...`) is the source artifact and is left in place.
+
+The renderer is `Lidm/internet/download/manager/manager/NewBannerView;->ۦۖۦ(Li/ru;)V`
+(`classes11.dex`): 122 instructions, `.registers 6`, `this` in `v4`, the ad in `v5`.
+Indices 0/2/4 read the three child-view fields, `ۦۖۡ()V` binds them with `findViewById`
+on exactly the three ids above (indices 5/10/15: `2131362838`/`2131364059`/`2131361850`),
+and the method then paints the bitmap (29 `setImageBitmap`), the text (54 `setText`),
+the button (111 `setText`), installs the click target (116 `setOnClickListener`) and
+reveals itself (117). `NewBannerView` extends `LinearLayout`, so `setVisibility` on
+`this` hides the whole `defaultBannerViewNew` strip.
+
+The driver is `Li/s82;->ۦۖۦ(Lacr/browser/lightning/activity/MyAppCompatActivity;)Z`
+(`classes11.dex`): 116 instructions, `.registers 11` (`this` in `v9`, the activity in
+`v10`). Indices 78-81 load `const v3, 2131362504` and call
+`AppCompatActivity.findViewById`, casting to `NewBannerView`; 83-85 run the `ۦۖ۬`
+guard, 88-90 post the banner through `Li/q82`. The `IdmPlus` factory is null-checked
+at 73-77 (`if-nez v2` returns `false`), but the on-screen copy never passes through
+that factory, so nulling it cannot stop this path. The caller (`ۦۗۡ`) ignores the
+boolean return. Two sibling helpers (`ۦۖ¨`, 11 insns; `ۦۖ¬`, 12 insns) read the same
+container id; the literal's little-endian bytes (`c8020a7f`) occur exactly three times
+in the whole `base.apk`, all in `classes11.dex`, which is those three methods and
+nothing else.
+
+Fix, same trick as the `setAd` patch:
+
+- `FallbackBannerRendererFingerprint` (`NewBannerView`, `V`, `(Li/ru;)`) pins no
+  obfuscated method or field name. Its chain is four unobfuscated SDK calls in
+  increasing order: `ImageView.setImageBitmap` (29), `TextUtils.isEmpty` (34),
+  `TextView.setText` (54, not the `setTextColor` at 45 -- the exact
+  `(CharSequence;)V` signature selects it), `View.setOnClickListener` (116). Offline
+  resolution against `classes11.dex` returns exactly this method at `[29, 34, 54, 116]`.
+  The patch inserts at index 0 `const/16 v0, 0x8`, `invoke-virtual {v4, v0},
+  View;->setVisibility(I)V`, `return-void`. `v0` is safe because the original index 0
+  overwrites it; `v4` is `this`, measured not guessed; `const/16` because `const/4`
+  cannot encode 8; two registers because `setVisibility(I)V` declares one argument
+  plus the receiver (the v0.3.4 arity crash named only the receiver).
+- `FallbackBannerDriverFingerprint` (`Z`,
+  `(Lacr/browser/lightning/activity/MyAppCompatActivity;)`) pins no obfuscated class
+  or method name. Its chain is the container literal, `findViewById`, `Class.getName`
+  (111). Offline resolution returns exactly `Li/s82;->ۦۖۦ` at `[78, 79, 111]`; the
+  other two literal holders never reach `getName`. The patch inserts at index 0
+  `const/4 v0, 0`, `return v0` (`return`, not `return-void`, for a `Z` method). Index 0
+  already writes `v0`, so no live register is clobbered, and no mid-method scratch
+  liveness has to be proven, unlike a `setVisibility` after the `findViewById`.
+  Returning `false` is a state the caller already handles (it ignores the value).
+
+Deliberately out of scope: the `offer_vpnLL` bar ("VPN not connected, click here to
+Install...") is a separate ad-like promo with its own container; `hide_vpn_message` is
+only its dismiss button, so it needs its own hide if wanted.
+
+Verification: `tools/checks/patch_smali_checks.py` 30 files, 0 problems;
+`tools/checks/test_invoke_arity.py` 25/25; both new fingerprints replayed against the
+on-device DEX with Morphe's own comparison rules. `:patches:compileKotlin` still cannot
+run locally (`app.morphe.patches` 1.3.4 needs `read:packages`, same 401 as recorded
+above), so compilation is delegated to CI. Not verified on device: that the strip
+disappears and the footer collapses, and (as before) anything about the APKM build's
+`Lidm/` code, which was never readable.
 
 
 

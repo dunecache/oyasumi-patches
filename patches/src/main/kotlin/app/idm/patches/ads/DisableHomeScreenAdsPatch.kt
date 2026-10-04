@@ -21,7 +21,8 @@ val disableHomeScreenAdsPatch = bytecodePatch(
     name = "Disable home screen ads",
     description = "Keep the home screen banner from loading, rotating, or rendering. The banner " +
         "in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo " +
-        "banner, including the built-in \"install 1DM+\" ad, is suppressed at its source.",
+        "banner, including the built-in \"install 1DM+\" ad and the server-driven fallback " +
+        "banner (defaultBannerViewNew), is suppressed at its source and never rendered.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
@@ -115,5 +116,44 @@ val disableHomeScreenAdsPatch = bytecodePatch(
                     "return-object v0"
             )
         }
+
+        // The fallback banner is 1DM's own view, not Appodeal's, and none of the above
+        // touches it: the dump shows `defaultBannerViewNew` -> `default_banner` with an
+        // `icon`, a `title` ("Play fun Quizzes and Get Rewards") and an `action` ("PLAY")
+        // button, while Appodeal's banner would hold a `WebView`. `BannerManager.load()`
+        // -> `disable()` does not stop it either, because `Li/s82` drives
+        // `manager.NewBannerView` directly, bypassing `BannerManager`, and
+        // `BannerViewSetAdFingerprint` patches `acr.browser...BannerView`, a different
+        // class. So the view that is on screen is hidden here, with the same trick as
+        // the `setAd` patch.
+        //
+        // `NewBannerView.ۦۖۦ(Li/ru;)V` is the renderer: 122 instructions, `.registers 6`
+        // with `this` in `v4` and the ad in `v5`, measured against the on-device 18.2
+        // `classes11.dex`. Index 0 writes `v0` (`iget-object v0, v4`), so `v0` is a safe
+        // scratch local before the original body runs. `GONE` (8) needs `const/16`,
+        // the same width the app itself uses. `setVisibility(I)V` takes one argument,
+        // so the 35c list names the receiver *and* the int (`{v4, v0}`); naming only the
+        // receiver is the arity crash that took down v0.3.4.
+        FallbackBannerRendererFingerprint.method.addInstructions(
+            0,
+            "const/16 $VISIBILITY_REGISTER, $GONE\n" +
+                "invoke-virtual {v4, $VISIBILITY_REGISTER}, " +
+                "Landroid/view/View;->setVisibility(I)V\n" +
+                "return-void"
+        )
+
+        // Belt and braces: `Li/s82;->ۦۖۦ(...)Z` is the driver that finds
+        // `defaultBannerViewNew` (2131362504) and posts the banner to it. It returns a
+        // boolean its caller (`ۦۗۡ`) ignores, and index 0 already writes `v0`
+        // (`const/4 v0, 0`), so returning `false` there needs no extra register and
+        // prevents the setup from ever reaching the renderer. A mid-method
+        // `setVisibility` after the `findViewById` would need a liveness-proven scratch
+        // register at that point; the early return avoids that reasoning entirely.
+        // `return v0` (not `return-void`) is the correct terminator for a `Z` method.
+        FallbackBannerDriverFingerprint.method.addInstructions(
+            0,
+            "const/4 v0, 0\n" +
+                "return v0"
+        )
     }
 }
