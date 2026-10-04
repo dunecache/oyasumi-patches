@@ -101,5 +101,47 @@ val hideCommentsPatch = bytecodePatch(
             nop
             """.trimIndent()
         )
+
+        // Hides `this` at the end of `Lsa1/i.<init>` — the unified action bar
+        // comments cell actually on screen (plural `action_module_comments_icon`,
+        // plain `LinearLayout` with icon + count), hosted by `Lbb1/u0` field `g`.
+        // Kept alongside the legacy `createView` block above, which covers the
+        // promoted-closeup variant, until device testing shows which bar each
+        // pin type uses.
+        //
+        // Unlike the legacy module, this view never does `findViewById`: it sets
+        // its own id (`setId` at ins 35), so there is no lookup to hook after.
+        // The single `return-void` (ins 108, no try blocks) is the only point
+        // where the fully built view is guaranteed live, hence the anchor.
+        //
+        // Registers: `<init>` has 15 registers and `(Context)` params, so `this`
+        // is `v13` and the `Context` param is `v14`. At the return, `v1` holds
+        // dead constant 22 and `v2` dead padding, so both are safe scratch;
+        // `v13` is read but never clobbered. `const/16` for the same signed-
+        // nibble reason as above.
+        val uabInstructions = UabCommentsButtonFingerprint.method.implementation!!.instructions
+        val uabReturns = uabInstructions.indices.filter { index ->
+            uabInstructions[index].opcode == Opcode.RETURN_VOID
+        }
+        check(uabReturns.size == 1) {
+            "UAB comments button <init> has ${uabReturns.size} return-voids, expected exactly 1; " +
+                "the end-of-constructor anchor needs re-analysis before patching."
+        }
+
+        UabCommentsButtonFingerprint.method.addInstructionsWithLabels(
+            uabReturns.single(),
+                """
+                invoke-virtual {v13}, Landroid/view/View;->getContext()Landroid/content/Context;
+                move-result-object v1
+                const-string v2, "$SETTINGS_KEY"
+                invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
+                move-result v1
+                if-eqz v1, :morphe_end_hide_uab_comments
+                const/16 v1, $GONE
+                invoke-virtual {v13, v1}, Landroid/view/View;->setVisibility(I)V
+                :morphe_end_hide_uab_comments
+                nop
+                """.trimIndent()
+            )
     }
 }

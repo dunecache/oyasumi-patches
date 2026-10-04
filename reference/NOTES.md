@@ -2639,3 +2639,54 @@ Three separate near-misses stacked up here, and each was individually plausible:
 
 A patch applied cleanly against the wrong class will do exactly this forever. The only reliable
 discriminator was the class name in the dump, and it was the one thing I did not check first.
+
+## Correction: the on-screen comments cell is `Lsa1/i`, legacy kept alongside
+
+The entry above concluded `LegacyPromotedCloseupActionButtonModule.createView` is the
+real target. A fuller dump (`~/storage/downloads/pinterest.xml.txt`) plus the prebuilt
+`refs.json.gz` index overturn that for organic pins, while leaving the legacy path
+plausible for promoted pins — so both are now patched, pending device proof of which
+bar each pin type uses.
+
+Dump facts (uiautomator, patched pin, closeup bar):
+
+- `action_module_react_icon_sab` → `ImageView`
+- `action_module_comments_icon` (plural, no `_sab`) → `LinearLayout [218,1448][398,1624]`
+  holding an `ImageView` plus a `TextView '84'` (both id-less)
+- `action_module_share_icon_sab` → `LinearLayout` holding `send_btn ViewGroup` →
+  `uab_share_button ImageView`
+- `GestaltIconButton` in the same dump is `android.widget.Button` with
+  `icon_button_container` children (`carousel_flashlight_button`, `overflow_button`).
+  The comment cell is not one of those, so field `l : GestaltIconButton` cannot be it.
+
+Index facts (`python` over `refs.json.gz`, 14.38.0):
+
+| id | readers |
+| --- | --- |
+| singular `action_module_comment_icon` (`Lvf0/c`) | only `LegacyPromotedCloseupActionButtonModule.createView` |
+| plural `action_module_comments_icon` | `EducationNewContainerView.e` + `Lho0/c;.<init>` (both `Lpc0/o`, education mappings, not inflation), `UnifiedPinActionBarView.<init>` x2 (wrong class: custom ViewGroup, dump root is plain `LinearLayout`), `Lsa1/i;.<init>` (`Lsf0/b`) |
+| `react_icon_sab` | `Ld11/g;.run`, `Lay2/f00;.<init>` — neither is the legacy module |
+| `share_icon_sab` | `Lbb1/y1;.<init>`, `Lya1/x;.<init>` — neither is the legacy module |
+
+`Lsa1/i;.<init>(Context)V` (`registers=15 ins=2`, `this=v13`, single `return-void`
+at ins 108, zero try blocks) is byte-for-byte the dump node:
+
+```
+34  sget   v1, Lsf0/b;->action_module_comments_icon I
+35  setId(v13, v1)            <- this IS the LinearLayout
+40  new GestaltIcon / 78 new GestaltText (count, initially GONE at ins 103-104)
+106 addView(icon) / 107 addView(count)
+```
+
+`Lya1/x;.<init>` is the sibling proof: `LinearLayout` + `setId(share_icon_sab)` +
+`UABAnimatedShareButton` with `send_btn` id — the dump's share branch. Parent
+`Lbb1/u0;.<init>` news `Lya1/x` into field `f`, `Lsa1/i` into field `g`, and
+`addView`s `g` at ins 152 between react and share. The legacy module inflates
+`pin_closeup_lego_action_button_module`, a different layout, and is therefore at
+best the promoted-pin variant.
+
+Patch consequence: `Lsa1/i` never calls `findViewById`, so there is no lookup to
+hook after — the patch sets `GONE` on `this` (`v13`) before the sole `return-void`,
+using dead `v1`/`v2` as scratch. `View` (not `GestaltIconButton`) is the call type,
+`const/16 0x8` as before. All three names (`Lsa1/i`, `Lbb1/u0`, `Lsf0/b`) are
+obfuscated and version-pinned to 14.38.0/14388010.

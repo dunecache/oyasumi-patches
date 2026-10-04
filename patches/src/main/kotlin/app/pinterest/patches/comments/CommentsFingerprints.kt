@@ -1,6 +1,8 @@
 package app.pinterest.patches.comments
 
 import app.morphe.patcher.Fingerprint
+import app.morphe.patcher.fieldAccess
+import app.morphe.patcher.methodCall
 
 /**
  * The comments button on a pin's closeup action bar.
@@ -34,4 +36,48 @@ object CommentsButtonFingerprint : Fingerprint(
     name = "createView",
     returnType = "V",
     parameters = listOf()
+)
+
+/**
+ * The comments button actually on screen on an organic pin closeup.
+ *
+ * `Lsa1/i` **is** the `action_module_comments_icon` view: its `<init>` calls
+ * `setId(action_module_comments_icon)` on `this` (ins 34-35, plural id, no `_sab`),
+ * then builds the observed children — a `GestaltIcon` and a `GestaltText` count —
+ * and `addView`s both. The uiautomator dump reports exactly that: a `LinearLayout`
+ * with that id holding an `ImageView` and a `TextView '84'`. Its host is `Lbb1/u0`,
+ * which `new`s it into field `g` and `addView`s it between the react and share cells.
+ *
+ * This is kept alongside [CommentsButtonFingerprint] (the promoted-closeup variant),
+ * not instead of it, until device testing shows which closeups use which bar.
+ *
+ * The class declares exactly one method, `<init>(Context)V` (verified in
+ * `classes*.dex` via the prebuilt index), so defining class plus signature already
+ * resolves uniquely. The filters below are the stable, unobfuscated anchors that
+ * keep it so: the `Lsf0/b` R field, `View.setId`, and `ViewGroup.addView`.
+ */
+object UabCommentsButtonFingerprint : Fingerprint(
+    definingClass = "Lsa1/i;",
+    name = "<init>",
+    returnType = "V",
+    parameters = listOf("Landroid/content/Context;"),
+    filters = listOf(
+        fieldAccess(
+            definingClass = "Lsf0/b;",
+            name = "action_module_comments_icon",
+            type = "I"
+        ),
+        methodCall(
+            definingClass = "Landroid/view/View;",
+            name = "setId",
+            parameters = listOf("I"),
+            returnType = "V"
+        ),
+        methodCall(
+            definingClass = "Landroid/view/ViewGroup;",
+            name = "addView",
+            parameters = listOf("Landroid/view/View;"),
+            returnType = "V"
+        )
+    )
 )
