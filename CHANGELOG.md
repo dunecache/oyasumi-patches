@@ -1,3 +1,9 @@
+## [0.6.0-dev.20](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.19...v0.6.0-dev.20) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* hide on-screen UAB comments cell alongside legacy target ([6a43bc6](https://github.com/dunecache/oyasumi-patches/commit/6a43bc60a5d909f02f709cd0abd56177d6a291d9))
+
 ## [0.6.0-dev.19](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.18...v0.6.0-dev.19) (2026-10-04)
 
 ### 🐛 Bug Fixes
