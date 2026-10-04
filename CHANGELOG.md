@@ -1,3 +1,9 @@
+## [0.6.0-dev.21](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.20...v0.6.0-dev.21) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* hide 1DM fallback banner driving defaultBannerViewNew ([f4bed78](https://github.com/dunecache/oyasumi-patches/commit/f4bed78c75d43413565458b605af7bd9dfdbe877))
+
 ## [0.6.0-dev.20](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.19...v0.6.0-dev.20) (2026-10-04)
 
 ### 🐛 Bug Fixes
