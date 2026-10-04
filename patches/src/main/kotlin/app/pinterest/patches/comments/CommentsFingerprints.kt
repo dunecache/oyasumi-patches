@@ -1,8 +1,6 @@
 package app.pinterest.patches.comments
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.patcher.fieldAccess
-import com.android.tools.smali.dexlib2.Opcode
 
 /**
  * The comments button on a pin's closeup action bar.
@@ -18,31 +16,22 @@ import com.android.tools.smali.dexlib2.Opcode
  * `createView` is the right method rather than a constructor, because this module is assembled by
  * the pin closeup view framework and its ids are resolved in one place here.
  *
- * The stable anchors are the resource ids. R8 renames the generated `R` *class* but leaves the
- * field names, so the ids below are readable while the class holding them (`Lvf0/c;`) is not, and
- * the defining class of the field reads is deliberately left unset for that reason.
- *
- *   - `action_module_comment_icon` is the comments button. Note the spelling: singular
- *     "comment", no trailing `s`, and no `_sab`. The plural `action_module_comments_icon` that
- *     `UnifiedPinActionBarView` reads is a different id in a different layout, which is what made
- *     the earlier fingerprints look plausible.
- *   - `action_buttons_center` is the row the buttons live in. Keeping it in the filters pins the
- *     method to the action bar rather than any other view in the module.
+ * No instruction filters: this class declares exactly one `createView()V` (verified in
+ * `classes4.dex`), so defining class plus signature already resolves to one method. The
+ * `action_module_comment_icon` / `action_buttons_center` `SGET`s at ins 102 / 58 are documented
+ * here only as the patch's anchor context — the patch inserts after the `iput-object` to field
+ * `l` at ins 106 — because adding them as `fieldAccess` filters failed to match on device
+ * against the same bytes (`v0.6.0-dev.16` and `.17`), while every other Pinterest fingerprint
+ * in this bundle resolved.
  *
  * Field `l : GestaltIconButton` receives the resolved comments button and is the handle the patch
- * acts on.
- *
- * Note that `createView` also reads `action_module_reaction_count`, `promote_button`, `menu_react`,
- * `menu_send` and `overflow_button`, so the module covers more than the comments button. Those are
- * left alone.
+ * acts on. Note the spelling of the id: singular "comment", no trailing `s`, no `_sab`. The
+ * plural `action_module_comments_icon` that `UnifiedPinActionBarView` reads is a different id
+ * in a different layout, which is what made the earlier fingerprints look plausible.
  */
 object CommentsButtonFingerprint : Fingerprint(
     definingClass = "Lcom/pinterest/activity/pin/view/modules/LegacyPromotedCloseupActionButtonModule;",
     name = "createView",
     returnType = "V",
-    parameters = listOf(),
-    filters = listOf(
-        fieldAccess(name = "action_module_comment_icon", opcode = Opcode.SGET),
-        fieldAccess(name = "action_buttons_center", opcode = Opcode.SGET)
-    )
+    parameters = listOf()
 )
