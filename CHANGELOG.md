@@ -1,3 +1,9 @@
+## [0.6.0-dev.18](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.17...v0.6.0-dev.18) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* match comments button by class and signature without field filters ([70de206](https://github.com/dunecache/oyasumi-patches/commit/70de206db19b523e33513dfa38f466d242af4b29))
+
 ## [0.6.0-dev.17](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.16...v0.6.0-dev.17) (2026-10-03)
 
 ### 🐛 Bug Fixes
