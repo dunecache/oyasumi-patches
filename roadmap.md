@@ -35,7 +35,8 @@ Substack item below is feasibility-unknown until the DEX is mapped.
 ## Where we stand
 
 Pinterest ships 10 named patches plus one internal patch that is not in the
-Manager's list. All are build-verified in CI and apply cleanly to 14.38.0.
+Manager's list, and one more written but not yet run on a device. All are
+build-verified; see the table for how far each has been taken.
 
 | # | Patch | Default | What it does | Anchor | Runtime effect |
 | --- | --- | --- | --- | --- | --- |
@@ -49,7 +50,11 @@ Manager's list. All are build-verified in CI and apply cleanly to 14.38.0.
 | 8 | Morphe settings entry | on | Adds the "Morphe" row to Account Settings, opening `morphe://settings` | `labs/s;.invoke` builder, external-link row resolved from the dex | unverified |
 | 9 | Morphe settings screen (label) | on | Renames the reused row string to "Morphe" in every shipped language | `settings_menu_teen_safety_resources`, 48 `res/values*` dirs | unverified |
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
+| 11 | Download pin from long press † | on | Puts Pinterest's own Download row into the pin overflow menu for image pins | `Lfn1/f;.G3(ArrayList)V`, eligibility call at ins 121 | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
+
+† Written and fingerprint-resolved against the pinned APK, but never applied to a
+device. It is the only patch here that has not been through an install.
 
 The settings harness was rebuilt rather than deferred: there is no
 `PreferenceFragment` to hook (Phase 0), so the settings screen is an injected
@@ -81,7 +86,15 @@ Do not re-litigate these, design around them:
 - Media handling may cross native code (`libx_media_handler.so`,
   `libzune_jpeg-*.so`, `libquikklycore.so`, `libcronet`). Any
   quality/prefetch/autoplay patch must first establish the save path
-  is Java/DEX-side before assuming a DEX-only edit works.
+  is Java/DEX-side before assuming a DEX-only edit works. Partly
+  answered: the pin **download/save** path is entirely DEX-side (Phase 3),
+  but playback, decoding and rendition selection are still unexamined.
+- Pinterest's inlined resources are not reachable through an `R$string;`
+  class. Field references to `R$` in this APK only ever hit
+  `net/quikkly/android/R$string;`; the app's own ids are `sget` constants
+  in per-package holders (`Lgi0/b;`, `Lpf0/c;`, `Lnm0/d;`, …). Searching
+  for a resource by name means searching field *names*, which is what
+  `.scratch/fielduse.py` is for.
 - One patch per change, one patch per commit. Anything that would become a
   shared settings-toggle dependency must be resolved before writing
   settings-gated patches, not during.
@@ -227,15 +240,40 @@ implementations because they are narrow, self-contained edits.
 
 ### Phase 3 — Downloading
 
-- [ ] **Download pin from long press** — adds a download option to the long-press pin context
+**Spiked, and the transcription is wrong about the direction of the work.** Pinterest
+14.38.0 already ships pin download: the row, the click dispatch, the HTTP call, the
+MediaStore write, the runtime storage-permission request and the toasts are all upstream
+DEX-side code. What is missing is only *eligibility* — the row is withheld from plain
+image pins. That also answers the JNI question on this path: no native code is involved.
+Findings and dead ends in `reference/NOTES.md` under *Phase 3 — pin download already
+exists upstream*.
+
+- [~] **Download pin from long press** — adds a download option to the long-press pin context
   menu so an image can be saved without opening the pin.
-- [ ] **Download video** — adds a "Download video" option to the pin menu, saving the clip to the
+  - Written as `Download pin from long press`. The long-press surface is the pin overflow
+    modal (`PinOverflowMenuModalImpl`), not the closeup drawer — those two look alike and
+    are not the same screen.
+  - The edit is two instructions: the eligibility result is forced to 1 in the menu
+    builder `Lfn1/f;.G3(ArrayList)V`, so the existing Download row is inserted instead of
+    skipped. Nothing is injected and nothing is built.
+  - Chosen over editing the shared predicate `Lkj1/c;.e(pe)Z`, which has a second caller
+    in the collage-ads surface. Cost of the chosen variant: the idea-pin exclusion inside
+    the predicate is also bypassed.
+  - Fingerprint resolved against the pinned APK (exactly one method, `classes6.dex`) and
+    compiles. **Not** verified: that the row appears, and that the downloader can resolve a
+    URL for a non-video pin — the one unresolved risk, and the thing to watch on device.
+- [x] **Download video** — adds a "Download video" option to the pin menu, saving the clip to the
   Downloads folder.
-  - Media handling likely crosses `libx_media_handler.so` and `libzune_jpeg-*.so`; check whether
-    the save path is Java or JNI before assuming the patch is DEX-only.
+  - **Already native; no patch written.** `pin_video_download_success`,
+    `downloading_video_modal_view`, `downloading_video_spinner` and `share_pin_title_when_download`
+    exist, and the download completion handler branches on media type rather than assuming
+    video. The row ships for video pins already, since video pins are exactly what the
+    eligibility predicate accepts. Verified statically; a device pass should confirm the row
+    is present on a video pin.
 - [ ] **Download board** — adds an option to the search "..." menu to bulk-download the images
   and videos of a board grid.
-  - Most involved of the three: it is a bulk operation over a grid, not a single asset.
+  - Most involved of the three: a bulk operation over a grid, not a single asset. Unstarted,
+    and the Phase 0 warning about JNI still applies to the video half of it.
 
 ### Phase 4 — Links and sharing
 
@@ -411,10 +449,11 @@ not build the mode UI first.
 14. **Force original image download** — only if original assets reach
     the client; spike the rendition selection first. No phase entry yet.
 15. **Save image without watermark/UI** (long-press save of the actual
-    asset) → Phase 3 "Download pin from long press"; check Java-vs-JNI
-    save path per the Phase 3 warning.
-16. **Download video / board** → the other two Phase 3 items; keep as
-    separate patches.
+    asset) → Phase 3 "Download pin from long press", now written. The
+    Java-vs-JNI question is answered: this save path is entirely DEX-side.
+    The rendition question in item 14 is what is still open.
+16. **Download video / board** → "Download video" is already native and
+    needs no patch; "Download board" remains the only Phase 3 work left.
 
 ### P5 — UI (⭐⭐⭐–⭐⭐⭐⭐, all settings-gated → Phase 0)
 
@@ -507,8 +546,10 @@ client-side seam exists, these are not patches).
 
 Pinterest v1: Disable video autoplay · Disable feed prefetch ·
 Hide Promoted Pins · Disable in-app browser · Clean shared URLs ·
-Download original image · Following-only feed *(only if spike hits)* ·
-Hide recommendations · Compact grid · AMOLED black.
+Download image *(Phase 3, written, awaiting device pass)* ·
+Download original image *(different thing — rendition selection, still a spike)* ·
+Following-only feed *(only if spike hits)* · Hide recommendations ·
+Compact grid · AMOLED black.
 
 Substack v1 (all post-Phase-0): Tap-to-play video · Disable media
 preloading · Reader mode *(only if spike hits)* · Hide Notes · Hide

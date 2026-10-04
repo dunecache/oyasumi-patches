@@ -1660,13 +1660,26 @@ surfaced this. The arity fix had passed the local suite and still did not build.
   `.scratch/dexdump.py`, which is throwaway but is the thing that found the bug.
 # Pinterest 14.38.0 reference notes
 
-Disassembly record for the reference build and the six Pinterest patches written against it.
-Patch status and remaining work are tracked in `todo.md` on the branch that carries this work.
+Disassembly record for the reference build and the Pinterest patches written against it.
+Patch status and remaining work are tracked in `roadmap.md` under
+`# Pinterest working plan`.
 
 ## Source and target record
 
 - Reference: `~/apks/com.pinterest_14.38.0-14388010_minAPI29(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk`
+- Derived output: `~/apks/dex_files/pinterest_v14.38.0/` — `dex/classes.dex` … `classes8.dex`,
+  `dexindex.pickle`, `struse.json.gz`, `refs.json.gz`, and the query scripts `dexidx.py`,
+  `struse.py`, `refs.py`, `strings.py`, `pkgs.py`, `mfpkg.py`, `manifest.py`. Its own
+  `README.md` explains the query reference and warns that the three caches cost about four
+  minutes each to rebuild. **Use this cache; never re-extract 14.38.0.**
 - SHA-256: `af6b383adb445cebee1ca43f14ac409f91475c1d62e0e11ef52ef52e29fb0553`
+  (re-verified against the file on 2026-10-05).
+- **Layout deviation, unresolved.** `AGENTS.md` mandates `~/apks/<package>/<version>/`, but
+  this target predates that rule and sits one level up, with the APK loose in `~/apks/` and
+  the derived output in `~/apks/dex_files/pinterest_v14.38.0/`. Nothing was moved, because a
+  half-finished move of a cache that must never be rebuilt is worse than the deviation. The
+  Substack and 1DM caches do follow the newer layout. Worth settling before another target
+  is added; do not "fix" it by re-extracting.
 - Size: `133,740,741` bytes.
 - Format: regular APK/ZIP with 7,581 entries, not a split APKM container. The manifest carries
   `STAMP_TYPE_STANDALONE_APK` and `com.android.vending.derived.apk.id` `2`, confirming this is the
@@ -2916,6 +2929,216 @@ configuring the GitHub Packages credentials because `GITHUB_TOKEN`/`GITHUB_ACTOR
 are unset. The module was compiled instead with `kotlinc -jvm-target 11` against the
 Gradle-cached jars, and the dex behaviour was proven by the harness above. Neither
 replaces applying the patch to the pinned APK on a device.
+
+## Phase 3 — pin download already exists upstream (spike, no patch yet)
+
+The transcription for Phase 3 asks to *add* a download option to the pin
+long-press menu. It does not need adding: Pinterest 14.38.0 ships the whole
+feature, including the network write and the storage-permission flow. What is
+missing is only *eligibility* — the row is withheld from plain image pins.
+
+### The long-press menu, and which of three builders is it
+
+Long-pressing a pin opens the pin overflow modal, not the "closeup drawer".
+Two different surfaces exist and only one of them is the long-press menu:
+
+- The **closeup drawer** is the bottom sheet on the pin closeup screen. Its view
+  package is unobfuscated — `com/pinterest/feature/pin/closeup/view/drawer/`
+  holds `CloseupDrawerBottomSheetView`, `CloseupDrawerMediaHost`,
+  `CloseupDrawerRecyclerView`, `CloseupMediaScrollView` (all `classes6.dex`) —
+  and its resource ids are `closeup_drawer_bottom_sheet`,
+  `closeup_drawer_collapsed_prompt`, `closeup_drawer_drag_handle`,
+  `closeup_drawer_media_host`, `closeup_drawer_peek_scrolled_top_background_stub`
+  (`Lpf0/c;`), `fragment_pin_closeup_drawer` (`Lpf0/d;`) and
+  `pin_closeup_drawer_{hidden,visible}_collapsed_height` (`Lpf0/a;`).
+  `Lbb1/t;` is its fragment (`M9()` returns `fragment_pin_closeup_drawer`;
+  `onCreateView` reads `closeup_drawer_media_host`). Do not confuse this with the
+  long-press menu: it has no action rows of its own.
+- The **long-press overflow menu** is `GridActionsLocation$PIN_OVERFLOW_MENU_MODAL_FRAGMENT`
+  (`classes5.dex`), hosted by `com/pinterest/feature/gridactions/modal/view/`:
+  `PinOverflowMenuModalImpl` (38 fields, 35 methods, extends `Ls11/l;`),
+  `OverflowMenu` (a `LinearLayout` row view), `PinFeedbackModalContentView`
+  (extends `com/pinterest/ui/view/BaseRecyclerContainerView`),
+  `OverflowMenuModalProviderImpl`.
+
+The row list is assembled by `Lfn1/f;` — a 34-field, 22-method presenter in
+`classes6.dex` whose constructor takes
+`Lcom/pinterest/sendshare/model/SendableObject;` and thirty-odd
+other collaborators. Three methods append rows to a caller-supplied
+`java.util.ArrayList`:
+
+| Method | Registers | What it adds |
+| --- | --- | --- |
+| `F3(ArrayList)V` | 4 | `Lnj1/i0;.d(Context)` at index 0, then Instagram / Facebook rows if those apps are installed |
+| `G3(ArrayList)V` | 23 | the real builder: download, share, report, hide, save-to-board, separators |
+| `H3(ArrayList)V` | 6 | "Add to story" at index 0 (`sharesheet_add_to_story`, `Lis2/g;`) and download appended last |
+
+`G3` is the long-press menu and it says so in unobfuscated code: `ins 80-82`
+compares its location field against `Lin1/t1;->PIN_OVERFLOW_FEED_MODAL`.
+
+### The row model, and the row factory
+
+`Lcom/pinterest/adapter/e;` is the menu row, and it lives in `classes4.dex`,
+not next to its factory: `a` `Drawable` (icon), `b` `String`
+(title), `c` `String` (analytics id), `d` `Lkx1/o0;` (action enum), `e` `boolean`,
+`f` `boolean`. `Lkx1/o0;` is a merged R8 enum that holds both icon names and
+action names (`DOWNLOAD`, `BELL`, `BOOKMARK_CHECK`, …), so a filter on it is not
+specific; the id string is.
+
+The download row is built by `Lnj1/i0;.d(Landroid/content/Context;)Lcom/pinterest/adapter/e;`
+in `classes6.dex` — 8 registers, 13 instructions. It reads `Lnm0/d;->download_icon`
+(`classes5.dex`) for the icon, `Lgi0/b;->download` (`classes.dex`) for the title, and
+constructs the row with `Lkx1/o0;->DOWNLOAD` and the id **`"DOWNLOAD_IDEA_PIN"`**.
+That id is the only `const-string` in the factory, which makes it the cheapest
+possible anchor for this exact row, and it is also a warning: upstream built this
+row with idea pins in mind.
+
+`Ls11/b;.a(LinearLayout, Lkj1/c;, Lkj1/b;, Lx30/b;, String, Z, Z, Function0, Function0)Z`
+(`classes5.dex`) is the second entry point. It takes the eligibility object and a
+`LinearLayout` and returns whether it injected anything, which is how
+`com/pinterest/feature/pin/closeup/sba/downloadaction/DownloadActionView` (`classes6.dex`)
+reaches the closeup action bar. That class is inflated from XML — nothing in the dex
+instantiates it, so it has no callers and `refs.py classrefs` returns nothing for
+it. Its two constructors are the only members.
+
+### The downloader itself
+
+Not a stub. `La21/c;` (`classes5.dex`) is the failure-reason enum and its constants
+are still named: `NETWORK_REQUEST_FAILURE`, `PERMISSION_DENIED_BY_USER`,
+`EXTERNAL_STORAGE_SPACE_NOT_AVAILABLE`, `EXTERNAL_STORAGE_MEDIA_NOT_MOUNTED`,
+`EXTERNAL_STORAGE_DIRECTORY_CAN_NOT_BE_CREATED`, `PIN_OR_URL_NULL`,
+`SAVE_TO_STORAGE_FAILED`. `La21/b;` is the Kibana logger
+(`KibanaMetrics`), called from `Luq1/a;.onError` (`classes6.dex`), `Lt03/a;`,
+`Lyj2/c;.invoke` and `Lz11/o;.invoke`. `Luq1/a;` is an R8-merged interface
+collector carrying `onSuccess`, `onError`, `onComplete`,
+`onRequestPermissionsResult(I, String[], int[])` and `v(Lv0/b;)V`, i.e. the
+runtime storage-permission request; `f(Landroid/net/Uri;)V` shows
+`pin_image_download_success` (`Lgi0/b;`). `Lgs2/a;.b(Z)V` (`classes7.dex`) reads
+both `pin_image_download_success` and `pin_video_download_success`, so the
+completion handler branches on media type rather than assuming video. Related
+strings: `downloading_video_spinner` / `downloading_video_modal_view` (`Lis2/d;`,
+`Lis2/e;`, `classes7.dex`), `downloaded_to_camera_roll` (`Lgi0/b;`),
+`pin_more_download_fail` (`Lgf0/b;`, `classes5.dex`),
+`storage_permission_download_explanation` (`Lic2/b;`, `classes3.dex`).
+
+So the roadmap's Phase 3 warning — "media handling may cross native code, check
+whether the save path is Java or JNI" — is answered for *this* path: the download
+entry point, the HTTP call, the MediaStore write and the permission request are
+all DEX-side. No `libx_media_handler.so` involvement was found on the download
+route. (`libx_media_handler.so` is about decoding and rendering, not saving.)
+
+### Why the row is withheld from a plain image pin
+
+`Lfn1/f;.G3` gates the block on `ins 118-128`:
+
+```
+118  iget-boolean      v6, v0, Lfn1/f;->o Z          // a pre-set flag
+120  if-nez            v6, +00bh                       // flag set -> eligible
+121  invoke-virtual    v10, v2, Lkj1/c;->e(Lcom/pinterest/api/model/pe;)Z
+122  move-result       v6
+128  if-eqz            v6, +048h                       // not eligible -> skip row
+```
+
+`Lkj1/c;->e(pe)Z` (5 registers, 44 instructions) is the eligibility predicate:
+
+```
+ 3  if-eqz        v4, +046h      // null pin -> false
+ 4  invoke-virtual v4, pe;->Y5()Ljava/lang/Boolean;   // reads field C1
+ 8  if-nez        v2, +03ch      // idea pin -> false
+ 9  invoke-static  v4, Lcom/pinterest/api/model/ye;->p0(Lcom/pinterest/api/model/pe;)Z
+11  if-eqz        v4, +036h      // not video/product -> false
+12  invoke-virtual v3, Lkj1/c;->d()Z                 // experiment
+15  invoke-virtual v3, Lkj1/c;->f()Z                 // variant select
+```
+
+The load-bearing line is `ins 9`. `ye.p0(pe)Z` is:
+
+```
+1  invoke-static  O0(pe)Z     // product/shopping pin (domain + Q7().g() map)
+3  if-nez         v0, +025h
+4  invoke-static  I0(pe)Z     // pe.z7() != null  -> video pin
+6  if-eqz         v0, +008h
+7  invoke-static  H0(pe)Z     // I0 && Q3[216] && !pe.q7()
+10 iget-object    v0, pe->Q3 [Z
+12 const/16       v2, 108
+13 if-le           v1, v2, +010h
+14 aget-boolean    v0, v0, v2
+16 invoke-virtual v3, pe;->K5()Ljava/lang/Boolean;
+21 const/4        v3, 1  /  23 const/4 v3, 0
+```
+
+So upstream shows Download exactly when the pin is a **video pin or a product
+pin**, and never for a plain image pin. That is the whole gap the transcription
+is asking to close.
+
+`e(pe)Z` has exactly two callers: `Lfn1/f;.G3` (the menu we want) and
+`com/pinterest/ads/feature/owc/collageads/s;.a(Ljb0/z;, Lqw2/d;)Lqw2/o;` (a
+collage-ads presenter). Any edit inside `e()` therefore changes collage ads too;
+an edit at the `G3` call site does not.
+
+### Two candidate edits, and why the choice matters
+
+Both are two-instruction replacements. `Lfn1/f;` and `Lkj1/c;` are both in
+`classes6.dex`, and both target methods are 23 and 5 registers wide.
+
+**A — inside the predicate.** In `Lkj1/c;->e(pe)Z`, replace `ins 9-10`
+(`invoke-static ye.p0(pe)`, `move-result v4`) with `const/4 v4, 1`, so the
+`if-eqz v4` at `ins 11` falls through. Keeps the idea-pin exclusion at `ins 8`,
+the experiment gate at `ins 12`, and the `d()`/`f()` rollout at `ins 14-16`.
+Cost: also affects the collage-ads call site.
+
+**B — at the menu call site.** In `Lfn1/f;.G3`, replace `ins 121-122`
+(`invoke-virtual Lkj1/c;->e(pe)`, `move-result v6`) with `const/4 v6, 1`.
+`v6` is then exactly what the gate would have produced, and the code at
+`ins 129-152` uses `v6` only as the boolean gate plus `v3`/`v5` as index
+offsets, so the insertion arithmetic is unaffected. Touches only the menu.
+Cost: loses the idea-pin exclusion, so an idea pin would also get the row — and
+the row's own id is `"DOWNLOAD_IDEA_PIN"`, so upstream may have had the opposite
+intent in mind.
+
+Neither is written yet. Both need a device pass, and both inherit one unresolved
+risk: **the URL resolution for a plain image pin was not traced.** The failure
+enum has `PIN_OR_URL_NULL`, which shows the downloader takes a URL, but which
+accessor supplies it for a non-video pin was not established, so a forced-eligible
+image pin could still fail at the URL step rather than at the menu step. That is
+the single thing to watch on device.
+
+### Unused
+
+`Savable`, `pinImageDownloaderFactory` and `gif_pin_drawer_context` are dead
+ends worth recording so they are not re-searched:
+
+- `pinImageDownloaderFactory` is not a Dagger module. It occurs twice, both as an
+  analytics event name: `Lcv/q;->onEventMainThread(Li52/d;)V` (`classes.dex`
+  ins 178) and `Lbb1/x1;->onEventMainThread(Lm02/e;)V` (`classes6.dex` ins 156).
+- `gif_pin_drawer_context` and `ic_pin_drawer_button_nonpds` exist in the string
+  table but are referenced by no field read. Pinterest's own resources are not
+  reached through an `R$string;` class — the app inlines them as `sget` from
+  per-package holders such as `Lgi0/b;`, `Lpf0/c;`, `Lnm0/d;`. Searching for
+  `R$` field references in this APK finds only `net/quikkly/android/R$string;`,
+  which is why a resource-name search has to go through `fielduse.py` (see
+  below) rather than `refs.py`.
+- `Save image` (`classes3.dex`) is an **ad SDK** string, used once by
+  `Lads_mobile_sdk/ip1;->a(Lads_mobile_sdk/ip1;Ljava/util/Map;Lads_mobile_sdk/lw0;)Lkotlin/Unit;`
+  ins 328. Unrelated to pins.
+- `quick_swap_option_item_download_image` (`Lnh0/f;`) is the create-mode quick
+  swap, not the pin menu.
+
+### Tooling added for this spike
+
+`refs.py` cannot answer "which methods read field X", which is the only question
+that matters in a package whose resources are inlined as `sget` constants, and
+`pkgs.py` prints only a prefix histogram. Two throwaway helpers were added:
+
+- `.scratch/fielduse.py <regex> [--names]` — reads `refs.json.gz` and prints the
+  methods that read or write a matching field, or just the distinct field names.
+  This is what found the drawer resource ids and the download strings.
+- `.scratch/pkg.py <prefix> [needle]` — prints superclass, interfaces and member
+  counts for every class under a prefix. In a fully obfuscated package, shape is
+  the only usable first filter; this is what identified `Lfn1/f;` as the menu
+  presenter.
+
+Both read the prebuilt caches and re-parse nothing.
 
 # Djezzy HTTP interceptor investigation (no patch — negative result)
 
