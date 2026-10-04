@@ -1,3 +1,9 @@
+## [0.6.0-dev.19](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.18...v0.6.0-dev.19) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* compare defining class when locating the comments button field store ([00f7d2e](https://github.com/dunecache/oyasumi-patches/commit/00f7d2e554acc249a5b2a2acc97ea8a12e8c8dbe))
+
 ## [0.6.0-dev.18](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.17...v0.6.0-dev.18) (2026-10-04)
 
 ### 🐛 Bug Fixes
