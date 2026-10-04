@@ -77,7 +77,7 @@ val hideCommentsPatch = bytecodePatch(
         val storeIndex = instructions.indexOfFirst { instruction ->
             instruction.opcode == Opcode.IPUT_OBJECT &&
                 (instruction as? ReferenceInstruction)?.reference?.let {
-                    it is FieldReference && it.name == "l" && it.type == MODULE_CLASS
+                    it is FieldReference && it.name == "l" && it.definingClass == MODULE_CLASS
                 } == true
         }
         check(storeIndex != -1) {
