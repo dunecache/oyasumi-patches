@@ -1,3 +1,9 @@
+## [0.6.0-dev.22](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.21...v0.6.0-dev.22) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* collapse 1DM fallback banner slot via parent hide ([63dd6ca](https://github.com/dunecache/oyasumi-patches/commit/63dd6ca039aab3b10bc4c02915455ca4515e8ed5))
+
 ## [0.6.0-dev.21](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.20...v0.6.0-dev.21) (2026-10-04)
 
 ### 🐛 Bug Fixes
