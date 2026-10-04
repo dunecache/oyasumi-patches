@@ -22,7 +22,8 @@ val disableHomeScreenAdsPatch = bytecodePatch(
     description = "Keep the home screen banner from loading, rotating, or rendering. The banner " +
         "in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo " +
         "banner, including the built-in \"install 1DM+\" ad and the server-driven fallback " +
-        "banner (defaultBannerViewNew), is suppressed at its source and never rendered.",
+        "banner (defaultBannerViewNew), is suppressed at its source, never rendered, " +
+        "and its footer slot is collapsed.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
@@ -127,33 +128,38 @@ val disableHomeScreenAdsPatch = bytecodePatch(
         // class. So the view that is on screen is hidden here, with the same trick as
         // the `setAd` patch.
         //
+        // Hiding the banner alone leaves an empty slot: the banner is `<include>`d into
+        // a vertical `LinearLayout` column (`activity_main.xml`, `activity_main_bottom.xml`
+        // and `activity_torrent_details.xml` all share the identical column) that carries
+        // `android:minHeight="60dip"`, so the column keeps a 60dp strip even with every
+        // child `GONE`. The column holds nothing but ad views (the two banner includes,
+        // two already-`GONE` promo slots, the `GONE` Appodeal view), and it is the direct
+        // parent of `defaultBannerViewNew` in all three layouts, so hiding the parent
+        // collapses the slot without touching any legitimate view.
+        //
         // `NewBannerView.ۦۖۦ(Li/ru;)V` is the renderer: 122 instructions, `.registers 6`
         // with `this` in `v4` and the ad in `v5`, measured against the on-device 18.2
-        // `classes11.dex`. Index 0 writes `v0` (`iget-object v0, v4`), so `v0` is a safe
-        // scratch local before the original body runs. `GONE` (8) needs `const/16`,
-        // the same width the app itself uses. `setVisibility(I)V` takes one argument,
-        // so the 35c list names the receiver *and* the int (`{v4, v0}`); naming only the
-        // receiver is the arity crash that took down v0.3.4.
+        // `classes11.dex`. Index 0 writes `v0` (`iget-object v0, v4`) and `v1` is still
+        // unassigned there, so both are safe scratch locals before the original body runs.
+        // `GONE` (8) needs `const/16`, the same width the app itself uses.
+        // `getParent()` takes no argument, so its 35c list names only the receiver
+        // (`{v4}`); `setVisibility(I)V` takes one argument, so its list names the
+        // receiver *and* the int (`{v0, v1}`); naming only the receiver is the arity
+        // crash that took down v0.3.4. `this` is never null and an inflated layout child
+        // always has a parent, so no null check is needed; the parent is a `ViewGroup`,
+        // hence a `View`, so the `check-cast` cannot fail.
         FallbackBannerRendererFingerprint.method.addInstructions(
             0,
-            "const/16 $VISIBILITY_REGISTER, $GONE\n" +
+            "invoke-virtual {v4}, Landroid/view/View;->getParent()Landroid/view/ViewParent;\n" +
+                "move-result-object $VISIBILITY_REGISTER\n" +
+                "check-cast $VISIBILITY_REGISTER, Landroid/view/View;\n" +
+                "const/16 v1, $GONE\n" +
+                "invoke-virtual {$VISIBILITY_REGISTER, v1}, " +
+                "Landroid/view/View;->setVisibility(I)V\n" +
+                "const/16 $VISIBILITY_REGISTER, $GONE\n" +
                 "invoke-virtual {v4, $VISIBILITY_REGISTER}, " +
                 "Landroid/view/View;->setVisibility(I)V\n" +
                 "return-void"
-        )
-
-        // Belt and braces: `Li/s82;->ۦۖۦ(...)Z` is the driver that finds
-        // `defaultBannerViewNew` (2131362504) and posts the banner to it. It returns a
-        // boolean its caller (`ۦۗۡ`) ignores, and index 0 already writes `v0`
-        // (`const/4 v0, 0`), so returning `false` there needs no extra register and
-        // prevents the setup from ever reaching the renderer. A mid-method
-        // `setVisibility` after the `findViewById` would need a liveness-proven scratch
-        // register at that point; the early return avoids that reasoning entirely.
-        // `return v0` (not `return-void`) is the correct terminator for a `Z` method.
-        FallbackBannerDriverFingerprint.method.addInstructions(
-            0,
-            "const/4 v0, 0\n" +
-                "return v0"
         )
     }
 }

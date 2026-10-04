@@ -969,6 +969,41 @@ above), so compilation is delegated to CI. Not verified on device: that the stri
 disappears and the footer collapses, and (as before) anything about the APKM build's
 `Lidm/` code, which was never readable.
 
+## The banner is gone but its slot is not (minHeight column, v0.6.0-dev.22)
+
+v0.6.0-dev.21 removed the ad content but left an empty ~60dp strip. The cause is not a
+view the patch missed but a `minHeight` on its parent. Decoded with androguard's
+`AXMLPrinter`, `res/layout/activity_main_bottom.xml` wraps the footer in a vertical
+`LinearLayout` (`match/wrap`, `minHeight="60dip"`) containing the two banner
+`<include>`s, two already-`GONE` promo slots and the `GONE` Appodeal view; the identical
+column appears in `activity_main.xml` and `activity_torrent_details.xml`. All three
+were verified. `default_banner_new.xml` itself starts `GONE` (`visibility="2"`) and is
+`wrap_content`, so hiding the banner is not what leaves the gap -- the column's
+`minHeight` keeps a 60dp strip even with every child `GONE`. The v0.6.0-dev.21 driver
+early-return made this certain: with the renderer never running, nothing ever hid the
+column.
+
+The fix hides the column from the renderer rather than touching the driver. The driver
+edit is deleted; the driver now runs its bookkeeping (maps, `Li/q82` post,
+impression counters, `Li/r82` timers) and every paint path still ends in the patched
+renderer, which at index 0 calls `getParent()` on `this`, hides the parent with
+`setVisibility(8)`, hides itself the same way, and returns. The column holds nothing
+but ad views in all three layouts, so no legitimate view is affected.
+
+Register safety, measured not guessed (`ۦۖ¦`, 122 insns, `.registers 6`, `this` in
+`v4`): index 0 overwrites `v0` and `v1` is unassigned there, so both are free scratch.
+`getParent()` declares no argument, so `{v4}` is the complete list; each
+`setVisibility(I)V` names receiver plus int. `this` is never null and an inflated
+layout child always has a parent that is a `ViewGroup`, hence a `View`, so neither the
+call nor the `check-cast` can fail. No new fingerprint was needed and none of the
+removed driver's index arithmetic survives: the edit stays at index 0.
+
+Verification: renderer fingerprint unchanged (`[29, 34, 54, 116]`);
+`tools/checks/patch_smali_checks.py` 30 files, 0 problems (covers the one-register
+`getParent` and both two-register `setVisibility` calls);
+`tools/checks/test_invoke_arity.py` 25/25; `:patches:compileKotlin` delegated to CI as
+before. Not verified on device: that the footer collapses to the download list.
+
 
 
 # Djezzy 3.0.9 reference notes
