@@ -1,3 +1,9 @@
+## [0.6.0-dev.23](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.22...v0.6.0-dev.23) (2026-10-04)
+
+### 🐛 Bug Fixes
+
+* override setVisibility on the UAB comments cell ([8eb71e5](https://github.com/dunecache/oyasumi-patches/commit/8eb71e5b62966a1dafa4c932c66af14316a589b7))
+
 ## [0.6.0-dev.22](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.21...v0.6.0-dev.22) (2026-10-04)
 
 ### 🐛 Bug Fixes
