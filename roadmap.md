@@ -306,12 +306,19 @@ exists upstream*.
   taking a screenshot in-app.
   - Confirmed present: `DETECT_SCREEN_CAPTURE` permission, and `DETECT_SCREEN_CAPTURE` appears in
     the manifest. Locate the observer that raises the dialog.
-- [ ] **Open links in the default browser** — routes links to the device browser instead of
-  Pinterest's in-app browser, gated on a settings toggle.
-  - Confirmed present and promising: `com.pinterest.componentBrowser.ComponentBrowserActivity`,
-    `com.pinterest.activity.web.WebViewActivity`, and
-    `com.pinterest.browser.customTabs.chrome.ChromeTabBroadcastReceiver`. The Custom Tabs path
-    and the plain WebView path may need separate edits.
+- [~] **Open links in the default browser** — routes links to the device browser instead of
+  Pinterest's in-app browser.
+  - **Partially mapped, deliberately not written.** Established: both browser surfaces are
+    internal and `exported=false`, so this is a launch-decision change and not an intent-filter
+    change; Custom Tabs is an app-lifetime connection (`Lke0/c;` with
+    `onCustomTabsServiceConnected` and an `a(ResolveInfo)Z` provider check), so it is opt-in per
+    device; and `no_browsers_found` in `Lad2/b;` hints that a plain `ACTION_VIEW` fallback exists
+    in some branch.
+  - Not established: which method makes the choice, and whether there is a third option at all.
+    If the app only ever has Custom Tabs or its own browser, "default browser" is new code, not a
+    gate flip — the same verdict as Phase 3's board item.
+  - Full map and the exact next reads are in `reference/NOTES.md`. `open_external` is a red
+    herring: a deeplink query parameter, not a launch mode.
 - [~] **Use the system share sheet** — bypasses Pinterest's internal custom share sheet in favour
   of the native Android share sheet.
   - Written as `Disable in-app share sheet`, opt-in. The whole feature is one boolean:
@@ -462,8 +469,8 @@ not build the mode UI first.
 ### P3 — Links and sharing (⭐⭐⭐⭐, maps to Phase 4)
 
 11. **Disable in-app browser / open externally** → Phase 4 "Open links
-    in the default browser" (`ComponentBrowserActivity`, `WebViewActivity`,
-    `ChromeTabBroadcastReceiver` already confirmed present).
+    in the default browser", partially mapped and not patch-shaped yet: both
+    surfaces are unexported, and a third launch option may not exist.
 12. **Sanitize shared/copied URLs** → Phase 4 "Sanitize copied links" +
     "Sanitize shared links"; one shared sanitizer helper for both paths.
 13. **Copy image URL / source URL** → Phase 4 "Copy direct link"

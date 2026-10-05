@@ -3339,6 +3339,53 @@ items 2 and 3 — and those have the same problem, since they would also have to
 hook `SendableObject.e()` or the share intent. That is the next thing to spike,
 and it should be spiked deliberately rather than discovered mid-patch.
 
+### Phase 4 item 5, "Open links in the default browser": partially mapped
+
+Partial, and the open question is named so it is not re-walked.
+
+What is confirmed:
+
+- Both browser surfaces are **internal and unexported**, so neither is a
+  system default handler and neither is reached by an incoming intent:
+  `com.pinterest.componentBrowser.ComponentBrowserActivity` is
+  `exported=false` with no intent filters, and
+  `com.pinterest.activity.web.WebViewActivity` likewise. They are launched by
+  the app, which means a patch has to change a launch decision, not a filter.
+- `ComponentBrowserActivity` is a Hilt `@AndroidEntryPoint` with a Compose UI
+  (`u(Lib/e0;Lck0/k;Landroidx/compose/runtime/p;I)V`, `w(Bundle)`) delegating
+  to `Lck0/k;`. `com/pinterest.componentBrowser.viewModel` is a large
+  obfuscated package; `componentBrowser` is referenced from `Lpr/ra;`,
+  `Lad1/t;`, `Lad1/p;`, `Lck0/c;`, `Lck0/b;`, `Lcf1/h;` and `La32/a;`.
+- The Custom Tabs side is `com.pinterest.browser.customTabs.chrome.ChromeTabBroadcastReceiver`
+  plus `Lke0/c;`, an app-lifetime **connection**: it is constructed with
+  `Application, Lie0/g;, Lhe0/c;, Lri0/b;, Lfq0/a;, Lmm/f;`, implements
+  `onCustomTabsServiceConnected(ComponentName, Lw/g;)` and `onServiceDisconnected`,
+  and exposes `a(ResolveInfo)Z` — "is this package a Custom Tabs provider". The
+  service action is `android.support.customtabs.action.CustomTabsService`
+  (`Lke0/a;`, `Lke0/c;`, `Lw/g;`). Custom Tabs is therefore opt-in per device,
+  based on whether a provider is bound.
+- A third, system-level path plausibly exists: `Lad2/b;` carries
+  `no_browsers_found`, which is the message you get when an implicit web intent
+  resolves to nothing. That is evidence a plain `ACTION_VIEW` fallback is
+  reached in some branch, but the branch was not located.
+
+What is **not** established, and is the whole patch:
+
+- Which method decides between Custom Tabs, `ComponentBrowserActivity` and a
+  plain external `ACTION_VIEW`. The likely shape is a predicate over the
+  `Lke0/c;` connection plus a screen-location route
+  (`Lz72/a;->COMPONENT_BROWSER_ACTIVITY`, `WEB_HOOK_ACTIVITY`), but "likely" is
+  not a fingerprint.
+- Whether the decision is a single boolean, as the share sheet was. If the app
+  only ever has two options — Custom Tabs or its own browser — then "use the
+  default browser" is a *third* option and this becomes new code rather than a
+  gate flip, exactly like the board bulk-download verdict.
+
+Do not write this patch from the notes above. Next step is to read the
+`Lck0/k;` presenter and the router that owns `COMPONENT_BROWSER_ACTIVITY`, and
+to find the `ACTION_VIEW` construction site; `open_external` is a red herring —
+it is a deeplink query parameter in `Lxu/l;`, not a launch mode.
+
 # Djezzy HTTP interceptor investigation (no patch — negative result)
 
 Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging
