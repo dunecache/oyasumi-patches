@@ -3386,6 +3386,97 @@ Do not write this patch from the notes above. Next step is to read the
 to find the `ACTION_VIEW` construction site; `open_external` is a red herring —
 it is a deeplink query parameter in `Lxu/l;`, not a launch mode.
 
+### P1.4 and P4.14: rendition selection is client-side, and there is one chooser
+
+The roadmap gated both of these on the same question — does the client choose
+image renditions, or are the URLs sealed server-side? **Client-side, and the
+choice funnels through a single seven-instruction method.** That makes P4.14 a
+two-instruction patch and reframes P1.4.
+
+**Not sealed.** A pin's `images` field is a map keyed by size, and the app reads
+four keys out of it in `Lau2/w;.d(Ljava/util/Map;)Lvu2/d1;` (`classes*.dex`):
+
+```smali
+const-string v0, "736x"
+invoke-interface {p0, v0}, Ljava/util/Map;->get(Ljava/lang/Object;)Ljava/lang/Object;
+check-cast v0, Lcom/pinterest/api/model/la;      # one ImageDomain per size
+...
+const-string v0, "originals"                     # and the same again
+```
+
+The server sends the whole ladder and the client picks. So the roadmap's
+fallback — "if URLs are server-sealed, downgrade to don't preload
+full-resolution" — does not apply.
+
+**The field mapping is derived, not guessed.** `Lau2/w;.d` reads `736x` into
+`v2`, `345x` into `v3`, `236x` into `v4` and `originals` into `v1`, then ends
+with
+
+```smali
+new-instance p0, Lvu2/d1;
+invoke-direct {p0, v2, v3, v4, v1}, Lvu2/d1;-><init>(Lvu2/e1;Lvu2/e1;Lvu2/e1;Lvu2/e1;)V
+```
+
+and the constructor `iput`s in order `a`, `b`, `c`, `d`. Therefore:
+
+| Field | Size |
+| --- | --- |
+| `Lvu2/d1;.a` | `736x` |
+| `Lvu2/d1;.b` | `345x` |
+| `Lvu2/d1;.c` | `236x` |
+| `Lvu2/d1;.d` | `originals` |
+
+**The chooser.** `Lvu2/d1;.b()Lvu2/e1;` walks `a`, `d`, `b`, `c` and returns
+the first non-null, else the EMPTY singleton `Lvu2/e1;.e`. Stock behaviour is
+therefore *736x first, originals only as a fallback* — which is sensible, since
+`originals` is absent for videos and for pins the server only rendered small.
+
+`b()` is the **only** reader of field `a` in the entire APK; the sole other hit
+is the constructor's own `iput`. So this is a genuine single point, and forcing
+originals is a swap of two `iget-object` reads — same opcode, same format 22c,
+same width, so no width-mismatched method can result. Null safety is structural
+rather than checked: the chain still falls through to every other field and then
+to the singleton, so a pin with no `originals` renders exactly as before.
+
+**Verification.** The swap was applied to the real `vu2/d1.smali`, reassembled
+with `smali assemble` and disassembled again; it round-trips with `d` tested
+first. Fingerprint resolves to the only method named `b()` returning
+`Lvu2/e1;`.
+
+**Known fragility, recorded rather than glossed.** Both the class and the method
+name are obfuscated, so this is the AppsFlyer fragility class, not the Google
+Engage pattern. The fingerprint's filters are field reads on the defining class,
+and `b()` is the sole reader of `a`, so a rename fails resolution rather than
+landing on an unrelated method. `Lau2/w;.d` — with its `736x`/`originals`
+literals — is the place to look if it ever breaks.
+
+### P1.4 is not that patch, and the seam does not change that
+
+Forcing originals is P4.14. P1.4 asks for a *selector* — Cellular Low/Med,
+Wi-Fi Med/High — which is a different shape of work:
+
+- It needs a policy input (network type), which means reading
+  `ConnectivityManager` at render time or caching it, plus a setting the user
+  can change. That is the Phase 0 screen plus persistence, not a fingerprint.
+- It needs a decision *per render site*, and the app has many: `b()` has eight
+  callers (`Lay0/k;`, `Lc2/g;`, the shuffles composer, `Lax2/k3;`, `Lxg/r2;`,
+  the language picker, `Lph0/e;`, `Lvu2/z1;`) plus the direct `d1.d` readers in
+  the shuffles composer, `La50/m;`, `Lax2/p2;` and `Lac0/l0;`. One chooser swap
+  cannot express "cellular vs wifi" across all of them without deciding whether
+  the selector belongs in `b()` or at each call site — and putting it in `b()`
+  means `b()` needs a network argument, which changes a signature eight call
+  sites depend on.
+
+So P1.4 stays a spike. What this investigation *does* hand it is the two facts
+it was blocked on: the ladder is client-side, and the whole decision is
+concentrated in `Lvu2/d1;.b()`. The honest cheap subset, if one is wanted, is
+the inverse of P4.14 — cap the ladder (never prefer `originals`) — which is the
+same two-instruction swap and is the direction that actually saves bandwidth.
+It is deliberately **not** written, because it would be the exact opposite
+preference to P4.14 on the same method, and two patches fighting over one
+preference order is a design decision, not an implementation detail: they would
+need mutual exclusion or a documented precedence.
+
 # Djezzy HTTP interceptor investigation (no patch — negative result)
 
 Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging
