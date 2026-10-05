@@ -3181,6 +3181,27 @@ Both subscribers do resolve a URL, via
 accessor recorded as untraced does exist, but only on those two surfaces. That is
 the answer to the open question this section used to carry.
 
+#### Corroborated by a second review: DOWNLOAD is a share-sheet MODE
+
+An external read of `Ljy/nj1/t0` settles what the old trace called a "download
+modal". It is not a separate screen.
+
+`Lin1/x1;` is a four-value enum -- `NONE`, `SHARE`, `DOWNLOAD`, `SCREENSHOT` --
+and it declares `isDownloadOrScreenshot()Z`. `Lnj1/t0;.a(...)` takes one and, at
+its tail, reads `SCREENSHOT`, `DOWNLOAD`, then the strings `"shouldAddSaveIcon"`
+and `"upsellTypes"`. The object `t0.a` builds with that mode is `Lin1/e1;`, which
+declares `createModalView(...)Lcom/pinterest/component/modal/BaseModalViewWrapper;`
+and `createPresenter()Liu1/k;` -- i.e. the in-app share sheet.
+
+`Lnj1/t0;.h(...)` branches on `x1.SCREENSHOT` three times and on `x1.DOWNLOAD`
+once before reaching `t0.a`.
+
+**So tapping Download opens the share sheet in download mode, with a save icon.**
+That is the designed behaviour, and it is the whole explanation of the device
+report. It also means the first half of this retraction is not merely a wrong
+trace: the surface the roadmap wanted does not exist as a separate screen, and
+the share sheet is where upstream put it.
+
 #### What actually works, and it is stock
 
 `DownloadActionView` is injected into the pin closeup action bar by
@@ -3195,6 +3216,63 @@ menu without also building the subscriber, which is new logic rather than a
 fingerprint. Reverted rather than shipped with a description it does not honour.
 If the feature is wanted later, the tractable shape is "surface the closeup's
 existing download", not "extend the feed row".
+
+### RETRACTED: "Disable in-app share sheet" -- same error, found in time
+
+The first version of this patch forced `Lhn1/a;.getShowInSharesheet()` false.
+That was caught on device because it silently disabled the download row: `G3` at
+ins 114 reads the same accessor and jumps to ins 235, past the download block.
+It was rewritten to force the answer at three presentation sites instead --
+`N3`, `Lr11/a;.a`, `Lnj1/t0;.a` -- which removed that conflict.
+
+**The rewrite fixed the conflict and kept the original mistake.** None of the
+four sites decides whether the in-app sheet appears. All four feed a boolean
+*into* something:
+
+- `Lnj1/t0;.a` (site 3) uses the result as one conjunct of a guard deciding
+  whether to construct `Lnj1/z;`, the share-sheet config object:
+
+  ```
+  invoke-static  {v0}, Lcom/pinterest/api/model/ye;->p0(Lpe;)Z
+  move-result    v6
+  if-eqz         v6, :skip
+  invoke-static  {v5, v6}, Lhn1/b;->a(Lfq0/v0; Lfq0/w0;)Lhn1/a;
+  move-result-object v5
+  invoke-virtual {v5}, Lhn1/a;->getShowInSharesheet()Z
+  move-result    v5
+  if-eqz         v5, :skip
+  new-instance   v6, Lnj1/z;
+  invoke-direct  {v6, v0, v11, v5, v1}, Lnj1/z;-><init>(...)
+  ```
+
+  Skipping the config object does not stop `t0.a` building `Lin1/e1;`, the sheet.
+  Note that `ye.p0` is in the same guard -- the predicate that gates the download
+  row appears here too.
+
+- `Lfn1/f;.N3` is a refresh that skips a selection observer.
+- `Lr11/a;.a` builds the social-app list inside the sheet.
+
+So the patch changed what the sheet *contains*, not whether it *appears*, while
+its description promised "sharing goes through the system sheet instead". That
+promise was never verified either -- the notes said so at the time, and the
+description said it anyway.
+
+**The pattern, since it happened twice.** Both reverted patches found a boolean
+that feeds a decision and treated it as the decision. The check that would have
+caught both: ask what the method *returns* or what it *constructs*, not what it
+reads. `Lvu2/d1;.b()Lvu2/e1;` passes that test -- it returns the rendition
+object its callers go on to load -- which is why the force-original patch survives
+and these two do not.
+
+**Where the real decision lives, for whoever picks this up.** Not in the accessor
+and not in its four callers. The callers of `Lnj1/t0;.h` are `Lnc0/m;`,
+`Lnj1/s0;` and `Lza1/i;`; the choice between the in-app sheet and a platform
+`ACTION_SEND` is made in one of those, upstream of `t0.h`/`t0.a`. The obvious
+candidate inside the row handler is `Liw2/d0;.j(Context, SendableObject, String,
+Lzo2/c;, Integer)V`, reached from `Lnj1/o0;.h` -- but it is **not** a system
+chooser: it carries `"more_apps"`, calls `queryIntentActivities` and `"com.pinterest"`,
+so it is Pinterest's own multi-app share flow. Finding the real branch means
+reading those three callers.
 
 ### Unused
 

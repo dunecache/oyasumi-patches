@@ -35,8 +35,9 @@ Substack item below is feasibility-unknown until the DEX is mapped.
 ## Where we stand
 
 Pinterest ships 10 named patches plus one internal patch that is not in the
-Manager's list, and two more written but not yet run on a device. A third was
-written, shipped and reverted; see Phase 3. All are
+Manager's list, and one more written but not yet run on a device. Two further
+patches were written and reverted; both retractions are recorded in
+`reference/NOTES.md`. All are
 build-verified; see the table for how far each has been taken.
 
 | # | Patch | Default | What it does | Anchor | Runtime effect |
@@ -51,11 +52,12 @@ build-verified; see the table for how far each has been taken.
 | 8 | Morphe settings entry | on | Adds the "Morphe" row to Account Settings, opening `morphe://settings` | `labs/s;.invoke` builder, external-link row resolved from the dex | unverified |
 | 9 | Morphe settings screen (label) | on | Renames the reused row string to "Morphe" in every shipped language | `settings_menu_teen_safety_resources`, 48 `res/values*` dirs | unverified |
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
-| 11 | Disable in-app share sheet † | off | Answers no to Pinterest's own share-sheet gate, so the platform sheet is used instead | `Lhn1/a;.getShowInSharesheet()`, the only method of that name in the APK | unverified |
-| 12 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
+| 11 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
 
-† Written and statically verified, but never run on a device.
+† Written and statically verified, but never run on a device. It is the only
+surviving patch from the three written this session, because it edits a method
+that *returns* the chosen value rather than one that feeds a boolean onward.
 
 The settings harness was rebuilt rather than deferred: there is no
 `PreferenceFragment` to hook (Phase 0), so the settings screen is an injected
@@ -329,20 +331,23 @@ exists upstream*.
     gate flip — the same verdict as Phase 3's board item.
   - Full map and the exact next reads are in `reference/NOTES.md`. `open_external` is a red
     herring: a deeplink query parameter, not a launch mode.
-- [~] **Use the system share sheet** — bypasses Pinterest's internal custom share sheet in favour
+- [ ] **Use the system share sheet** — bypasses Pinterest's internal custom share sheet in favour
   of the native Android share sheet.
-  - Written as `Disable in-app share sheet`, opt-in. The whole feature is one boolean:
-    `Lhn1/a;.getShowInSharesheet()` returns `this != CONTROL` on a two-constant enum, and the
-    constant is chosen by an experiment list containing `sg_android_sharesheet_holdout`. Forcing
-    `false` therefore pins the variant upstream already ships to its holdout group.
-  - Four call sites, all of which stop building the custom sheet when the answer is no. Chosen
-    over hiding a class because there is no single class to hide.
-  - Not settings-gated: the Phase 0 screen exists but wiring a toggle would mean a second
-    fingerprint and a per-call read, and the patch is one branch either way.
-  - Verified: fingerprint resolves to the only method of that name in the APK; the edited class
-    reassembles and round-trips through `smali`/`baksmali`; injected smali parses.
-    **Not** verified: that the platform chooser actually appears — the send execution was not
-    traced, only the four callers that stop building the custom sheet.
+  - **Written, then reverted. It never did what it said.** `getShowInSharesheet()` is not the
+    decision — it is a boolean that four callers feed into something else. Forcing it false
+    changes what the sheet *contains*, not whether it *appears*.
+    - `Lnj1/t0;.a` uses the result as one conjunct of a guard deciding whether to construct
+      `Lnj1/z;`, the share-sheet config object. Skip the config and `t0.a` still builds
+      `Lin1/e1;`, the sheet.
+    - `Lfn1/f;.N3` is a refresh; `Lr11/a;.a` builds the social-app list.
+  - A first version forced the shared accessor and silently disabled the download row, because
+    `G3` reads the same accessor and jumps past the download block. Narrowing it to the three
+    presentation sites fixed that conflict and kept the original mistake.
+  - **Where the real decision is:** not in the accessor, and not in its four callers. The callers
+    of `Lnj1/t0;.h` are `Lnc0/m;`, `Lnj1/s0;` and `Lza1/i;`. Note `Liw2/d0;.j(...)`, reached from
+    `Lnj1/o0;.h`, is *not* the system chooser — it carries `"more_apps"` and calls
+    `queryIntentActivities`, so it is Pinterest's own multi-app flow. Full correction in
+    `reference/NOTES.md` under *RETRACTED*.
 
 ### Phase 5 — UI hiding
 
