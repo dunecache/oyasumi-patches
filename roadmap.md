@@ -35,7 +35,7 @@ Substack item below is feasibility-unknown until the DEX is mapped.
 ## Where we stand
 
 Pinterest ships 10 named patches plus one internal patch that is not in the
-Manager's list, and two more written but not yet run on a device. All are
+Manager's list, and three more written but not yet run on a device. All are
 build-verified; see the table for how far each has been taken.
 
 | # | Patch | Default | What it does | Anchor | Runtime effect |
@@ -52,6 +52,7 @@ build-verified; see the table for how far each has been taken.
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
 | 11 | Download pin from long press † | on | Puts Pinterest's own Download row into the pin overflow menu for image pins | `Lfn1/f;.G3(ArrayList)V`, eligibility call at ins 121 | unverified |
 | 12 | Disable in-app share sheet † | off | Answers no to Pinterest's own share-sheet gate, so the platform sheet is used instead | `Lhn1/a;.getShowInSharesheet()`, the only method of that name in the APK | unverified |
+| 13 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
 
 † Written and fingerprint-resolved against the pinned APK, but never applied to a
@@ -440,9 +441,17 @@ of these has a phase-list entry yet, so each starts as a spike:
    entangled with the feed pager, so expect several candidate seams
    and pick the narrowest.
 4. **Image quality selector** (Cellular Low/Med/Original, Wi-Fi
-   Med/High/Original). Only if the client actually selects renditions
-   (vs. server-driven URLs) — spike first; if URLs are server-sealed,
-   downgrade to "don't preload full-resolution."
+   Med/High/Original). **Spike resolved: the ladder is client-side.**
+   A pin's `images` field is a size-keyed map and `Lau2/w;.d(Map)` reads
+   `736x`/`345x`/`236x`/`originals` out of it, so the server seals nothing. The
+   choice then funnels through one method, `Lvu2/d1;.b()`, which prefers 736x
+   and falls back to originals. The blocker is no longer the seam, it is the
+   shape: a selector needs a network input, a user setting, and a decision per
+   render site across eight callers — so it stays a spike. Cheap subset if
+   wanted is the inverse of P4.14, capping the ladder rather than promoting
+   originals. Deliberately not written: it would be the opposite preference to
+   P4.14 on the same method, so the two need mutual exclusion or a documented
+   precedence, which is a design decision rather than an implementation detail.
 5. **Don't preload external-site previews**. Small, isolated, good
    first Data Saver slice.
 6. Explicit non-goal: never touch messaging/DM traffic.
@@ -479,8 +488,15 @@ not build the mode UI first.
 
 ### P4 — Power features (⭐⭐⭐⭐)
 
-14. **Force original image download** — only if original assets reach
-    the client; spike the rendition selection first. No phase entry yet.
+14. **Force original image download** — **written as `Force original image
+    download`.** Originals do reach the client: the pin's `images` map carries an
+    `originals` entry beside the rest of the ladder, and `Lvu2/d1;.b()` already
+    reads it as its second preference. The patch swaps two `iget-object` reads so
+    originals is tried first. Same opcode and format, so no width-mismatched
+    method; and the chain still falls through to every other field and the EMPTY
+    singleton, so a pin with no originals renders exactly as before. Opt-in,
+    because it *increases* data use — the opposite of this project's usual
+    direction.
 15. **Save image without watermark/UI** (long-press save of the actual
     asset) → Phase 3 "Download pin from long press", now written. The
     Java-vs-JNI question is answered: this save path is entirely DEX-side.
