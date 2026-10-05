@@ -2930,7 +2930,13 @@ are unset. The module was compiled instead with `kotlinc -jvm-target 11` against
 Gradle-cached jars, and the dex behaviour was proven by the harness above. Neither
 replaces applying the patch to the pinned APK on a device.
 
-## Phase 3 — pin download already exists upstream (spike, no patch yet)
+## Phase 3 — pin download already exists upstream
+
+> **Read `### RETRACTED` below before using anything in this section.** The facts
+> about the menu, the row factory and the downloader are sound. The conclusions
+> about eligibility were wrong in three separate ways, and a patch built on them
+> shipped and was reverted. The section is kept because the disassembly is still
+> the map; the reasoning about what to change is not.
 
 The transcription for Phase 3 asks to *add* a download option to the pin
 long-press menu. It does not need adding: Pinterest 14.38.0 ships the whole
@@ -3068,40 +3074,127 @@ The load-bearing line is `ins 9`. `ye.p0(pe)Z` is:
 ```
 
 So upstream shows Download exactly when the pin is a **video pin or a product
-pin**, and never for a plain image pin. That is the whole gap the transcription
-is asking to close.
+pin**, and never for a plain image pin. That looked like the whole gap. It was
+not: `G3` calls `ye.p0(pin)` itself before the eligibility gate, and the download
+event has no subscriber outside the closeup and promoted-pin surfaces. See
+`### RETRACTED`.
 
 `e(pe)Z` has exactly two callers: `Lfn1/f;.G3` (the menu we want) and
 `com/pinterest/ads/feature/owc/collageads/s;.a(Ljb0/z;, Lqw2/d;)Lqw2/o;` (a
 collage-ads presenter). Any edit inside `e()` therefore changes collage ads too;
 an edit at the `G3` call site does not.
 
-### Two candidate edits, and why the choice matters
+### RETRACTED: "Download pin from long press" -- written, shipped, then reverted
 
-Both are two-instruction replacements. `Lfn1/f;` and `Lkj1/c;` are both in
-`classes6.dex`, and both target methods are 23 and 5 registers wide.
+This patch was written, shipped in `v0.6.0-dev.24` enabled by default, reported
+broken on device, and reverted. Everything below supersedes the reasoning that
+produced it. The short version: **the row's presence was made to work, and its
+behaviour cannot be made to work from that surface**, for two independent reasons.
 
-**A — inside the predicate.** In `Lkj1/c;->e(pe)Z`, replace `ins 9-10`
-(`invoke-static ye.p0(pe)`, `move-result v4`) with `const/4 v4, 1`, so the
-`if-eqz v4` at `ins 11` falls through. Keeps the idea-pin exclusion at `ins 8`,
-the experiment gate at `ins 12`, and the `d()`/`f()` rollout at `ins 14-16`.
-Cost: also affects the collage-ads call site.
+#### Error 1 -- the trace was wrong
 
-**B — at the menu call site.** In `Lfn1/f;.G3`, replace `ins 121-122`
-(`invoke-virtual Lkj1/c;->e(pe)`, `move-result v6`) with `const/4 v6, 1`.
-`v6` is then exactly what the gate would have produced, and the code at
-`ins 129-152` uses `v6` only as the boolean gate plus `v3`/`v5` as index
-offsets, so the insertion arithmetic is unaffected. Touches only the menu.
-Cost: loses the idea-pin exclusion, so an idea pin would also get the row — and
-the row's own id is `"DOWNLOAD_IDEA_PIN"`, so upstream may have had the opposite
-intent in mind.
+The original trace said the tap goes `Lnj1/o0;.h(View, String)` -> `Lnj1/q;.b(...)`
+-> a modal at `Lin1/x1;->DOWNLOAD`. That is the idea-pin branch and it is not the
+path a plain pin takes.
 
-Neither is written yet. Both need a device pass, and both inherit one unresolved
-risk: **the URL resolution for a plain image pin was not traced.** The failure
-enum has `PIN_OR_URL_NULL`, which shows the downloader takes a URL, but which
-accessor supplies it for a non-video pin was not established, so a forced-eligible
-image pin could still fail at the URL step rather than at the menu step. That is
-the single thing to watch on device.
+`Lnj1/o0;.e(View, String)` runs first. Its dispatch keys on
+`instance-of Lnj1/k;` over the sendable, and when that holds and the row id is
+`"DOWNLOAD_IDEA_PIN"` it does three things and returns:
+
+```smali
+invoke-virtual {v3}, Lkj1/c;->f()Z
+const-string     v4, "previous_downloader"
+sget-object      v3, Lqo2/s1;->PIN_DOWNLOAD_BUTTON:Lqo2/s1;
+...
+sget-object      v0, Lnc0/q;->a:Lnc0/s;
+new-instance     v1, Lm02/e;
+invoke-direct    {v1, v2}, Lm02/e;-><init>(Ljava/lang/String;)V     // pinId
+invoke-virtual   {v10, v8}, Liw2/d0;->h(Ljava/lang/String;)V       // "DOWNLOAD_IDEA_PIN"
+```
+
+`Lm02/e;` is a one-field event, the pin id. **`Lnj1/q;.b(...)` is the idea-pin
+video download**, with its `DownloadManager` progress modal -- not the plain-image
+path.
+
+Two file names in the original brief were wrong too, in a way that made step 4
+unsupported by the files actually shipped:
+
+| Class | What it actually is |
+| --- | --- |
+| `Lnj1/r;` | a three-value **enum**: `DOWNLOAD`, `INSTAGRAM_STORIES_SHARE`, `FACEBOOK_STORIES_SHARE` |
+| `Lnj1/m;` | `(String pinId, Lnj1/r; type, Long, String)` -- an in-progress-download record |
+
+The fragment the trace meant to cite is `Ls11/r;` (`s11/r.smali`, extends
+`Ls11/d;`) with `Ls11/m;` (`s11/m.smali`) holding `i()Lpe;`.
+
+One inference in the review that does *not* hold: `SendableObject.k()` is not an
+idea-pin flag. `i()` is `c == 0` and `k()` is `c == 0 && field i` -- the same int
+`c` in both, so they are share state, not pin type.
+
+#### Error 2 -- there is a second, independent gate
+
+`Lfn1/f;.G3` checks eligibility twice, and the patch only covered one of them.
+Resolved offsets, `classes6.dex`:
+
+```
+@0x019c ins 105  invoke-static {v2}, Lcom/pinterest/api/model/ye;->p0(Lpe;)Z
+@0x01a2 ins 106  move-result v6
+@0x01a4 ins 107  if-nez v6, +0004h   -> @0x01ac ins 109
+@0x01a8 ins 108  goto/16 +00f1h      -> @0x038a ins 235   PAST the download block
+
+@0x01c0 ins 114  invoke-virtual {v6}, Lhn1/a;->getShowInSharesheet()Z
+@0x01c8 ins 116  if-nez v6, +0004h   -> @0x01d0 ins 118
+@0x01cc ins 117  goto/16 +00dfh      -> @0x038a ins 235   PAST the download block
+
+@0x01d0 ins 118  iget-boolean v6, v0, Lfn1/f;->o Z
+@0x01dc ins 121  invoke-virtual v10, v2, Lkj1/c;->e(Lpe;)Z      <-- what the patch forced
+@0x01e2 ins 122  move-result v6
+```
+
+All three failure paths land on ins 235, past the block that adds the row at
+ins 234. Forcing `Lkj1/c;.e()` is therefore necessary but not sufficient: a pin
+where `ye.p0` is false never gets the row no matter what the patch does.
+
+**And the row did appear on device, which proves `p0` was true for that pin.**
+`p0` is `O0(pin)` (product pin) or `I0(pin)` (video) or (`Q3[108]` and `K5()`).
+So the pin used for the test was a video or product pin -- exactly where the row
+is native -- and **the patch was never exercised.** The reported symptom was stock
+behaviour on a pin the patch did not touch.
+
+#### Error 3 -- the event has no subscriber for a feed pin
+
+Forcing both gates would make the row appear and still not download. The tap
+posts `Lm02/e` on the bus (`Lnc0/q;->a`), and only two classes subscribe:
+
+| Subscriber | Its pin comes from | Surface |
+| --- | --- | --- |
+| `Ltt/a2;` | `PinCloseupBaseModule.getPin()` | the **pin closeup screen** |
+| `Lbb1/x1;` | `Lbb1/y1;` field `g` | the **promoted/ad pin cell** |
+
+Both compare the event's pin id with their own pin's `pe;.c()` and return on
+mismatch. A feed pin that is neither open in the closeup nor promoted matches
+neither subscriber, so the request goes nowhere -- which is what the share sheet
+on screen was.
+
+Both subscribers do resolve a URL, via
+`Lcom/pinterest/feature/f;->getCurrentImageUrl()Ljava/lang/String;` -- so the
+accessor recorded as untraced does exist, but only on those two surfaces. That is
+the answer to the open question this section used to carry.
+
+#### What actually works, and it is stock
+
+`DownloadActionView` is injected into the pin closeup action bar by
+`Ls11/b;.a(LinearLayout, Lkj1/c;, Lkj1/b;, Lx30/b;, String, Z, Z, Function0, Function0)Z`,
+called from `Ls11/a0;` and `Ls11/r;`. Pinterest already downloads pins from the
+closeup, for pins that qualify.
+
+#### Verdict
+
+A patch here can make a row appear; it cannot make that row download from the feed
+menu without also building the subscriber, which is new logic rather than a
+fingerprint. Reverted rather than shipped with a description it does not honour.
+If the feature is wanted later, the tractable shape is "surface the closeup's
+existing download", not "extend the feed row".
 
 ### Unused
 

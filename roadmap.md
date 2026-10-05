@@ -35,7 +35,8 @@ Substack item below is feasibility-unknown until the DEX is mapped.
 ## Where we stand
 
 Pinterest ships 10 named patches plus one internal patch that is not in the
-Manager's list, and three more written but not yet run on a device. All are
+Manager's list, and two more written but not yet run on a device. A third was
+written, shipped and reverted; see Phase 3. All are
 build-verified; see the table for how far each has been taken.
 
 | # | Patch | Default | What it does | Anchor | Runtime effect |
@@ -50,13 +51,11 @@ build-verified; see the table for how far each has been taken.
 | 8 | Morphe settings entry | on | Adds the "Morphe" row to Account Settings, opening `morphe://settings` | `labs/s;.invoke` builder, external-link row resolved from the dex | unverified |
 | 9 | Morphe settings screen (label) | on | Renames the reused row string to "Morphe" in every shipped language | `settings_menu_teen_safety_resources`, 48 `res/values*` dirs | unverified |
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
-| 11 | Download pin from long press † | on | Puts Pinterest's own Download row into the pin overflow menu for image pins | `Lfn1/f;.G3(ArrayList)V`, eligibility call at ins 121 | unverified |
-| 12 | Disable in-app share sheet † | off | Answers no to Pinterest's own share-sheet gate, so the platform sheet is used instead | `Lhn1/a;.getShowInSharesheet()`, the only method of that name in the APK | unverified |
-| 13 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
+| 11 | Disable in-app share sheet † | off | Answers no to Pinterest's own share-sheet gate, so the platform sheet is used instead | `Lhn1/a;.getShowInSharesheet()`, the only method of that name in the APK | unverified |
+| 12 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
 
-† Written and fingerprint-resolved against the pinned APK, but never applied to a
-device. It is the only patch here that has not been through an install.
+† Written and statically verified, but never run on a device.
 
 The settings harness was rebuilt rather than deferred: there is no
 `PreferenceFragment` to hook (Phase 0), so the settings screen is an injected
@@ -250,20 +249,30 @@ image pins. That also answers the JNI question on this path: no native code is i
 Findings and dead ends in `reference/NOTES.md` under *Phase 3 — pin download already
 exists upstream*.
 
-- [~] **Download pin from long press** — adds a download option to the long-press pin context
+- [ ] **Download pin from long press** — adds a download option to the long-press pin context
   menu so an image can be saved without opening the pin.
-  - Written as `Download pin from long press`. The long-press surface is the pin overflow
-    modal (`PinOverflowMenuModalImpl`), not the closeup drawer — those two look alike and
-    are not the same screen.
-  - The edit is two instructions: the eligibility result is forced to 1 in the menu
-    builder `Lfn1/f;.G3(ArrayList)V`, so the existing Download row is inserted instead of
-    skipped. Nothing is injected and nothing is built.
-  - Chosen over editing the shared predicate `Lkj1/c;.e(pe)Z`, which has a second caller
-    in the collage-ads surface. Cost of the chosen variant: the idea-pin exclusion inside
-    the predicate is also bypassed.
-  - Fingerprint resolved against the pinned APK (exactly one method, `classes6.dex`) and
-    compiles. **Not** verified: that the row appears, and that the downloader can resolve a
-    URL for a non-video pin — the one unresolved risk, and the thing to watch on device.
+  - **Written, shipped in v0.6.0-dev.24, reported broken, REVERTED.** Full correction in
+    `reference/NOTES.md` under *RETRACTED*. Three separate errors, all mine:
+    1. **The trace was wrong.** The tap goes through `Lnj1/o0;.e(View,String)`, which posts a
+       `Lm02/e(pinId)` event and returns. `Lnj1/q;.b(...)` — the one in the old trace — is the
+       *idea-pin* download with its `DownloadManager` progress modal, not the plain-image path.
+       The old brief also cited `nj1/r.smali` and `nj1/m.smali` as a fragment and its state;
+       they are a three-value enum and an in-progress-download record.
+    2. **There is a second, independent gate.** `Lfn1/f;.G3` calls `ye.p0(pin)` at ins 105 and
+       jumps to ins 235 — past the download block — if it is false. Forcing
+       `Lkj1/c;.e()` cannot add the row when `p0` is false. Worse: since the row *did* appear on
+       device, `p0` was **true** for that pin, so it was a video or product pin where the row
+       is native. The patch was never exercised.
+    3. **The event has no subscriber for a feed pin.** Only `Ltt/a2;` (the pin closeup) and
+       `Lbb1/x1;` (the promoted/ad pin cell) subscribe to `Lm02/e`, and both filter by pin id. A
+       feed pin matches neither, so the request goes nowhere — the share sheet on screen was
+       that. Forcing both gates would make a row appear that still does not download.
+  - What works is stock: `DownloadActionView`, injected into the pin closeup action bar by
+    `Ls11/b;.a(...)` from `Ls11/a0;`/`Ls11/r;`. Pinterest already downloads pins from the
+    closeup.
+  - **Re-scoped, not implemented.** The tractable shape is "surface the closeup's existing
+    download", not "extend the feed row". Doing it from the feed menu means writing the
+    subscriber — new logic, not a fingerprint.
 - [x] **Download video** — adds a "Download video" option to the pin menu, saving the clip to the
   Downloads folder.
   - **Already native; no patch written.** `pin_video_download_success`,
@@ -498,9 +507,11 @@ not build the mode UI first.
     because it *increases* data use — the opposite of this project's usual
     direction.
 15. **Save image without watermark/UI** (long-press save of the actual
-    asset) → Phase 3 "Download pin from long press", now written. The
-    Java-vs-JNI question is answered: this save path is entirely DEX-side.
-    The rendition question in item 14 is what is still open.
+    asset) → Phase 3 "Download pin from long press", which was written,
+    shipped and **reverted**: the row can be made to appear but cannot be made
+    to download from the feed menu. The Java-vs-JNI question *is* answered —
+    this save path is entirely DEX-side — and the rendition question in item 14
+    is still open.
 16. **Download video / board** → "Download video" is already native and
     needs no patch; "Download board" remains the only Phase 3 work left.
 
