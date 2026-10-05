@@ -272,8 +272,16 @@ exists upstream*.
     is present on a video pin.
 - [ ] **Download board** — adds an option to the search "..." menu to bulk-download the images
   and videos of a board grid.
-  - Most involved of the three: a bulk operation over a grid, not a single asset. Unstarted,
-    and the Phase 0 warning about JNI still applies to the video half of it.
+  - **Not implementable as a patch; re-scoped out of Phase 3.** Nothing exists upstream: the
+    pin overflow menu has exactly eight rows and none is board-level, and
+    `rg -ril download` over the whole of the `gridactions` and `board` feature packages returns
+    zero files. Evidence in `reference/NOTES.md`.
+  - Multi-select already does bulk *share*, *collage*, *vote* and *move-to-board*, so the
+    missing piece is specifically the download loop, not the selection machinery.
+  - Cheapest honest version would still be a new row plus a click handler inside a
+    42-register enum-dispatch method, an N-item loop with its own progress and failure
+    handling, a MediaStore write per asset, and the video container question. That is a
+    feature build; if it is wanted it needs its own scope and risk note.
 
 ### Phase 4 — Links and sharing
 

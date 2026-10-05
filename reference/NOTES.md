@@ -3140,6 +3140,80 @@ that matters in a package whose resources are inlined as `sget` constants, and
 
 Both read the prebuilt caches and re-parse nothing.
 
+### Phase 3 item 3, "Download board": a feature build, not a patch
+
+The third Phase 3 item asks for an option in the board "..." menu that
+bulk-downloads every image and video in a board grid. Unlike items 1 and 2,
+nothing of it exists upstream, and the gap is not a gate — it is missing code.
+
+Evidence, in the order it was checked:
+
+- **The pin overflow menu has no such row.** `Lnj1/i0;` is the complete row-factory
+  class for that menu: eight static factories, one per row, each building one
+  `Lcom/pinterest/adapter/e;`. Their ids are `copy_link` (`c`), `download` (`d`),
+  `FACEBOOK_STORIES` (`e`), `INSTAGRAM_STORIES` (`f`), `internal_send` (`g`),
+  `more_apps` (`h`), `pin_messaging` (`i`) and `SAVE_LINK` (`j`). There is no
+  board-level or bulk variant, and no second factory class feeds the menu.
+- **No literals.** `download_board`, `Download board`, `bulk_download`,
+  `save_all_pins` and `board_download` all return nothing, via
+  `morphe-helpers scripts/find-string` and via the raw string-table scan.
+- **No resources either**, which is the part a literal search cannot see, since
+  Pinterest inlines its own resource ids as `sget` constants: `fielduse.py` finds
+  `bulk_move_pins_success`, `multi_pin_sharing_*` and no download field anywhere.
+- **No code at all.** `rg -ril download` over the whole of
+  `com/pinterest/feature/gridactions/` and `com/pinterest/feature/board/` — every
+  pin-action and board class in the app — returns **zero files**. The download code
+  that does exist lives entirely under the single-pin path found above
+  (`gridactions/utils/logging/`, `La21/`, `Luq1/`, `Lgs2/`).
+- **Multi-select has bulk actions, but not this one.**
+  `com/pinterest/feature/gridactions/multipin/` and
+  `com/pinterest/feature/multipinsharing/` implement select-many-then-act with
+  share, collage, vote and move-to-board (`bulk_move_pins_success`). Nothing there
+  downloads.
+
+So the item cannot be delivered as a fingerprint plus a smallest safe edit. Even
+the most favourable version — a new row that loops the existing single-pin
+downloader over the pins the grid already holds — needs all of: a new row factory,
+a click handler wired into `Laa1/b;.e(...)`, whose dispatch is a 42-register
+method switching over a merged R8 enum; an N-item download loop with its own
+progress and per-item failure handling; a MediaStore write per asset; and, for the
+video half, the container question the roadmap already flags as a possible
+`libx_media_handler.so` crossing. That is new logic measured in hundreds of lines,
+which is the definition of a feature build, and it is the same verdict the Substack
+offline section already reaches for the same reason.
+
+Recorded and left unstarted. If it is wanted later it should be scoped as its own
+project with its own risk note, not smuggled in as a Phase 3 patch.
+
+### morphe-helpers against this target
+
+`~/morphe-helpers` works here — `scripts/setup --check` passes 13/13 (apktool,
+smali, baksmali, java, rg, jq all run; only `adb` is absent, so device steps exit
+3). It is a better instrument than the ad-hoc scripts for fingerprint work, with
+one caveat on this APK.
+
+`scripts/decompile` cannot be used as-is: its identity step runs `apktool d -s`
+and that OOMs on a 133 MB, 73,720-class APK on this device (about 2 GB of free
+RAM), so `scripts/target-init --apk` fails at "could not read package/version".
+Worked around without touching the extraction:
+
+1. Registered the target in `~/morphe-helpers/targets.json` from the identity
+   already recorded above (package, version, versionCode, SHA-256), so no script
+   needs to re-derive it from the APK.
+2. Disassembled the eight already-extracted dex files with `baksmali` directly into
+   `~/apks/com.pinterest/14.38.0/smali/` — 73,720 classes, 582 MB, about four
+   minutes — and wrote a matching `meta.json`. This also moves the Pinterest cache
+   onto the `~/apks/<package>/<version>/` layout `AGENTS.md` asks for, so the
+   earlier recorded deviation is now resolved for Pinterest rather than deferred.
+3. `MORPHE_CACHE=~/apks` points the helpers at it. `scripts/class-outline`,
+   `scripts/get-method`, `scripts/find-string`, `scripts/dex-stats` and
+   `scripts/xrefs` all work against it.
+
+`resources: false` in that `meta.json` is accurate and deliberate: the apktool
+resource decode never completed, so `scripts/find-resource` and anything else
+needing decoded `res/` has no data. Resource *ids* are still visible in smali as
+`sget` from holders like `Lgi0/b;`, which is what `fielduse.py` searches.
+
 # Djezzy HTTP interceptor investigation (no patch — negative result)
 
 Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging
