@@ -3084,6 +3084,50 @@ event has no subscriber outside the closeup and promoted-pin surfaces. See
 collage-ads presenter). Any edit inside `e()` therefore changes collage ads too;
 an edit at the `G3` call site does not.
 
+### Phase 2 "Hide ad tags": there is no ad-tag view to hide
+
+Searched and not written. Recorded so the search is not repeated, and because the
+finding contradicts the transcription rather than merely complicating it.
+
+The transcription says "removes Pinterest's ad loop views so visual elements no
+longer reveal Promoted or Shop labels". Across the **3,111 unobfuscated
+app-owned classes** in the reference there is nothing that is an ad tag:
+
+| Searched | Hits |
+| --- | --- |
+| `adtag`, `adlabel`, `adinfo`, `adbadge`, `byline` | **0** |
+| `promoted` | 21, but data models (`PromotedQuizPinData...`) and `PromotedPinCloseupFloatingActionBarBehavior` |
+| `sponsor` | 3: `AdsIdeaPinCreatorAndSponsorView`, `BoardSponsoredCuratorView`, one more |
+
+Where the label actually comes from:
+
+- `Ljv/e;` is a resource-id holder, not a view. It owns the label strings:
+  `promoted_by`, `promoted_by_prefix`, `promoted_reason`, `sponsored_by`,
+  `sponsored_by_prefix`, `sponsored_pins_prefix`, `sponsored_pins_eu_prefix`,
+  `sponsored_pins_simple_prefix`.
+- `com/pinterest/activity/pin/view/modules/util/AvatarWithTitleAndSubtitleView`
+  is the unobfuscated view that **composes** them, in
+  `.b(Lcom/pinterest/api/model/cq;)V` — it reads `Ljv/e;->promoted_by` and
+  `sponsored_by` and writes them into its subtitle `GestaltText`.
+
+**The blocker is that this view is not ad-specific.** Its parameter is `cq;`, a
+general attribution model, and the same view renders ordinary "by <creator>"
+attribution. It is 214 lines doing avatar binding, title, subtitle, an icon
+(`Laq1/c;`) and accessibility text in one method. Suppressing it removes
+legitimate creator attribution too, and there is no single instruction inside it
+that touches only the ad case.
+
+`Lis1/b;.b(Lpe; Z)Z` does return a boolean over the sponsored prefixes, so it
+looks like the label decision, but it is a 96-line `ordinal()` dispatch over
+`Lis1/b;.a(pe;)Lsz2/u;` and nothing establishes which of its branches is the ad
+case. Editing it would be a guess of exactly the kind that produced the two
+reverted patches.
+
+So the options are: suppress attribution for ad pins specifically, which needs the
+ad-versus-not decision and runs into the same `p0` / `is_promoted` family that the
+download patch died on; or accept losing creator attribution as collateral. Neither
+is a small patch. Left for a deliberate decision rather than written speculatively.
+
 ### RETRACTED: "Download pin from long press" -- written, shipped, then reverted
 
 This patch was written, shipped in `v0.6.0-dev.24` enabled by default, reported
