@@ -1,3 +1,11 @@
+## [0.6.0-dev.24](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.23...v0.6.0-dev.24) (2026-10-05)
+
+### ✨ New Features
+
+* **pinterest:** disable the in-app share sheet ([135af54](https://github.com/dunecache/oyasumi-patches/commit/135af54a1f394be2a35320cf01e964f0547e7bc8))
+* **pinterest:** Download action in the pin long-press menu ([6d3b9eb](https://github.com/dunecache/oyasumi-patches/commit/6d3b9ebd0b47e2c692f6fda0cdc0512fab802526))
+* **pinterest:** force original image download ([4d6329b](https://github.com/dunecache/oyasumi-patches/commit/4d6329b9c8a0dcbf7f00cc97cf2e8601224e8dba))
+
 ## [0.6.0-dev.23](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.22...v0.6.0-dev.23) (2026-10-04)
 
 ### 🐛 Bug Fixes
