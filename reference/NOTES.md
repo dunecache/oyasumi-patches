@@ -3214,6 +3214,131 @@ resource decode never completed, so `scripts/find-resource` and anything else
 needing decoded `res/` has no data. Resource *ids* are still visible in smali as
 `sget` from holders like `Lgi0/b;`, which is what `fielduse.py` searches.
 
+### Phase 4 item 6, "Use the system share sheet": one gate, four callers
+
+Pinterest's custom share sheet is not a class you can suppress; it is a
+boolean. `Lhn1/a;` is a two-constant enum, `CONTROL` and `FRONT`, and the
+whole feature hangs off one accessor:
+
+```smali
+.method public final getShowInSharesheet()Z
+    .registers 2
+    sget-object v0, Lhn1/a;->CONTROL:Lhn1/a;
+    if-eq p0, v0, :cond_6
+    const/4 p0, 0x1
+    return p0
+    :cond_6
+    const/4 p0, 0x0
+    return p0
+.end method
+```
+
+Six instructions, and the answer is decided entirely by which constant the
+caller holds. The constant is assigned by `Lhn1/b;.a(Lfq0/v0;, Lfq0/w0;)Lhn1/a;`,
+which walks an `Lfq0/a0;.h(String, String, Lfq0/w0;)` experiment list — the
+entries are built in `Lhn1/b;.<clinit>` and include
+`android_closeup_download_in_sharesheet`; `sg_android_sharesheet_holdout`
+lives in `Lfq0/v0;` and `Lfq0/q;` — and returns `FRONT` if any entry matches,
+`CONTROL` otherwise.
+
+**This is why forcing the answer is the correct patch rather than a hack.**
+`CONTROL` is not an error state; it is the variant the app already ships to
+the holdout group. Forcing `false` pins an existing supported behaviour rather
+than inventing a third one, which is the same argument that made the Phase 3
+download edit acceptable.
+
+Four call sites, all asking the same question and all doing less when the
+answer is no:
+
+| Caller | What it is |
+| --- | --- |
+| `Lfn1/f;.G3(Ljava/util/ArrayList;)V` | the pin overflow row builder — the class the download patch edits |
+| `Lfn1/f;.N3(Lcom/pinterest/feature/sharesheet/view/SharesheetModalAppListView;)V` | share-sheet refresh; the false branch goes to `:goto_80` |
+| `Lr11/a;.a(Lr11/m;)Ljava/util/List;` | builds the social-app list; false jumps to `:cond_165` and takes the simpler list |
+| `Lnj1/t0;` | share-sheet helper |
+
+No other code in the app branches on it, so the blast radius is the share
+sheet and not four unrelated features.
+
+`getShowInSharesheet` is the only method in the APK with that name, and its
+surviving obfuscation is the useful signal: R8 does not keep a method name by
+accident, so this one is referenced across an obfuscation boundary or
+explicitly kept. The patch therefore leaves `definingClass` unset on the
+fingerprint and anchors on the method name plus the `CONTROL` field read,
+rather than on `Lhn1/a;`, which will not survive a release.
+
+**Verification beyond compiling.** The replacement body was applied to the real
+`hn1/a.smali` and reassembled with `smali assemble`, then disassembled again
+with `baksmali`; the round trip returns exactly:
+
+```smali
+.method public final getShowInSharesheet()Z
+    .registers 2
+    const/4 p0, 0x0
+    return p0
+.end method
+```
+
+So the class still assembles to a valid dex after the edit, which compiling
+Kotlin would not have shown. The injected block also passes the repo's own
+`check_inline_smali.py`, which needed a layout entry added for it — the checker
+only extracts `addInstructionsWithLabels` blocks, so the patch uses that call
+rather than `addInstructions` for that reason.
+
+**Not verified, and the honest limit of this one.** There is no device here,
+so whether the platform chooser actually appears is unconfirmed. What is
+confirmed statically is only that the four callers stop building the custom
+sheet. The send execution itself lives further down the pipeline
+(`Lc43/m;.w(...)` versus `.A(...)`, both of which just create coroutine
+scopes), so the fallback to an `ACTION_SEND` chooser was *not* traced. The
+patch description therefore promises the chooser only as the intent, and the
+device pass should confirm it before the description is trusted.
+
+### Phase 4 item 1, "Copy direct link": the option is already there
+
+Like Phase 3 item 1, this one is half-built upstream. The menu row exists:
+`Lnj1/i0;.c(Landroid/content/Context;)` builds it with icon
+`copy_link_with_background` (`Lis2/c;`), title `copy_link` (`Lgi0/b;`), action
+`Lkx1/o0;->LINK`, id `"copy_link"`. Nothing needs adding.
+
+The transcribed "known gap" is about *which URL* it copies, and that is not
+reachable from the menu. The click path, traced from the row:
+
+1. `Lfn1/f;.G3` adds the row; `Ls11/a0` also builds one directly at ins ~2847
+   with the same `LINK` action.
+2. `Ls11/x;.onClick(View)` dispatches through the interface `Ln11/e;`
+   (`o0`, `h2`, `Y1`, `E0`), which has two implementors, `Lr11/w;` and
+   `Lr11/e0;` — both of which delegate again and neither touches a clipboard.
+3. `Lnj1/o0;.h(View, String)` compares the row id against `"pincode"` and
+   `"copy_link"`; for the latter it calls
+   `Lnj1/i0;.b(Context, SendableObject, Lzo2/c;, Lpr/z0;)V`.
+4. That does not copy anything. It asks `Lpr/z0;.a(...)` for a builder,
+   receives an `androidx/recyclerview/widget/l`, and calls
+   `builder.m(SendableObject, Lzo2/c;, Lzo2/f;->COPY_LINK)` — it configures
+   the *send pipeline* with a send type.
+5. `Landroidx/recyclerview/widget/l;.m(...)` runs
+   `Ldr2/d;.a(String, Lzo2/c;, Lzo2/i;, Lzo2/f;, Ldr2/a;)` and continues
+   through a `Lc43/v;` coroutine. The URL comes from
+   `Lcom/pinterest/sendshare/model/SendableObject;->e()Ljava/lang/String;`,
+   which is shared by every send target.
+
+So the string that reaches the clipboard for a pin is chosen inside a generic
+key-value send pipeline, not in the menu. Changing what Copy link emits means
+either hooking `SendableObject.e()` — which every send target reads, so email
+and WhatsApp change too — or finding the per-send-type clipboard write. The
+one `ClipData.newPlainText` reached by following this path,
+`Landroidx/recyclerview/widget/l;.j(Lpl0/c;)V`, copies `invite_url` out of an
+`Lpl0/c;` payload and belongs to the multi-pin *invite* flow, not to a pin;
+the other five app-wide `newPlainText` sites are two-factor codes, a messaging
+reply, an ads debugger and merged androidx code.
+
+Verdict: not patch-shaped at the menu, and the "add an option" half of the item
+is already shipped. Recorded rather than forced. It becomes tractable if the
+work is reframed as "sanitize what every send target emits", which is Phase 4
+items 2 and 3 — and those have the same problem, since they would also have to
+hook `SendableObject.e()` or the share intent. That is the next thing to spike,
+and it should be spiked deliberately rather than discovered mid-patch.
+
 # Djezzy HTTP interceptor investigation (no patch — negative result)
 
 Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging

@@ -35,7 +35,7 @@ Substack item below is feasibility-unknown until the DEX is mapped.
 ## Where we stand
 
 Pinterest ships 10 named patches plus one internal patch that is not in the
-Manager's list, and one more written but not yet run on a device. All are
+Manager's list, and two more written but not yet run on a device. All are
 build-verified; see the table for how far each has been taken.
 
 | # | Patch | Default | What it does | Anchor | Runtime effect |
@@ -51,6 +51,7 @@ build-verified; see the table for how far each has been taken.
 | 9 | Morphe settings screen (label) | on | Renames the reused row string to "Morphe" in every shipped language | `settings_menu_teen_safety_resources`, 48 `res/values*` dirs | unverified |
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
 | 11 | Download pin from long press † | on | Puts Pinterest's own Download row into the pin overflow menu for image pins | `Lfn1/f;.G3(ArrayList)V`, eligibility call at ins 121 | unverified |
+| 12 | Disable in-app share sheet † | off | Answers no to Pinterest's own share-sheet gate, so the platform sheet is used instead | `Lhn1/a;.getShowInSharesheet()`, the only method of that name in the APK | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
 
 † Written and fingerprint-resolved against the pinned APK, but never applied to a
@@ -285,10 +286,17 @@ exists upstream*.
 
 ### Phase 4 — Links and sharing
 
-- [ ] **Copy direct link** — adds a "Copy direct link" option to the pin menu. The transcription
+- [~] **Copy direct link** — adds a "Copy direct link" option to the pin menu. The transcription
   notes this misses the tracked link structure in favour of the Pinterest web link; treat that
   as a **known gap to fix**, not a spec to reproduce. Verify what the in-app copy action
   actually emits before implementing.
+  - Verified: the option is **already native**. `Lnj1/i0;.c(Context)` builds a `copy_link` row
+    (icon `copy_link_with_background`, action `LINK`). Nothing needs adding.
+  - The gap is which URL it emits, and that is not reachable from the menu: the click path runs
+    `Lnj1/o0;.h` → `Lnj1/i0;.b` → `Lpr/z0;.a` builder → `androidx/recyclerview/widget/l;.m` →
+    `Ldr2/d;.a`, i.e. it configures the generic send pipeline with send type `COPY_LINK`. The
+    shared URL comes from `SendableObject.e()`, which every send target reads.
+  - Full trace and the five decoy clipboard sites are in `reference/NOTES.md`. Not forced.
 - [ ] **Sanitize copied links** — strips tracking parameters from copied pin URLs, leaving clean
   web addresses. Customizable via settings.
 - [ ] **Sanitize shared links** — strips tracking parameters from links shared via the default
@@ -304,10 +312,20 @@ exists upstream*.
     `com.pinterest.activity.web.WebViewActivity`, and
     `com.pinterest.browser.customTabs.chrome.ChromeTabBroadcastReceiver`. The Custom Tabs path
     and the plain WebView path may need separate edits.
-- [ ] **Use the system share sheet** — bypasses Pinterest's internal custom share sheet in favour
-  of the native Android share sheet, gated on a settings toggle.
-  - Confirmed present: `com.pinterest.feature.sharesheet` (100 classes) and
-    `com.pinterest.share.*`. Gated on the settings screen, so Phase 0 applies.
+- [~] **Use the system share sheet** — bypasses Pinterest's internal custom share sheet in favour
+  of the native Android share sheet.
+  - Written as `Disable in-app share sheet`, opt-in. The whole feature is one boolean:
+    `Lhn1/a;.getShowInSharesheet()` returns `this != CONTROL` on a two-constant enum, and the
+    constant is chosen by an experiment list containing `sg_android_sharesheet_holdout`. Forcing
+    `false` therefore pins the variant upstream already ships to its holdout group.
+  - Four call sites, all of which stop building the custom sheet when the answer is no. Chosen
+    over hiding a class because there is no single class to hide.
+  - Not settings-gated: the Phase 0 screen exists but wiring a toggle would mean a second
+    fingerprint and a per-call read, and the patch is one branch either way.
+  - Verified: fingerprint resolves to the only method of that name in the APK; the edited class
+    reassembles and round-trips through `smali`/`baksmali`; injected smali parses.
+    **Not** verified: that the platform chooser actually appears — the send execution was not
+    traced, only the four callers that stop building the custom sheet.
 
 ### Phase 5 — UI hiding
 

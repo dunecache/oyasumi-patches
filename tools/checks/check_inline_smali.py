@@ -82,6 +82,19 @@ LAYOUTS = {
             "method": "LegacyPromotedCloseupActionButtonModule.createView",
         },
     ],
+    # getShowInSharesheet: .registers 2, no declared parameters, so p0 is v0 and is both the
+    # receiver and the return slot. The replacement body writes only p0, which is why it is
+    # safe even though the old body is being discarded -- nothing else is live in a method
+    # this short that computes one enum comparison.
+    "sharesheet/DisableInAppShareSheetPatch.kt": [
+        {
+            "signature": "()Z",
+            "registers": 2,
+            "ins": 1,
+            "live": "v0=this and the return slot; no free registers",
+            "method": "Lhn1/a;.getShowInSharesheet",
+        },
+    ],
 }
 
 # private const val NAME = "value"  /  = 0x8  (unquoted numeric constants too)
