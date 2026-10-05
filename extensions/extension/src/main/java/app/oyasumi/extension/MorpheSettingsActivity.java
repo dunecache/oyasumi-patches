@@ -94,6 +94,9 @@ public final class MorpheSettingsActivity extends Activity {
         addToggleRow(body, "Hide search button",
                 "Hide the search button in the bottom navigation bar.",
                 "morphe_hide_search_nav");
+        addToggleRow(body, "Hide create button",
+                "Hide the create (+) button in the bottom navigation bar.",
+                "morphe_hide_create_nav");
         addToggleRow(body, "Hide notifications button",
                 "Hide the notifications button in the bottom navigation bar.",
                 "morphe_hide_notifications_nav");

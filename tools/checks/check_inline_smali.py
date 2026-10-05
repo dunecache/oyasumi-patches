@@ -69,6 +69,13 @@ LAYOUTS = {
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
     }],
+    "navigation/HideCreateNavButtonPatch.kt": [{
+        "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
+        "registers": 8,
+        "ins": 2,
+        "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
+        "method": "FloatingBottomNavBar.Q1",
+    }],
     # One entry per injected block, in source order, because the two constructors have different
     # register maps. Writing v0 in the two-parameter block would overwrite `this`.
     "comments/HideCommentsPatch.kt": [
@@ -80,19 +87,6 @@ LAYOUTS = {
             "ins": 5,
             "live": "v5=this; v0..v4 free",
             "method": "LegacyPromotedCloseupActionButtonModule.createView",
-        },
-    ],
-    # getShowInSharesheet: .registers 2, no declared parameters, so p0 is v0 and is both the
-    # receiver and the return slot. The replacement body writes only p0, which is why it is
-    # safe even though the old body is being discarded -- nothing else is live in a method
-    # this short that computes one enum comparison.
-    "sharesheet/DisableInAppShareSheetPatch.kt": [
-        {
-            "signature": "()Z",
-            "registers": 2,
-            "ins": 1,
-            "live": "v0=this and the return slot; no free registers",
-            "method": "Lhn1/a;.getShowInSharesheet",
         },
     ],
 }
