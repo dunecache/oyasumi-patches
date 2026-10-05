@@ -52,7 +52,8 @@ build-verified; see the table for how far each has been taken.
 | 8 | Morphe settings entry | on | Adds the "Morphe" row to Account Settings, opening `morphe://settings` | `labs/s;.invoke` builder, external-link row resolved from the dex | unverified |
 | 9 | Morphe settings screen (label) | on | Renames the reused row string to "Morphe" in every shipped language | `settings_menu_teen_safety_resources`, 48 `res/values*` dirs | unverified |
 | 10 | Morphe settings screen (manifest) | on | Registers the Morphe settings activity with a `morphe://` intent-filter | `AndroidManifest.xml` `<application>` | unverified |
-| 11 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
+| 11 | Hide Create nav button † | off | Hides the create (+) button in the bottom navigation bar | `FloatingBottomNavBar.Q1`, CREATE tab — the same seam as the search and notifications patches | unverified |
+| 12 | Force original image download † | off | Prefers the `originals` rendition over stock's 736x-first choice | `Lvu2/d1;.b()`, the only reader of the 736x field in the APK | unverified |
 | — | Morphe runtime state (internal) | n/a | Records the version being patched so patches can branch on it; never listed, never toggled | `packageMetadata.versionName` | n/a |
 
 † Written and statically verified, but never run on a device. It is the only
@@ -353,8 +354,17 @@ exists upstream*.
 
 All of these are settings-toggled through the Phase 0 screen, so all depend on it.
 
-- [ ] **Hide Create nav button** — hides the "+" bottom navigation button.
-  - Generalizes the proven Search/Notifications seam: `GONE` the view, never skip creation.
+- [x] **Hide Create nav button** — hides the "+" bottom navigation button.
+  - Written as `Hide Create nav button`, opt-in. Same seam as the search and notifications
+    patches: `GONE` the tab's view in `FloatingBottomNavBar.Q1`, never skip creating it.
+  - CREATE is an ordinary member of that loop, not a floating button: the bar's descriptor
+    table (`ae0/k;.<clinit>`) builds five tabs in order — HOME, SEARCH, CREATE, NOTIFICATIONS,
+    PROFILE — each handed to the same method, so the create button's view is the same register.
+  - Fingerprint is the existing `BottomNavTabAdderFingerprint`, already resolved and applied on
+    device for the other two tabs. Injected smali parses; the whole class reassembles and
+    round-trips through `smali`/`baksmali` with the block at instruction 4.
+  - Adds the `morphe_hide_create_nav` toggle to the Phase 0 settings screen.
+  - Not verified: that the button disappears and the remaining tabs reflow on a device.
 - [x] **Hide Notifications nav button** — hides the notifications navigation button.
   - Written. Same seam, same shape and same reasoning as the search patch, keyed on
     `Lde0/a;->NOTIFICATIONS`. Both patches insert into `Q1` and compose, since each block uses
