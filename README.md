@@ -61,9 +61,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.24](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.24)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;18 patches total
+> **[v0.6.0-dev.25](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.25)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;16 patches total
 <details open>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;13 patches</summary>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;11 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -76,8 +76,6 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable AppsFlyer tracking](#disable-appsflyer-tracking) | Neutralize the AppsFlyer attribution SDK, so no state is returned to the external data tracker. |  |
 | [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
 | [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
-| [Disable in-app share sheet](#disable-in-app-share-sheet) | Use the Android share sheet instead of Pinterest's own, so shares go through the system chooser rather than a Pinterest-drawn menu. |  |
-| [Download pin from long press](#download-pin-from-long-press) | Add a Download action to the pin long-press menu, so a pin's image can be saved without opening the pin. |  |
 | [Force original image download](#force-original-image-download) | Load the original full-resolution asset for pin images instead of the 736x rendition, at the cost of considerably more data. |  |
 | [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
 | [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |

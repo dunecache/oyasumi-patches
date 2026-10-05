@@ -1,3 +1,9 @@
+## [0.6.0-dev.25](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.24...v0.6.0-dev.25) (2026-10-05)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** narrow the share-sheet patch to its three presentation sites ([9f96fd0](https://github.com/dunecache/oyasumi-patches/commit/9f96fd0ec71caa4c6592bdb9df0b245feb27e22e))
+
 ## [0.6.0-dev.24](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.23...v0.6.0-dev.24) (2026-10-05)
 
 ### ✨ New Features
