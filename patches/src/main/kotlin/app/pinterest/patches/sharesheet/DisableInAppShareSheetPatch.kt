@@ -1,17 +1,34 @@
 package app.pinterest.patches.sharesheet
 
-import app.morphe.patcher.extensions.InstructionExtensions.addInstructionsWithLabels
-import app.morphe.patcher.extensions.InstructionExtensions.removeInstructions
+import app.morphe.patcher.extensions.InstructionExtensions.replaceInstruction
 import app.morphe.patcher.patch.bytecodePatch
 import app.pinterest.patches.shared.Constants.COMPATIBILITY_PINTEREST
 import app.pinterest.patches.shared.versionCheckPatch
 import com.android.tools.smali.dexlib2.Opcode
+import com.android.tools.smali.dexlib2.iface.instruction.OneRegisterInstruction
+import com.android.tools.smali.dexlib2.iface.instruction.ReferenceInstruction
+import com.android.tools.smali.dexlib2.immutable.reference.ImmutableMethodReference
+
+/**
+ * The sharesheet-variant accessor.
+ *
+ * Left alone by this patch. It is the accessor that *decides* whether Pinterest uses its own
+ * share sheet, and it has a fourth caller that gates the Download row in the pin overflow menu —
+ * see the patch for why overriding it was wrong. Filtered on instead, so each target still proves
+ * it calls the accessor.
+ */
+private val ACCESSOR_CALL = ImmutableMethodReference(
+    SHARE_SHEET_ACCESSOR,
+    SHARE_SHEET_ACCESSOR_NAME,
+    listOf(),
+    "Z"
+)
 
 @Suppress("unused")
 val disableInAppShareSheetPatch = bytecodePatch(
     name = "Disable in-app share sheet",
-    description = "Use the Android share sheet instead of Pinterest's own, so shares go through " +
-        "the system chooser rather than a Pinterest-drawn menu.",
+    description = "Answer no to Pinterest's own share-sheet UI at its three presentation " +
+        "sites, so sharing goes through the system sheet instead.",
     default = false
 ) {
     compatibleWith(COMPATIBILITY_PINTEREST)
@@ -19,54 +36,59 @@ val disableInAppShareSheetPatch = bytecodePatch(
     dependsOn(versionCheckPatch)
 
     execute {
-        // The whole patch. `getShowInSharesheet()` is eight bytes of Dalvik and answers a
-        // question about one enum constant, so there is nothing to narrow:
+        // Rewritten after a device report. The first version forced
+        // `Lhn1/a;.getShowInSharesheet()` — the accessor that *decides* whether Pinterest uses its
+        // own sheet — to return false. That was wrong, because the accessor has a fourth caller
+        // with nothing to do with presenting a sheet:
         //
-        //   sget-object  v0, Lhn1/a;->CONTROL:Lhn1/a;
-        //   if-eq       p0, v0, :return_zero
-        //   const/4      p0, 0x1
-        //   return       p0
-        //  :return_zero
-        //   const/4      p0, 0x0
-        //   return       p0
+        //   Lfn1/f;.G3(ArrayList)V, at ins 114 (classes6.dex, offsets resolved with androguard):
+        //     invoke-virtual {v6}, Lhn1/a;->getShowInSharesheet()Z
+        //     if-nez          v6, +004h      -> @0x01d0 = ins 118, the eligibility gate
+        //     goto/16         +0dfh         -> @0x038a = ins 235, past the download block
         //
-        // `p0` is both the receiver and the return slot — `.registers 2`, no declared
-        // parameters — so `const/4 p0, 0x0` followed by `return p0` is a complete and
-        // type-correct replacement, and it is the same value `CONTROL` produces, which is
-        // the point: this pins the variant upstream already serves its holdout group rather
-        // than inventing a third behaviour.
+        // With the accessor forced false the branch took the goto and `Download pin from long press`
+        // silently stopped working: the row was never added, because the jump landed after the
+        // block that adds it. Two patches cancelling each other, recorded nowhere.
         //
-        // The old instructions are removed and the new ones added at index 0 rather than
-        // patched in place. Rewriting the body in place would mean matching the `sget-object`
-        // and the branch target, and a nop-padded variant of those is exactly the shape that
-        // has crashed this bundle before; removing the body outright leaves nothing to keep
-        // in sync. `check` guards the count so a future build that grows the method fails
-        // loudly instead of leaving a partial body behind.
-        val method = InAppShareSheetGateFingerprint.method
-        val instructions = method.implementation!!.instructions
-
-        check(instructions.size == EXPECTED_INSTRUCTION_COUNT) {
-            "getShowInSharesheet() has ${instructions.size} instructions, expected " +
-                "$EXPECTED_INSTRUCTION_COUNT. The body is being replaced wholesale, so a " +
-                "different count means the method gained logic this patch does not understand."
-        }
-        check(instructions.any { it.opcode == Opcode.SGET_OBJECT }) {
-            "getShowInSharesheet() no longer reads a static field; it is not the enum " +
-                "comparison this patch replaces."
-        }
-
-        method.removeInstructions(0, instructions.size)
-        method.addInstructionsWithLabels(
-            0,
-            """
-            const/4 p0, 0x0
-            return p0
-            """.trimIndent()
+        // This version leaves the accessor alone, so it keeps returning whatever the experiment
+        // says and the Download row is untouched, and forces the answer at the three sites that
+        // actually build the custom sheet:
+        //
+        //   Lfn1/f;.N3(SharesheetModalAppListView)V   the sheet refresh
+        //   Lr11/a;.a(Lr11/m;)Ljava/util/List;         the social-app list inside the sheet
+        //   Lnj1/t0;.a(...)NavigationImpl;              the share-navigation helper
+        //
+        // All three have the same two-instruction shape, so the edit is uniform.
+        val targets = listOf(
+            ShareSheetRefreshFingerprint,
+            ShareSheetAppListFingerprint,
+            ShareSheetNavigationFingerprint
         )
+
+        targets.forEach { target ->
+            val method = target.method
+            val instructions = method.implementation!!.instructions
+
+            val callIndex = instructions.indexOfFirst { instruction ->
+                instruction.opcode == Opcode.INVOKE_VIRTUAL &&
+                    (instruction as? ReferenceInstruction)?.reference == ACCESSOR_CALL
+            }
+            check(callIndex != -1) {
+                "${target.definingClass}->${target.name} no longer calls " +
+                    SHARE_SHEET_ACCESSOR_NAME + "(); the site this patch edits has moved."
+            }
+            check(instructions[callIndex + 1].opcode == Opcode.MOVE_RESULT) {
+                "ins ${callIndex + 1} after the accessor call in ${target.definingClass} is " +
+                    "${instructions[callIndex + 1].opcode}, not MOVE_RESULT. The result is no " +
+                    "longer consumed immediately, so replacing it would not answer the question " +
+                    "this patch means to answer."
+            }
+
+            // `move-result` and `const/4` are both one code unit, so no width changes and no
+            // branch offset moves. The invoke stays, its result simply discarded, which is legal.
+            // The register comes off the instruction being replaced rather than being hardcoded.
+            val result = instructions[callIndex + 1] as OneRegisterInstruction
+            method.replaceInstruction(callIndex + 1, "const/4 v${result.registerA}, 0x0")
+        }
     }
 }
-
-/**
- * `sget-object`, `if-eq`, `const/4`, `return`, `const/4`, `return`.
- */
-private const val EXPECTED_INSTRUCTION_COUNT = 6
