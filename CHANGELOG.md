@@ -1,3 +1,10 @@
+## [0.6.0-dev.26](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.25...v0.6.0-dev.26) (2026-10-06)
+
+### ✨ New Features
+
+* **pinterest:** hide the "Ideas you might love" section ([2f13198](https://github.com/dunecache/oyasumi-patches/commit/2f131987e7f6e8a38786c2e0c6600df8020ead5b))
+* **pinterest:** hide the create button in the bottom nav bar ([7d239e8](https://github.com/dunecache/oyasumi-patches/commit/7d239e8daf17f4f331c86b1881fcfa71394e0adc))
+
 ## [0.6.0-dev.25](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.24...v0.6.0-dev.25) (2026-10-05)
 
 ### 🐛 Bug Fixes

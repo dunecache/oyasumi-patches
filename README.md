@@ -61,9 +61,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.25](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.25)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;16 patches total
+> **[v0.6.0-dev.26](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.26)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;18 patches total
 <details open>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;11 patches</summary>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;13 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -77,6 +77,8 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
 | [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
 | [Force original image download](#force-original-image-download) | Load the original full-resolution asset for pin images instead of the 736x rendition, at the cost of considerably more data. |  |
+| [Hide "Ideas you might love" section](#hide-ideas-you-might-love-section) | Hide the suggested-topics section shown under a pin. |  |
+| [Hide Create nav button](#hide-create-nav-button) | Hide the create (+) button in the bottom navigation bar. |  |
 | [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
 | [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |
 | [Hide comments](#hide-comments) | Hide the comments button on a pin, so comments cannot be opened from the pin. |  |
