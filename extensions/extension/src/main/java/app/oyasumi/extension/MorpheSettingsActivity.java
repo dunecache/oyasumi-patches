@@ -103,6 +103,9 @@ public final class MorpheSettingsActivity extends Activity {
         addToggleRow(body, "Hide comments",
                 "Hide the comments button on a pin.",
                 "morphe_hide_comments");
+        addToggleRow(body, "Hide \"Ideas you might love\"",
+                "Hide the suggested-topics section under a pin.",
+                "morphe_hide_ideas_section");
 
         root.addView(body);
         setContentView(root);

@@ -3783,3 +3783,360 @@ another fingerprint.
 Substack artifacts). The helpers decompile cache above is the working
 copy; per `AGENTS.md` nothing derived was committed to this repo beyond
 this note, and no `~/apks` extraction was created or overwritten.
+# "Ideas you might love" section on the pin closeup — investigation (2026-10-06)
+
+## Behaviour in one sentence
+
+Hide the "Ideas you might love" topic section (a header `TextView` plus a vertical stack of
+topic cards) that appears in the related-modules list under the pin's media on the pin
+closeup screen.
+
+## Pinned target
+
+- Package `com.pinterest`, version `14.38.0`, versionCode `14388010`, regular APK.
+- Cache: `~/apks/com.pinterest/14.38.0/` — `smali/` (8 dex, 73,720 classes),
+  APK SHA-256 `af6b383adb445cebee1ca43f14ac409f91475c1d62e0e11ef52ef52e29fb0553`.
+- Device dump supplied by the user: `/storage/emulated/0/Download/pinterst_love.xml`
+  (uiautomator, 1080x2388, 152 nodes).
+
+## What the dump shows
+
+Inside `com.pinterest:id/closeup_recycler_view` →
+`com.pinterest:id/recycler_adapter_view` (a `RecyclerView`), the children are a mix of
+related-pin cells (`pin_rep_id`, with `pin_overflow_action_id` siblings) and one plain
+`LinearLayout` that is the section in question:
+
+```
+node index=2  class=android.widget.LinearLayout  bounds=[10,359][535,1832]
+  node index=0  TextView  text="Ideas you might love"
+  node index=1  FrameLayout  content-desc="Topic: Essay writing service"  clickable=true
+    node index=0 ImageView id=thumbnail_image_layer
+    node index=1 ImageView id=thumbnail_wash_layer
+    node index=2 TextView  text="Essay writing service"
+  ... 4 more identical topic cells ...
+```
+
+So the section is one sibling of the related-pin rows inside the closeup related-modules
+`RecyclerView`, not a separate fragment or bottom sheet. Its header has **no resource id**,
+and the cells are built in code, not inflated from a layout (see below).
+
+## The header string is server-supplied, not a resource
+
+- `rg -F "Ideas you might love"` over `~/apks/com.pinterest/14.38.0/smali`: no match.
+- Parsed `resources.arsc` (default locale, 6,603 resolved strings): no match. The nearest
+  entries are `Here are some other ideas you might like about %1$s` and `Brands you might
+  like`, neither of which is this header.
+- Conclusion: the header text arrives in the closeup related-modules API response. It
+  therefore **cannot** be used as a fingerprint, and the section cannot be identified by
+  its text.
+
+## The module chain (traced from the view up to the API model)
+
+The section is a related-module of type `com.pinterest.api.model.z5`. Traced chain, each
+link verified by reading the smali:
+
+1. **`com/pinterest/feature/pin/closeup/datasource/RelatedModulesModelFilter.smali`**
+   (201 lines, unobfuscated name). `b(Lmu1/s;)Z` is a `Predicate` over the module list.
+   It `instance-of`-checks `z5`, reads `z5.g()` (the module id string) and dispatches via a
+   `sparse-switch` on `String.hashCode()` over module ids: `feed_product_module_story`,
+   `related_pins_sta_above_pin_ads_module`, `related_pins_3p_ads_module_qcm`,
+   `related_modules_header`, `push_notification_upsell`,
+   `related_pins_sta_overlay_ads_module`, `SKIN_TONE_FILTER_QUERIES`. Everything else
+   returns `false` (keep). This is the natural place to drop a module by id — but see the
+   uncertainty below: **the id for this section was not found.**
+   Used by `OrganicPinCloseupPresenter` (4 refs) and `PromotedPinCloseupPresenter` (3 refs).
+
+2. **`com/pinterest/api/model/z5.smali`** — the related-module model. `g()` returns field
+   `d` (module id). `c()` returns field `c` with a fallback chain (`c` → `a` (Long) →
+   `hashCode()`), so it is a *key*, not a title. Field `y` is the item
+   `List` (`iget-object v0, p2, Lcom/pinterest/api/model/z5;->y:Ljava/util/List;`), field
+   `C` is a `String` used as a title fallback (`wx0/e` uses it when non-empty, otherwise
+   falls back to the passed-in default), field `t` is a `HashMap` of extras.
+   `z5`'s only string literal is `thematic_deal_module`.
+
+3. **`hr1/f.smali`** (`Lhr1/f`, `.super Lc01/g`) — the presenter for this section. Its
+   `e(Liu1/l;Ljava/lang/Object;I)V` unwraps the model (`z5`, or `ti` → field `s` → `z5`),
+   resolves the already-created view via `Le53/a;->e(View)` and `instance-of Lwx0/e`, then
+   iterates `z5.y`, keeping only `q7` items whose `m()` is non-blank and not whitespace
+   (`Lkotlin/text/StringsKt;->K`). Delegates each to `wx0/e.r3(q7, int)`.
+
+4. **`wx0/e.smali`** (`Lwx0/e`, `.super Liu1/c`) — the section binder. `r3(Lcom/pinterest/api/model/q7;I)V`
+   decides the cell class per item: `instance-of Lxx0/j` with `j.e` true and `j.f` non-null
+   → `new xx0/o`, else `new xx0/q`; sets `LinearLayout$LayoutParams` with
+   `item_vertical_spacing` bottom margin; `addView`; then `A5(url, …)` and
+   `D(model.m(), boolean)` to fill the cell.
+
+5. **`xx0/c.smali`** (`Lxx0/c`, abstract, `.super Lbb1/h` → `android.widget.FrameLayout`) —
+   the topic cell base. Field `d` is a `GestaltThumbnail`, `e` a `GestaltText`. Its
+   `D(String, Z)` sets the text and then the accessibility label:
+   `sget Lgi0/b;->content_description_bubble_cell:I` (which is the string
+   `Topic: %1$s`, resource id `0x7f1406a4`) → `Resources.getString(int, Object[])` →
+   `View.setContentDescription`. **This is the exact source of the dump's
+   `content-desc="Topic: …"`.** Concrete subclasses: `xx0/l` (abstract) → `xx0/o`, and
+   `xx0/q`. `xx0/o` builds a `LinearLayout` with `rounded_rect_medium_radius_opaque_background`
+   holding the thumbnail and text; `xx0/q` builds an avatar + text variant.
+
+6. **`com/pinterest/feature/core/view/BubblesListViewCreator.smali`** and **`xx0/j.smali`**
+   (`Lxx0/j`, `.super Lqc1/b` → `LinearLayout`) — the vertical bubbles container, created
+   by `BubblesListViewCreator._get_creator_$lambda$0`, registered in the Dagger component
+   `pr/c9` (`F8()`, view types `0x41`, `0x3f`, `0x119`) and dispatched from
+   `d2/g` on `VIEW_TYPE_BUBBLES_LIST`. It sets orientation `VERTICAL` and end padding
+   `unthemed_sema_space_300`.
+
+7. **`pr/i9.smali`** (`Lpr/i9`) — the presenter factory, a large `packed-switch` on an int
+   discriminator. Case `:pswitch_16` constructs `hr1/f` with discriminator `0`. It is the
+   only `hr1/f` construction site outside `di1/t`, and `di1/t` is
+   `.super Ldi1/f` (a collage/cutout closeup path, not the organic pin closeup).
+
+## What the change would touch
+
+Two candidate seams, in order of preference:
+
+- **A. Filter the module out of the list** — return `true` from
+  `RelatedModulesModelFilter.b` for this section's module id. Smallest edit, removes the
+  section *and* its header, and nothing else on the screen. **Requires the module id
+  string, which was not found.**
+- **B. Hide the bound view** — set `GONE` on the section container in `hr1/f.e` /
+  `wx0/e`. Works without the id, but leaves the layout slot if the parent does not re-measure,
+  and `hr1/f`'s view is resolved indirectly through `Le53/a;->e(View)`.
+
+## Uncertainties, stated plainly
+
+1. **The module id string for this section is not found.** `RelatedModulesModelFilter`'s
+   `sparse-switch` covers seven ids and this section is not among them, so it returns
+   `false` and is kept — but that tells us nothing about what its id *is*. The full set of
+   `z5` module ids is not enumerable from the smali, since ids come from the server. The
+   `il$c` enum (`com/pinterest/api/model/il$c.smali`) lists ~80 module-type strings
+   including `related_use_cases`, `related_broad_interest_module`,
+   `related_style_ideas_carousel`, `related_modules_header`; `il$c` is referenced by no
+   other class in the dex, so it is a deserialization table, not a dispatch site. **I have
+   not confirmed which of these, if any, is this section.** Guessing here would produce a
+   patch that applies cleanly and does nothing.
+2. **The section container class is not identified.** The dump's section `LinearLayout` has
+   no resource id, so it cannot be matched to a layout file, and the view is built in code.
+   `xx0/j` is the *bubbles list* inside the section, not the section itself; the header
+   `TextView` is added by something not yet traced. `hr1/f` is the presenter, not the view.
+3. **The dump is one pin, one scroll position.** Whether the section appears on every pin
+   or only some (e.g. only where the server returns the module) is not established.
+4. **`related_modules_header` appears in the filter's switch and returns `v1` (false, keep).**
+   If this section is the "related modules" header module rather than a bubbles module, seam
+   A would be a one-line change to an existing case. Unverified.
+5. Not confirmed that `xx0/o` (thumbnail variant) versus `xx0/q` (avatar variant) is the cell
+   on screen. The dump's cells carry `thumbnail_image_layer`, which points to `xx0/o`, but
+   `wx0/e` selects between them at runtime from item state.
+
+## Suggested next step before implementing
+
+Two cheap dynamic checks would close items 1 and 2 without guessing:
+
+- Capture a `uiautomator dump` while the section is on screen **and** the logcat line from
+  the related-modules response, to read the module id the server actually sent.
+- Or: in a debugger / via a Frida-style hook, print `z5.g()` for each module in
+  `RelatedModulesModelFilter.b` on a pin that shows the section, and diff against a pin that
+  does not.
+
+Fingerprint candidate for seam B, pending item 2: `Lhr1/f;.e(Liu1/l;Ljava/lang/Object;I)V`,
+anchored on the `instance-of Lwx0/e` / `Le53/a;->e` pair plus the `q7` + `StringsKt.K`
+whitespace filter. These are specific but obfuscated, and would need re-verification on any
+newer build.
+
+## Nothing implemented yet
+
+No patch code written. This entry is investigation only, per the Phase 1 review gate.
+
+## Patch 9 — Hide the "Ideas you might love" section (seam B, implemented)
+
+Chosen seam: hide the bound view in `Lhr1/f;.e`, not filter the module by id. The id is still
+unknown and a guessed fingerprint would apply cleanly and do nothing.
+
+### The thing that makes this seam safe: a `packed-switch` with no default arm
+
+`Lhr1/f` is one class serving **four** different closeup sections. The discriminator is field
+`a:I`, set from the constructor's third argument. `e` opens with:
+
+```
+ 84  iget          p0, p0, Lhr1/f;->a:I
+ 86  packed-switch p0, :pswitch_data_1f8
+ 88  check-cast    p1, Lvx0/c;          <- fall-through continues here
+```
+
+and the table is `.packed-switch 0x0` with exactly three arms:
+
+```
+666  :pswitch_data_1f8
+667  .packed-switch 0x0
+668      :pswitch_1c8
+669      :pswitch_19f
+670      :pswitch_176
+671  .end packed-switch
+```
+
+Keys 0, 1 and 2 jump to labels near the end of the method. **A `packed-switch` has no default
+arm, so a discriminator of 3 falls straight through to instruction 2 and nowhere else.** That
+fall-through arm is the only one that unwraps `z5`/`ti`, resolves the view through
+`Le53/a;->e(View)`, requires a `Lwx0/e` binder, filters `z5.y` on `q7` + `StringsKt.K`, and calls
+`Lwx0/e;->r3`.
+
+All four construction sites were enumerated to confirm which discriminator is the topic section:
+
+| construction site | discriminator | reaches |
+| --- | --- | --- |
+| `pr/i9.smali:62` (field `f`) | `0` | `:pswitch_1c8` — `gr1/a` binder |
+| `pr/i9.smali:694` (field `g`) | `1` | `:pswitch_19f` |
+| `di1/t.smali:283` | `2` | `:pswitch_176` |
+| `pr/i9.smali:1365` (field `Q`) | `3` | **fall-through — the topic section** |
+
+This is the load-bearing detail. Inserting at index 2 does not need to identify the section by
+its own contents, because control flow already selects it: the three sibling arms jump away and
+never execute the insertion point. They are not collateral damage, they are skipped.
+
+### What the patch does
+
+`sections/HideIdeasSectionPatch.kt` inserts 12 instructions at index 2 of
+`Lhr1/f;.e(Liu1/l;Ljava/lang/Object;I)V`: `instance-of`/`check-cast` the `p1` view parameter,
+read `morphe_hide_ideas_section` through the extension, and `setVisibility(GONE)`.
+
+- `GONE` needs `const/16`, not `const/4`: `const/4` has a signed 4-bit literal and `0x8` would
+  assemble as `-8`, storing `0xFFF8` — neither VISIBLE, INVISIBLE nor GONE, so the user would see
+  a blank gap instead of a removed section. Same trap as the comments and nav patches.
+- `p1` is re-tested rather than assumed a `View`: `Liu1/l` is an interface, and the sibling arm
+  sharing this register explicitly nulls `p1` when the argument is not a `View`
+  (`hr1/f.smali:118-129`).
+- Registers: `.registers 11` with four parameters, so `this`=`v7`, view=`v8`, model=`v9`,
+  position=`v10`, and `v0`-`v6` are free. The block uses `v0` (view), `v1` (context, then flag,
+  then visibility) and `v2` (key). All three are re-initialised by the surrounding code before it
+  reads them — `v0` by the `sget-object` of `Laj0/f.a` at ins 2, `v1` and `v2` by the two
+  `const/4 0x0` that follow.
+- Setting `GONE` rather than returning early: `e` returns `void` and is the shared `Lc01/g.e`
+  bind entry point, called from `Lm72/d0;.n` with the view it is about to populate. There is no
+  value to return to signal "skip me", and hiding lets the presenter still bind into a view that
+  is not drawn.
+
+### Why nothing restores it to VISIBLE
+
+Checked every class on the bind path — `hr1/f`, `wx0/e`, `xx0/j`, `qc1/b`, `qc1/c` — none of them
+calls `setVisibility` at all. The shared binder `Lm72/d0;.n` (`m72/d0.smali:99-160`) sets only a
+content description on the way out and never touches visibility. So there is no re-show after
+this runs, which is the failure mode that made the first three comments-patch attempts no-ops.
+**This is a static argument. It has not been tested against a recycling `RecyclerView` on a
+device, and that is the one thing that could still make this patch a no-op.**
+
+### Fingerprint
+
+`Lhr1/f;.e` with return type `V` and parameters `(Liu1/l;, Ljava/lang/Object;, I)` — the class
+declares exactly one method named `e`, so class plus signature is already unique. Filters are
+`instanceOf("Lcom/pinterest/api/model/z5;")`, `instanceOf("Lcom/pinterest/api/model/q7;")`,
+`methodCall(StringsKt, "K", ...)`, and `methodCall("Lwx0/e;", "r3", ["Lcom/pinterest/api/model/q7;", "I"], "V")`.
+All four are unobfuscated names, and the sibling arms use `gr1/a` and never touch `q7`, so the
+filters separate this arm from its neighbours.
+
+### Verification performed
+
+- `./gradlew :patches:compileKotlin --offline` succeeds (Java 21, `GITHUB_ACTOR`/`GITHUB_TOKEN`
+  set, daemon stopped first). **This proves the Kotlin and the fingerprint DSL type-check, not
+  that the fingerprint matches the pinned APK.**
+- Ran the rendered smali through **Morphe's own** `InlineSmaliCompiler`
+  (`InlineSmaliCompiler.Companion.compile(body, "Liu1/l;Ljava/lang/Object;I", 11, false)`,
+  morphe-patcher 1.13.0) rather than a hand-rolled parser. It produced 12 instructions with no
+  grammar error, confirming the inline block is accepted by the same compiler the patch uses.
+- Spliced that block into the **real** `hr1/f.smali` from the cache at instruction index 2 and
+  assembled the whole class with smali: `assemble ok = true`. This proves register counts, label
+  resolution and instruction encodings are all valid for the real method, not just for a stub.
+- Disassembled the assembled dex back: opcodes at indices 2-13 are exactly the injected block
+  (`22c` instance-of, `21t` if-eqz, `21c` check-cast, `35c` invoke-virtual, `11x` move-result-object,
+  `21c` const-string, `35c` invoke-static, `11x` move-result, `21t` if-eqz, `21s` const/16,
+  `35c` invoke-virtual, `10x` nop), and index 14 is the original `check-cast p1, Lvx0/c;`. The
+  insertion landed immediately after the `packed-switch`.
+- The extension toggle is one `addToggleRow(body, PINTEREST, ...)` call identical in shape to the
+  three already there. It was **not** compiled: Gradle wants an Android SDK and Termux has none,
+  and AGENTS.md forbids pulling a toolchain down without approval.
+
+### Fingerprint resolution (added after the first pass)
+
+The "not verified" note above stood until this was run. It has now been resolved against the
+pinned APK's dex by `.scratch/resolve_ideas_fp.py`, which applies the fingerprint exactly as
+written in the Kotlin — class + name + return type + parameters, then every filter ANDed:
+
+```
+classes6.dex  Lhr1/f;->e(Liu1/l;Ljava/lang/Object;I)V
+    registers=11  instructions=264
+    instance-of Lcom/pinterest/api/model/z5;                   OK
+    instance-of Lcom/pinterest/api/model/q7;                   OK
+    call      Lkotlin/text/StringsKt;->K(Ljava/lang/CharSequence;)Z OK
+    call      Lwx0/e;->r3(Lcom/pinterest/api/model/q7;I)V      OK
+
+methods on Lhr1/f;:            4
+matching name+descriptor:      1
+SURVIVORS all filters:         1
+```
+
+Exactly one method survives, so `match()` returns a single match and the `method` accessor is
+unambiguous.
+
+Two bugs in the resolver itself, both of which first showed up as a **false negative** and are
+worth recording because the same trap would hit anyone reusing it:
+
+1. androguard renders an invoke as `v7, v9, v1, Lwx0/e;->r3(...)V` — the reference is the last
+   comma-separated field. Comparing the whole string against the bare method reference made
+   every `methodCall` filter read `MISSING`.
+2. androguard renders descriptors with a space after each parameter's `;`, so the target is
+   `r3(Lcom/pinterest/api/model/q7; I)V` and not `r3(Lcom/pinterest/api/model/q7;I)V`. Only the
+   two-parameter call is affected, which is why the `StringsKt.K` filter matched and this one did
+   not — a difference that looks like a real fingerprint problem and is not.
+
+Also: `code.get_ins_size()` reports `4` for this 264-instruction method and must not be trusted.
+The iterated instruction count is the number to use.
+
+### Negative control: are the filters load-bearing?
+
+`.scratch/resolve_ideas_fp2.py` drops each filter in turn. **All six variants still match,
+including "no filters at all"** — `Lhr1/f` declares four methods and exactly one is named `e`,
+so class + signature alone already resolves uniquely.
+
+That means the four filters are **redundant on 14.38.0, not disambiguating**. They are kept as
+insurance, and the reasoning is specific: the obfuscated names they pin (`q7`, `wx0/e.r3`) are the
+ones that would plausibly be renamed in a future release, and without the filters a release that
+added a second `e` overload would resolve to the wrong method silently. With them, a rename breaks
+the fingerprint loudly at patch time instead. It is defence in depth, not load-bearing logic, and
+the notes should not claim otherwise.
+
+### The fall-through claim, verified from the dex payload
+
+`.scratch/check_pswitch.py` reads the `packed-switch` payload directly rather than trusting the
+disassembly:
+
+```
+payload: ident=0x0100 size=3 first_key=0 targets=[454, 0, 413]
+  covers keys      : [0, 1, 2]
+  discriminator 3  : FALLS THROUGH
+```
+
+Three arms, `first_key = 0`, keys `[0, 1, 2]`, so a discriminator of `3` has no arm and execution
+continues at the next instruction — which is index 2, `check-cast v8, Lvx0/c;`, exactly where the
+patch inserts. The three sibling sections jump to offsets 454, 0 and 413 and never reach it.
+
+The register claim checks out against the dex as well: `registers = 11`, four parameters including
+`this`, so `v0`-`v6` are free and the block's use of `v0`, `v1`, `v2` is in range.
+
+### Still not verified
+
+- **No device test.** The whole argument for `GONE` sticking is static: no class on the bind path
+  (`hr1/f`, `wx0/e`, `xx0/j`, `qc1/b`, `qc1/c`, and the shared binder `m72/d0.n`) calls
+  `setVisibility`. A recycled `RecyclerView` view is the one thing that could still undo it, and
+  that is the failure mode that made the first three comments-patch attempts silent no-ops.
+- The section's view type constant is still unknown, so the extensible `m72/d0.n` design has not
+  been started. Extending to a second section means finding that section's presenter the same way
+  this one was found; the alternative is to read the `Ll72/a.getItemViewType(I)` return value in
+  `m72/d0.n` and move all of them to one hook keyed on a list of constants.
+- Whether the topic cells on screen are `xx0/o` (thumbnail) or `xx0/q` (avatar) is still open.
+  The dump's `thumbnail_image_layer` points to `xx0/o`, and `wx0/e.r3` chooses at runtime from
+  item state. It does not affect this patch, which hides the container either way, but it would
+  matter for a patch that targets the cells individually.
+- The section's view type constant is still unknown, so the extensible `m72/d0.n` design has not
+  been started. Extending to a second section means finding that section's presenter the same way
+  this one was found; the alternative is to read the `Ll72/a.getItemViewType(I)` return value in
+  `m72/d0.n` and move all of them to one hook keyed on a list of constants.
+- Whether the topic cells on screen are `xx0/o` (thumbnail) or `xx0/q` (avatar) is still open.
+  The dump's `thumbnail_image_layer` points to `xx0/o`, and `wx0/e.r3` chooses at runtime from
+  item state. It does not affect this patch, which hides the container either way, but it would
+  matter for a patch that targets the cells individually.
