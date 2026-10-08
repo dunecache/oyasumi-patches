@@ -1,3 +1,9 @@
+## [0.6.0-dev.29](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.28...v0.6.0-dev.29) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** stop reusing a call result as an invoke receiver ([635f95b](https://github.com/dunecache/oyasumi-patches/commit/635f95b37c88f3b9d963d6ace12251335a166ff6))
+
 ## [0.6.0-dev.28](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.27...v0.6.0-dev.28) (2026-10-08)
 
 ### 🐛 Bug Fixes
