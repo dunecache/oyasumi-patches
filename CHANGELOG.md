@@ -1,3 +1,9 @@
+## [0.6.0-dev.31](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.30...v0.6.0-dev.31) (2026-10-08)
+
+### ✨ New Features
+
+* **truecaller:** return an empty contact list ([1faf400](https://github.com/dunecache/oyasumi-patches/commit/1faf400128abdb1e60fc51b31c92afb4f95ff750))
+
 ## [0.6.0-dev.30](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.29...v0.6.0-dev.30) (2026-10-08)
 
 ### 🐛 Bug Fixes
