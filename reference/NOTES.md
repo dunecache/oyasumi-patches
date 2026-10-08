@@ -5357,3 +5357,49 @@ La52/g0;.u const-strings = ["favoritesFilter", "phonebookFilter"]
   fingerprints end to end.
 - The other two fingerprints were never exercised either, for the same reason: the session aborted on
   the Paresh failure before reaching them.
+
+## Defect — the type filter never matched; dropped (found on device, v0.6.0-dev.32)
+
+v0.6.0-dev.32 still failed on device, on the same fingerprint and the same line:
+
+```text
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+  app.truecaller.patches.contacts.PartitionedContactsLookupFingerprint
+  at app.truecaller.patches.contacts.EmptyContactListPatchKt...(EmptyContactListPatch.kt:79)
+```
+
+### What the line number proved
+
+`EmptyContactListPatch.kt:79` is the **third** of the three `addInstructionsWithLabels` calls:
+
+```text
+58  ContactsHolderAccessorFingerprint.method.addInstructionsWithLabels(
+68  CachedContactsAccessorFingerprint.method.addInstructionsWithLabels(
+79  PartitionedContactsLookupFingerprint.method.addInstructionsWithLabels(
+```
+
+Patches execute in source order, so lines 58 and 68 did **not** throw. Therefore, on the real
+device artifact:
+
+- `Le81/x;->D` **matched** — the descriptor declaration and the two `string` filters are correct.
+- `Lj71/d;->D` **matched** — likewise.
+- `La52/g0;->u` **failed**, and its only difference from the two that worked is the type filter.
+
+So the artifact was right all along, the parameter-name literals are right, and the array-typed
+filter was the entire problem. Both spellings were tried and both fail: `instanceOf` in dev.31,
+`checkCast` in dev.32. The method genuinely contains `check-cast v0, [[Ljava/util/List;`, so this is
+the filter comparing an array-typed operand, not a wrong target. There is no third spelling to
+guess at, so the filter is dropped rather than retried.
+
+The two `string` filters are kept because they are now **proven on this exact build**: the other two
+fingerprints resolve with nothing but those literals, against these same methods.
+
+Uniqueness does not depend on the dropped filter. Across all 9 dex files only four methods carry
+that descriptor — `La52/g0;->u`, the abstract `Le81/g;->D`, and the two implementors — and
+`La52/g0;->u` is the only one named `u`, so class plus name plus descriptor already pins it.
+
+Lesson, recorded because it cost two releases: a filter is only trustworthy once it has matched a
+real artifact. `javap` says which opcode a filter class matches, which caught the `instance-of` vs
+`check-cast` confusion, but it says nothing about how the filter compares its operand, and nothing
+here can be validated without running the patcher. When two of three sibling fingerprints resolve
+and one does not, the difference between them is the diagnosis.
