@@ -1,3 +1,9 @@
+## [0.6.0-dev.28](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.27...v0.6.0-dev.28) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** add the missing La0/f parameter to the more-ideas fingerprint ([13dc9a8](https://github.com/dunecache/oyasumi-patches/commit/13dc9a866d9f51a6bd6eda46cb8b14290dfe47fe))
+
 ## [0.6.0-dev.27](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.26...v0.6.0-dev.27) (2026-10-08)
 
 ### ✨ New Features
