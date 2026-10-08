@@ -32,11 +32,22 @@ never executed before a bundle was published.
 | v0.3.3 – v0.3.4 | inserted `invoke` named 1 register for a 2-register call | `check_invoke_arity` |
 | v0.4.2 | `methodCall` import removed while still in use | `check_imports` |
 | v0.5.0 (unreleased) | nested type `$EventSink` read as a Kotlin template | `check_dollar_in_strings` |
+| v0.6.0 | a boolean result reused as the next invoke's receiver | `check_invoke_receiver_type` |
 
 Both are silent at build time. smali assembles a `35c` register list of any length, the
 Gradle build succeeds, and the patcher only rejects the class when the verifier runs it at
 load time — so the failure surfaces on a device as a `VerifyError`, or in the worst case
 as a patch that does not apply at all.
+
+The last row is the sharpest example of the gap. Every injected block in this repo is a
+triple-quoted literal, and `string_concat_in` — the extractor the other smali checks are built
+on — cannot read one, so `check_branch_joins` had been reviewing patches' `name`/`description`
+concatenations and no smali at all. `injected_blocks` fixes the extraction, and only
+`check_invoke_receiver_type` uses it. Pointing `check_branch_joins` at triple-quoted blocks too
+was tried and reverted: it produced 25 findings on patches that ship and work, because its
+premise — that two paths giving one register different types at a join is fatal — is stricter
+than ART turns out to be. A conflict is apparently only fatal when the register is read before
+being reassigned.
 
 `replay_history_check.py` replays those tags to demonstrate the checks fire on the real
 defects and stay quiet on the fixes:
@@ -60,8 +71,13 @@ v0.4.0 declared `returnType = "Ljava/util/Timer;"` for `Timer.schedule`, which r
 DEX and is not implemented here.
 
 **Verifier-visible register typing.** A patch can be arity-correct and still leave a
-register holding a reference where an integer is required. That is what the three original
-`VerifyError`s turned on, and only a real verifier catches it.
+register holding a reference where an integer is required. `check_invoke_receiver_type` covers
+the straight-line case — a primitive used as an invoke's receiver — which is unconditional and so
+provable without a verifier. It stops at a label on purpose, because after a merge the register's
+type depends on which path arrived. What is still uncovered is a register left holding a
+reference where an integer is required at a *use*, with no straight-line path between the write
+and the read. That is what the three original `VerifyError`s turned on, and only a real verifier
+catches it.
 
 The honest summary: these two checks cover the defects that were mechanically checkable.
 The rest still needs a device.

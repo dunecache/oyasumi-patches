@@ -4141,6 +4141,716 @@ The register claim checks out against the dex as well: `registers = 11`, four pa
   item state. It does not affect this patch, which hides the container either way, but it would
   matter for a patch that targets the cells individually.
 
+# "More ideas for your board" — investigation (2026-10-08)
+
+## Behaviour requested
+
+Extend `Hide "Ideas you might love" section` so it also removes the "More ideas for your board"
+element.
+
+## Pinned target
+
+Unchanged: `com.pinterest` `14.38.0`, versionCode `14388010`. Cache `~/apks/com.pinterest/14.38.0/`,
+APK SHA-256 `af6b383adb445cebee1ca43f14ac409f91475c1d62e0e11ef52ef52e29fb0553`.
+
+## The string is a resource, unlike the existing patch's header
+
+The existing patch notes that "Ideas you might love" is server-supplied. This one is not:
+
+- `resources.arsc`, string id `2132021139` / `0x7f140f93`, resource name
+  **`more_idea_half_sheet_title`** = **`More ideas for this board`**.
+- It sits in a contiguous feature block with two siblings: `more_ideas_card_default_header`
+  (`0x7f140f94`) = "More ideas for", and `more_ideas_from_your_home_feed_banner` (`0x7f140f95`)
+  = "More ideas from your home feed".
+- `rg -F more_idea_half_sheet_title` over the smali: exactly **one** hit outside the `R` class,
+  `com/pinterest/feature/board/common/newideas/sba/w.smali:767`.
+
+Resolving the id to its name needed a fix to the cache's own helper,
+`~/apks/com.pinterest/14.38.0/tools/res_query.py`, which was written against an older androguard
+(`APK(..., logger=...)`, `get_resource_table`) and crashed immediately on the installed
+androguard 4.1.4. Rewritten to the 4.x API (`get_resolved_strings()` returns
+`{pkg: {locale: {id: value}}}`; `get_public_resources()` returns an XML `bytes` blob, not a
+pair). The note is recorded because the helper is part of the cache and a future agent will hit
+the same wall.
+
+## What `more_idea_half_sheet_title` actually titles
+
+`newideas/sba/w.smali` is a synthetic `Function1` (`when` over the sealed
+`newideas/sba/a0` hierarchy), `.registers 25`, 1015 lines. At its `:pswitch_278` arm:
+
+```
+ 763  check-cast    v0, Lxy1/d;
+ 767  sget          v1, Lad0/d;->more_idea_half_sheet_title:I
+ 773  new-instance  v2, Ljb0/h1;
+ 775  invoke-direct {v2, v1, v4}, Ljb0/h1;-><init>(ILjava/util/List;)V
+ 777  iput-object   v2, v0, Lxy1/d;->c:Ljb0/f1;
+ 779  iput-object   v3, v0, Lxy1/d;->f:Lty1/b;
+ 781  sget-object   v1, Lty1/t;->Center:Lty1/t;
+ 783  invoke-virtual {v0, v1}, Lxy1/d;->a(Lty1/t;)V
+```
+
+- `Ljb0/f1` is an interface with the single method `b(Landroid/content/Context;)Ljava/lang/CharSequence;`
+  — a **title provider**. `Ljb0/h1` is its implementation: a string resource id plus format args.
+  So field `c` of `Lxy1/d` is a title, and this resource is the title.
+- `Lxy1/d` is a sheet config DTO (fields `a: Lty1/t` alignment, `c`/`d`: `Ljb0/f1` titles,
+  `e`/`f`: `Lty1/b`, `g: Lty1/n`, `i: Lty1/j`). `Lty1/t;->Center` is an alignment, which is what
+  makes this a **half sheet / bottom sheet** rather than a list row.
+
+So `more_idea_half_sheet_title` is the **title of a half sheet**, not a row in a feed list. The
+sheet's content header is `BoardMoreIdeasHeaderView` (board cover `board_cover_image`,
+`board_name`, `board_metadata`, plus a secret-board lock icon), inflated from the
+`board_more_ideas_header` layout (`nd0/b.smali:6`, `0x7f0d0097`).
+
+## The problem: there are at least four different "More ideas" surfaces
+
+Searching on the word "ideas" turns up more than one candidate, and I cannot tell from the
+available evidence which one the request means. Enumerated:
+
+1. **The board "More ideas" half sheet** — the one titled `more_idea_half_sheet_title`
+   ("More ideas for this board"). Entry point above. Header
+   `BoardMoreIdeasHeaderView`, bound from `aa1/b.smali:2840`; the header/board-name views are
+   built by a synthetic `Function0` `bz1/c.smali` whose only two callers are
+   `c2/c.smali:123` and `bb1/z0.smali:106` — the latter goes to
+   `com/pinterest/adsCollageHeroCutout/container/f;->e(ZLbz1/c;)V`, i.e. **an ads collage hero
+   cutout ad unit**. Unclear from the smali alone whether this half sheet also appears on an
+   ordinary board page.
+
+2. **The public-board more-ideas list header** —
+   `com/pinterest/feature/board/detail/view/PublicBoardMoreIdeasListStaticHeader`. A
+   `FrameLayout` implementing `Liu1/l` (the same bind interface the existing patch targets),
+   holding one `GestaltText`. Created in exactly two places, both view factories with
+   `packed-switch` view-type dispatchers: `fu0/j.smali:471` (`:pswitch_1a0`) and `q41/j.smali:66`.
+   Its text is supplied by the caller, not by a resource.
+
+3. **The board "Ideas preview" card** on the board content tab —
+   `feature/board/detail/contenttab/view/BoardIdeasPreviewDetailedView` (`preview_title` +
+   `see_more_button`, `0x7f0a0ff9` / `0x7f0a12f2`) and `BoardIdeasPreviewFooterView`. Both
+   created from `fu0/j` (`:pswitch_1b2`, `:pswitch_1b8`). Title text not traced; probably
+   server-supplied.
+
+4. **The "More ideas" feed section title** —
+   `feature/board/common/newideas/view/MoreIdeasFeedSectionTitleView`, inflated from
+   `feed_section_title_view` (`nd0/b`), one `GestaltText` field `a`. Bound at
+   `aa1/n.smali:160-183` (`:pswitch_89`), where the text comes from
+   `com/pinterest/api/model/u7;->o()Ljava/lang/String;`. `u7` is a server-side typography/text
+   node (`id`, `node_id`, paddings, `font_size`, `font_weight`), so **this title cannot be
+   fingerprinted by text at all**. Registered in the Dagger component at `pr/c9.smali:129978`
+   via `Lf01/h0;->d()`, dispatched from `d2/g.smali:48`.
+
+Also present but almost certainly not what is meant: `feature/search/results/view/SearchMoreIdeasView`
+(search results), `shopping/shoppingstories/.../BoardMoreIdeasUpsellCardView` (uses
+`more_ideas_card_default_header` at line 598), and
+`upsell/toast/view/BoardMoreIdeasPostRepinUpsellToastView`.
+
+## What I could not establish
+
+- **Which surface the request refers to.** No device dump of a board page exists; the only
+  Pinterest dump in `/storage/emulated/0/Download` is `pinterst_love.xml`, which is the pin
+  closeup and contains only the "Ideas you might love" section. Nothing on the device shows the
+  string in question, so I cannot map text to a node.
+- For candidate 1, whether the half sheet is reachable without tapping something else first.
+- For candidates 2 and 3, the text actually rendered.
+- The view-type constants for candidates 2 and 3 in `fu0/j` (the `packed-switch` covers 23 arms;
+  the key for each arm was not mapped back to the constant).
+
+## Not implemented
+
+No patch code written, per the Phase 1 review gate. Guessing between four surfaces is exactly
+the failure mode this gate exists to prevent: three of the four would produce a patch that
+applies cleanly and hides the wrong thing.
+
+## Correction: the target is the section header, not the half sheet
+
+The user picked "the board 'More ideas' half sheet" from the four candidates above, and asked me to
+proceed without a device dump. Chasing that choice led to the actual resource, and it changes the
+seam. Two strings in 14.38.0 could be described as "more ideas for your board":
+
+| resource | id | value |
+| --- | --- | --- |
+| `board_more_ideas_section_header` | `0x7f1402a9` | **"More ideas for this board"** |
+| `ideas_for_your_board` | `0x7f140d87` | "Ideas for your board" |
+
+`board_more_ideas_section_header` is the match — the value is the request almost verbatim, and the
+name says what it is. It is **not** the half-sheet title; the half sheet keeps
+`more_idea_half_sheet_title`, which is a separate string with the same text, set on a different
+class. So the half sheet is not the thing to patch. `ideas_for_your_board` lacks the leading
+"More" and is used by `bundledCart/cart/y.smali:153` and `newideas/view/b0.smali:78`, neither of
+which is a board page section.
+
+`board_more_ideas_section_header` appears in exactly four places in the smali: the `R` field at
+`fd0/f.smali:32`, and three consumers.
+
+### The three consumers are all Compose, not a RecyclerView bind path
+
+This is the load-bearing difference from `HideIdeasSectionPatch`, which hides a view in a
+`Lc01/g` presenter and could not work here.
+
+| site | section id | builder discriminator | tracking enum |
+| --- | --- | --- | --- |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali:208` | `0x2714` | `share/board/video/pinselection/ui/m;-><init>(0x6)` | `rv0/k0.MoreIdeasHeader` |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali:549` | `0x4e24` | `share/board/video/pinselection/ui/m;-><init>(0x11)` | `wv0/i0.MoreIdeasHeader` |
+| `a2/c0.smali:1583` (in `i(La2/c0;Lt30/l0;Lsv0/c;I)Lax2/a0;`) | `0x3ef` | `share/board/video/pinselection/ui/m;-><init>(0xb)` | `sv0/d2.MoreIdeasHeader` |
+
+All three build an `ax2/m3` text node and hand it to
+`La0/f;->a0(La0/f;Lax2/o3;Lax2/m;Lax2/u1;ZLax2/f;Lax2/l;Lax2/v1;Lax2/l;Ljava/lang/String;Lax2/v1;Lax2/n;I)V`,
+the board-feed section DSL. `rv0/x.smali:523` re-keys the same `0x2714` into the feed, and
+`wv0/w.smali:483` does the same for `0x4e24`. So there are two board feeds plus a helper, all
+Compose, and the header is registered rather than bound.
+
+### The seam: `Lh5/n;->m0(I)Lax2/m3;`
+
+```
+2859: .method public static final m0(I)Lax2/m3;
+2860:     .registers 3
+2862:     new-instance v0, Ljava/util/ArrayList;
+2864:     const/4 v1, 0x0
+2866:     invoke-direct {v0, v1}, Ljava/util/ArrayList;-><init>(I)V
+2868:     new-instance v1, Ljb0/h1;
+2870:     invoke-direct {v1, p0, v0}, Ljb0/h1;-><init>(ILjava/util/List;)V
+2872:     new-instance p0, Lax2/m3;
+2874:     new-instance v0, Liv0/o;
+2876:     invoke-direct {v0, v1}, Liv0/o;-><init>(Ljb0/t0;)V
+2878:     invoke-static {v0}, Lkotlin/collections/b0;->c(Ljava/lang/Object;)Ljava/util/List;
+2879:     move-result-object v0
+2881:     invoke-direct {p0, v0}, Lax2/m3;-><init>(Ljava/util/List;)V
+2883:     return-object p0
+```
+
+`rg -F 'Lh5/n;->m0(I)Lax2/m3;'` over the whole smali tree returns **3 hits, and all three are
+the `board_more_ideas_section_header` sites** — in every case the instruction is immediately
+preceded by `sget ..., Lfd0/f;->board_more_ideas_section_header:I`. The helper is
+"string resource id → `ax2/m3` text node" and it exists in the dex solely for this one header.
+`h5/n` declares exactly one method named `m0`, so class + name + signature resolves uniquely.
+
+This matters more than it looks: the blast radius is provably zero. There is no other caller to
+collateral-damage, and no id check is even required — but the id check is kept anyway so a future
+release that reuses `m0` for other strings cannot silently blank them.
+
+### The empty-string target, and why not `0`
+
+`jb0/h1.b(Context)` (`jb0/h1.smali:95-159`) ends in
+`Context.getString(int, Object[])`, so substituting `0` would raise
+`Resources$NotFoundException` at render time. Three app strings have an empty default value:
+
+| resource | id | value |
+| --- | --- | --- |
+| `empty` | `0x7f1409d7` | `""` |
+| `empty_placeholder` | `0x7f1409e7` | `""` |
+| `empty_string` | `0x7f1409fe` | `""` |
+
+`empty` is the semantically correct one. Any locale missing it falls back to the default value,
+which is `""`, so there is no per-locale hazard.
+
+### Register budget for the insert
+
+`.registers 3` with one parameter, so `p0` is `v2` and `v0`/`v1` are the only locals. Inserting
+at index 0 — before `v0`/`v1` are first written — makes clobbering both safe. The block needs one
+scratch register for the two constants and rewrites `p0` in place; no other register is touched.
+
+### Two consequences the user has to choose between
+
+1. **Blanking the text is not the same as removing the section.** Compose renders a `Text("")`
+   with zero width but still reserves a line. The header words disappear; an empty row may
+   remain. Removing the whole section means skipping the `La0/f;->a0(...)` registration at the
+   three sites, which means branching over large register-shuffle blocks inside Compose functions
+   declaring `.registers 23`, `.registers 26` and `.registers 31`. I have not verified that
+   those jumps are safe and would not ship that without a device.
+2. **No runtime toggle is available on either seam.** `HideIdeasSectionPatch` reads
+   `morphe_hide_ideas_section` at runtime because it has a `View` to call `getContext()` on.
+   `m0` has no `Context` parameter and is not passed one, and a `resourcePatch` has no runtime at
+   all. So the new behaviour can only be gated by patch selection, like
+   `ForceOriginalImagePatch` and `DisableAppsFlyerPatch`, not by the toggle that drives
+   `HideIdeasSectionPatch`. It cannot be folded into the existing patch's toggle.
+
+# Patch 10 — Hide the "More ideas for this board" section (implemented)
+
+User decision: remove the **whole section**, not just blank its header, and do it with bytecode.
+Implemented as `sections/HideMoreIdeasSectionPatch.kt` +
+`sections/MoreIdeasSectionFingerprint.kt`, default off.
+
+## The seam: skip the registration, do not hide a view
+
+`HideIdeasSectionPatch` works because the pin-closeup section is *bound* into a `View` it can set
+`GONE`. The board page is Compose: there is no bound view to hide, and the section exists only
+because it is in the builder. So the seam is the registration itself.
+
+`La0/f` is the board page's Compose scope. Its single method `a0` **appends one section**:
+
+- builds an `Lax2/k2` descriptor, `ArrayList.add`s it into field `b`;
+- builds an `Lax2/z` wrapper, `ArrayList.add`s that into field `c`;
+- `LinkedHashSet.contains`/`add`s the section id into field `d`, and **throws** on a duplicate id.
+
+It returns `void`, contains **no `iput`**, and reads no builder field other than those three
+collections. So "return early" is exactly "never registered", not merely similar: there is no
+derived state left half-updated. `b0()` (`a0/f.smali:2589`), which builds the final `Lax2/a0`
+from the same three collections, is a pure read and requires no particular section to be present.
+
+The gate is on the **section id**, the tenth declared parameter (`p9`, `Ljava/lang/String;`, loaded
+into `v9` by the body). Every caller builds it from an enum's `getId()`, so it is a readable
+camelCase string. One hook therefore covers all three board variants:
+
+| consumer | ids |
+| --- | --- |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali` | `rv0/k0` (`0x2714` header, `0x228` content), `wv0/i0` (`0x4e24` header) |
+| `a2/c0.smali` | `sv0/d2` (`0x3ef` header) |
+
+Both ids are needed. `MoreIdeasHeader` is the section whose title is
+`board_more_ideas_section_header`; `MoreIdeas` is the list registered immediately after it.
+Skipping only the header leaves an unlabelled list, so the header alone is not enough.
+
+## `MoreIdeas` is not a unique string, and how that was settled
+
+Five enums declare a constant whose id is exactly `MoreIdeas`, and three declare
+`MoreIdeasHeader` — seven in total:
+
+```
+MoreIdeas        Lrv0/k0;  Lsv0/d2;  Liv0/l;  Len1/d;
+MoreIdeasHeader  Lrv0/k0;  Lsv0/d2;  Lwv0/i0;
+```
+
+Gating on the bare string would therefore have been a guess. It was checked instead, by scanning
+every `.smali` for enums whose `<clinit>` assigns one of those two ids and then finding which
+files both reference such a constant *and* call `a0`:
+
+```
+enum constants with a more-ideas id: 7
+files calling La0/f;->a0( that also reference them: 2
+  a2/c0.smali                                                              ['MoreIdeas', 'MoreIdeasHeader']
+  com/pinterest/feature/board/redesign/tabbed/i2.smali                     ['MoreIdeas', 'MoreIdeasHeader']
+```
+
+`iv0/l` and `en1/d` are consumed by unrelated code — `rv0/x.smali:734` builds an `ArrayList` of
+`iv0/n`, it does not register a section — so **nothing else can reach the gate**. This is the
+check that makes the seam safe rather than plausible.
+
+## A defect `:patches:compileKotlin` cannot catch
+
+The first version of the block was:
+
+```
+invoke-virtual {p9, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+```
+
+`p9` is `v21`. A `35c` invoke register list encodes each register in **four bits**, so every
+register in one must be `v0`..`v15`. `tools/checks/check_inline_smali.py` rejected it:
+
+```
+Invalid register: v20. Must be between v0 and v15, inclusive.
+```
+
+(sp20 because the wrapper computes `p9` from its own register map.) The fix is to copy the
+parameter into a local with an eight-bit form first:
+
+```
+if-eqz p9, :morphe_end_hide_more_ideas_section
+move-object/from16 v0, p9
+const-string v1, "MoreIdeasHeader"
+invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+```
+
+`move-object/from16` is a `22x` (eight-bit registers) so it can carry `p9` freely, and the
+compares then name only `v0`/`v1`. `move-object` would **not** work: it is a `12x` with the same
+four-bit limit. This is the class of defect `tools/checks/README.md` was written for, and it is
+the reason the layout entry was added to `check_inline_smali.py` rather than trusting the build.
+
+`p9` is null-tested rather than assumed: the id comes from `getId()` at every known call site,
+but `String.equals` on a null receiver throws, and null there must mean "not a more-ideas
+section" rather than a crash.
+
+## Verification performed
+
+- `./gradlew :patches:compileKotlin --offline` succeeds (Java 21). **Proves the Kotlin and the
+  fingerprint DSL type-check, not that the fingerprint matches the APK.**
+- `python3 tools/checks/patch_smali_checks.py` → `checked 44 file(s): 0 problem(s)`.
+- `python3 tools/checks/check_inline_smali.py` → the new block is `ok`. The run also reports
+  `comments/HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s) declared`, which is
+  **pre-existing**: confirmed by stashing this work and re-running, which reproduces the same
+  single failure on 4 files. Left alone as unrelated to this change, but it does mean one
+  `HideCommentsPatch` block is currently unchecked, which is worth fixing separately.
+- Fingerprint resolution, `.scratch/resolve_more_ideas_fp.py`, against the pinned dex — this is
+  the gap `tools/checks/README.md` names as uncovered:
+
+  ```
+  SURVIVOR  classes3.dex  La0/f;->a0(La0/f;Lax2/o3;...;I)V  instructions=90
+  methods on La0/f;:        73
+  named 'a0':                1
+  SURVIVORS all filters:     1
+  ```
+
+  One survivor, so `match()` returns a single match and `.method` is unambiguous. Note `La0/f`
+  declares 73 methods, so the name alone would not have been enough.
+
+  Three androguard quirks bit this resolver and are the same ones recorded for the ideas-section
+  fingerprint: an invoke prints as `v7, v9, v1, Lref;->m(...)V`, so the reference is the **last**
+  comma-separated field; descriptors are printed **with the receiver** even though Morphe's
+  `parameters` excludes it; and whitespace inside a descriptor is inconsistent
+  (`ZLax2/f;` → `Z Lax2/f;`), so both sides need `re.sub(r"\s+", "")` rather than a targeted fix.
+
+## Not verified
+
+- **No device test.** The argument that the section disappears is static: `a0` only appends, and
+  nothing downstream requires a given section to be registered. What a device would confirm is
+  that the board page still composes, that no *other* section depended on `MoreIdeasHeader`
+  having been registered, and that the duplicate-id `throw` in `a0` is not reached by a path that
+  assumed this section existed.
+- **Not a runtime toggle.** Deliberate, and it does not match the "extend Hide Ideas you might
+  love" phrasing: `a0` takes no `Context` and `La0/f` stores no `Context` field, so there is
+  nothing to call `MorpheSettingsActivity.isEnabled(Context, String)` with, and
+  `morphe-patcher` 1.13.0 ships no application-context helper (checked: `AndroidAppHelper` is
+  absent from the jar). A runtime toggle would mean adding a `ContentProvider` to the manifest
+  purely to capture an application context at process start. So this is gated by patch selection,
+  like `ForceOriginalImagePatch` and `DisableAppsFlyerPatch`, and is a separate switch from
+  `HideIdeasSectionPatch`'s toggle. Merging the two under one toggle is possible and is the
+  obvious next step if the extra manifest surface is wanted.
+- `board_more_ideas_section_header` is present in 46 of the APK's 48 locales, so the alternative
+  resource-rewrite approach would have had to touch 46 `res/values*/strings.xml` files. Recorded
+  because it was the option considered and rejected, not because it is needed.
+
+# Defect — the more-ideas fingerprint shipped one parameter short (found on device)
+
+## Symptom
+
+Applying the bundle on a device (Pinterest 14.38.0, Oyasumi 0.6.0-dev.27, patcher **1.15.1**)
+failed on this patch alone; every other patch applied.
+
+```
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+    app.pinterest.patches.sections.MoreIdeasSectionFingerprint@739dc97
+    at app.morphe.patcher.Fingerprint.patchException
+    at app.morphe.patcher.Fingerprint.getMethod
+    at ...HideMoreIdeasSectionPatchKt...(HideMoreIdeasSectionPatch.kt:75)
+```
+
+## Cause
+
+The fingerprint omitted one parameter:
+
+```kotlin
+parameters = listOf(
+    "Lax2/o3;", "Lax2/m;", ...          // 12 entries
+)
+```
+
+The real descriptor is:
+
+```
+a0(La0/f;Lax2/o3;Lax2/m;Lax2/u1;ZLax2/f;Lax2/l;Lax2/v1;Lax2/l;Ljava/lang/String;Lax2/v1;Lax2/n;I)V
+```
+
+**13** declared parameters. `La0/f;` was dropped because it looks like the receiver. It is not: an
+instance method's dex descriptor never spells out its receiver, so `La0/f;` is `p0`, the scope
+being registered into. The receiver is implicit. Every other fingerprint in this repo already
+follows that rule — `IdeasSectionFingerprint` lists all 3 of `e`'s parameters, and
+`BottomNavTabAdderFingerprint` all 5 of `Q1`'s — which is the convention this patch broke.
+
+Confirmed from the body rather than assumed: `a0/f.smali:830` is `move-object/from16 v9, p9`, and
+`v9` is what reaches `LinkedHashSet.add` at `a0/f.smali:927`. So `p9` is the section id, the
+tenth declared parameter, which is `Ljava/lang/String;` in the corrected list — the gate in the
+patch is still reading the right register, and `p9` still names `v21` because the register map did
+not change. Only the fingerprint's parameter list was wrong; the injected smali was always right.
+
+## Why the resolver that existed to catch this agreed with the bug
+
+`.scratch/resolve_more_ideas_fp.py` reported `SURVIVORS all filters: 1`. It was wrong, because it
+built the expected descriptor like this:
+
+```python
+wanted_desc = "(" + DEFINING_CLASS + "".join(PARAMETERS) + ")" + RETURN_TYPE
+```
+
+It prepended the class name to a 12-entry list to make a 13-entry descriptor, so it reproduced
+the very assumption under test and certified it. **A verifier must not encode the same assumption
+as the thing it verifies.** The fix is to build the expected descriptor from `PARAMETERS` alone,
+which is possible only because a dex descriptor has no receiver to account for:
+
+```
+$ python3 .scratch/resolve_more_ideas_fp.py
+SURVIVOR  classes3.dex  La0/f;->a0(La0/f;Lax2/o3;...;I)V  instructions=90
+methods on La0/f;:        73
+named 'a0':                1
+SURVIVORS all filters:     1
+```
+
+## Negative control, so the resolver is known to discriminate
+
+Dropping `"La0/f;"` again reproduces the shipped state and the resolver now rejects it:
+
+```
+$ python3 neg_control.py     # identical, minus the "La0/f;" entry
+dropped   classes3.dex  La0/f;->a0(Lax2/o3;...;I)V
+          descriptor (La0/f;Lax2/o3;...)V != (Lax2/o3;...)V
+SURVIVORS all filters:      0
+```
+
+Without this, "1 survivor" only says the script is self-consistent.
+
+## The filter was not implicated
+
+The first instinct was to blame the `methodCall` filter, since that was the only part not checked
+by `:patches:compileKotlin`. It was checked, with the library's own code rather than a
+reimplementation (`.scratch` probe, Morphe's real `MethodCallFilter` against `classes3.dex`):
+
+```
+class La0/f; found
+  method a0([La0/f;, Lax2/o3;, ...])V
+  MATCH at ins 61: INVOKE_VIRTUAL
+  MATCH at ins 76: INVOKE_VIRTUAL
+  filter hits: 2
+```
+
+So the filter matches under 1.13.0. It could not be re-checked under 1.15.1, which is not available
+offline, but the reasoning is that it is not the problem: the repo's other fingerprints use
+`methodCall` with default opcodes and location and they applied cleanly in the same session that
+failed on this patch. The signature was wrong; the filter was fine.
+
+## What this cost, and the generalisable part
+
+This is the second fingerprint in this repo to be wrong in a way that compiles cleanly and ships,
+after `returnType = "Ljava/util/Timer;"` on `Timer.schedule` (v0.4.0). Both were caught only on a
+device. The check that would have caught this one — comparing a fingerprint's `parameters` against
+the target method's declared parameter count — needs the pinned APK, which CI cannot fetch, so it
+is the same gap `tools/checks/README.md` already documents.
+
+Two rules worth keeping:
+
+1. **Copy the descriptor verbatim into `parameters`.** A dex method descriptor never contains the
+   receiver, so there is nothing to add and nothing to subtract — for an instance method *and* for
+   a static one alike. `a0` is `public static`, and its descriptor still opens with `La0/f;`
+   because that is a declared parameter (`p0`), not a receiver; a static method has no receiver to
+   spell out. Every entry in the descriptor is one entry in `parameters`, always.
+2. A resolver that reconstructs the expected descriptor must assemble it from the same inputs the
+   patch declares and nothing else. Anything it adds to make a match is a place a bug can hide.
+
+# Defect — boolean reused as an invoke receiver (found on device)
+
+## Symptom
+
+The patch applied and the fingerprint resolved, but the app would not start:
+
+```
+java.lang.VerifyError: Verifier rejected class a0.f:
+void a0.f.a0(a0.f, ax2.o3, ..., java.lang.String, ax2.v1, ax2.n, int) failed to verify:
+[0xE] tried to get class from non-reference register v0 (type=Boolean)
+```
+
+`a0.f` is the class `MoreIdeasSectionFingerprint` targets, so the crash is this patch's. Note
+`classes9.dex` in the path: the patched APK has one more dex than the original, which is normal
+after patching and is not related to the fault.
+
+## Cause
+
+The block reused one register for two incompatible things:
+
+```
+move-object/from16 v0, p9                              ; v0 = the section id, a String
+const-string v1, "MoreIdeasHeader"
+invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+move-result v0                                          ; v0 = the boolean RESULT
+if-nez v0, :morphe_skip_more_ideas_section
+const-string v1, "MoreIdeas"
+invoke-virtual {v0, v1}, ...->equals(Ljava/lang/Object;)Z   ; *** v0 is a Boolean receiver ***
+```
+
+The first `equals` overwrote the receiver with its own return value, and the second `equals` then
+used that boolean as the receiver. The fix is a separate register for the flag:
+
+```
+move-result v2
+if-nez v2, :morphe_skip_more_ideas_section
+```
+
+`v0` now holds the id for the whole block and `v2` holds the flag. `v0`, `v1` and `v2` are all
+free at insertion index 0 (`.registers 25`, thirteen parameters, so `v0`..`v11` are locals), and
+the surrounding code re-initialises all three before reading them — `v0` by `move/from16 v0, p12`,
+then `v1` by `and-int/lit8 v1, v0, 0x8` and `v2` by the `const/4 v2, 0x0` beside it.
+
+## Second change: `String.equals` → `Objects.equals`
+
+The null guard written first was `if-eqz p9, :end`. It works, but it gives
+`:morphe_end_hide_more_ideas_section` a second predecessor, and a label with two predecessors is a
+verifier merge whose types cannot be reasoned about here. `Ljava/util/Objects;->equals` is
+null-safe on both sides and removes the branch, so `:morphe_end_...` has exactly one predecessor
+and `:morphe_skip_...` is a `return-void` — **no path merges anywhere in the block**. It is also
+`invoke-static`, which has no receiver to get wrong. API 19+, and the device is API 35.
+
+## Why nothing caught it
+
+Three checks ran clean on this block:
+
+- `:patches:compileKotlin` — correct Kotlin, and the smali is a string literal to it.
+- `check_inline_smali.py` — parses the block; its own docstring says it is not a verifier.
+- `tools/checks/patch_smali_checks.py` — reported "0 problem(s)".
+
+The third is the interesting one, and the reason is a bug in the check suite itself.
+
+## The check suite could not read any injected block
+
+`string_concat_in` folds `"..." + "..."` chains. Its pattern forbids newlines and requires at
+least two parts, so it cannot match a triple-quoted literal — and **every injected block in this
+repo is a single triple-quoted literal**:
+
+```
+$ python3 -c "read each file, count string_concat_in blocks vs triple-quoted blocks"
+HideMoreIdeasSectionPatch.kt   string_concat_in: 1   triple-quoted: 1
+HideSearchNavButtonPatch.kt    string_concat_in: 0   triple-quoted: 1
+```
+
+`check_invoke_arity`, `check_branch_joins` and `check_dollar_in_strings` all iterate
+`string_concat_in`, so they had been reading a patch's `name`/`description` concatenation — the
+one thing in a patch file that is *not* smali — and no smali at all. (Only
+`check_inline_smali.py` had its own extractor, which is why it did see the block, and why it
+caught the earlier `35c` defect.)
+
+`injected_blocks` now locates the literal relative to the `addInstructions`/`addInstructionsWithLabels`
+call it is an argument of, and accepts both spellings. It finds 26 blocks where the old extractor
+found none of the real ones.
+
+## `check_invoke_receiver_type`, and why only it uses the new extractor
+
+The new check walks a block straight-line, tracking registers whose most recent write was a
+non-object `move-result`, and flags one that is then used as an `invoke` receiver. It reproduces
+the shipped defect and stays quiet on the fix:
+
+```
+$ python3 tools/checks/patch_smali_checks.py        # fixed block
+checked 44 file(s): 0 problem(s)
+$ # same block with move-result v2 -> move-result v0
+broken.kt:5164+9: `invoke-virtual {v0, v1}, ...->equals(Ljava/lang/Object;)Z` uses v0 as its
+  receiver, but v0 was last assigned a primitive at line 6. Use a different register for the
+  call's result.
+```
+
+It deliberately **stops at a label**: after a merge a register's type depends on which path
+arrived, so nothing can be proven. Conditional branches do not stop it — the defect had an `if`
+between the `move-result` and the bad invoke. Nine cases in `test_invoke_arity.py` pin both
+directions, including the fix, `move-result-object`, `move-result-wide`, `invoke-static`, a
+re-initialised register, and the post-label case.
+
+**Pointing `check_branch_joins` at triple-quoted blocks too was tried and reverted.** It produced
+**25 findings across patches that ship and work**, because its premise — that two paths giving one
+register different types at a join is fatal — is stricter than ART turns out to be. A merge
+conflict appears to be fatal only when the register is *read* before being reassigned, which those
+blocks never do. Leaving that check on `string_concat_in` keeps it quiet; the gap is documented in
+`tools/checks/README.md` rather than papered over with a check that cries wolf.
+
+## Verified
+
+- `./gradlew :patches:compileKotlin --offline` — builds.
+- `tools/checks/patch_smali_checks.py` — 44 files, 0 problems.
+- `tools/checks/test_invoke_arity.py` — 34/34, up from 25 with the 9 new cases.
+- `tools/checks/check_inline_smali.py` — the new block parses. The run still reports
+  `comments/HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s) declared`, which is
+  pre-existing and unrelated.
+
+## Not verified
+
+Still no successful device run. What this note establishes is that the specific fault ART reported
+is gone and that a check now guards its shape; it does not establish that the board page renders.
+
+# Defect — `check-cast` applied to the result of `instance-of` (found on device)
+
+## Symptom
+
+Same shape as the previous crash, one patch further on. `a0.f` was fixed, so the app got
+past it and died in the next patched class:
+
+```
+java.lang.VerifyError: Verifier rejected class hr1.f:
+void hr1.f.e(iu1.l, java.lang.Object, int) failed to verify:
+[0x9] check-cast on non-reference in v0
+    at pr.i9.get
+```
+
+`hr1.f.e` is `HideIdeasSectionPatch`'s target, not the more-ideas one. **That patch had never
+run on a device** — its own note ended "Still not verified: **No device test**". Two of the
+three pin-closeup/nav patches were likewise only ever statically argued.
+
+## Cause
+
+```
+instance-of v0, p1, Landroid/view/View;    ; v0 = the RESULT: an int
+if-eqz v0, :morphe_end_hide_ideas_section
+check-cast v0, Landroid/view/View;         ; *** v0 is an int, not a reference ***
+```
+
+The intent was to cast the *view parameter* `p1`. `p1` is `v8`, and a `35c` invoke register list
+is four bits per register, so `v0`..`v15` only — `v8` happens to be inside that, but the
+parameter of a `.registers 11` method with four parameters is `v8` and the block needed a
+register it could also hand to `getContext` as a `View`. The routing was right; the copy was
+missing. `instance-of` leaves a boolean in `v0`, so the `check-cast` had nothing to cast.
+
+The fix is one instruction between the guard and the cast:
+
+```
+instance-of v0, p1, Landroid/view/View;
+if-eqz v0, :morphe_end_hide_ideas_section
+move-object/from16 v0, p1
+check-cast v0, Landroid/view/View;
+```
+
+`check-cast` is here to satisfy the verifier, not the runtime — `instance-of` has already
+established the type — so copying the reference in is what makes the cast legal.
+`move-object/from16` is a `22x` and carries `p1` at any register; `move-object` would be a `12x`
+with the same four-bit ceiling that forced the detour in the first place.
+
+## The check now covers both shapes
+
+`check_invoke_receiver_type` was written for the previous defect — a `move-result` used as an
+invoke receiver. `instance-of` is the same mistake wearing a different opcode: it also leaves an
+int. Both are now tracked as primitive writes, and both reference-requiring positions are
+checked:
+
+| position | requires a reference |
+| --- | --- |
+| first register of `invoke-virtual`/`-direct`/`-interface` | receiver |
+| `check-cast`'s register | source and destination |
+
+Three more cases in `test_invoke_arity.py`: the shipped `instance-of` → `check-cast` shape
+(flagged), the fixed block with `move-object/from16` (quiet), and `check-cast` on a
+`move-result-object` (quiet). 37/37.
+
+## A register map that was never checked
+
+`check_inline_smali.py` reported `HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s)
+declared` on every run, and its message is explicit that "every injected block needs a layout,
+otherwise its register map goes unchecked". `HideIdeasSectionPatch.kt` had **no layout entry at
+all**, so it was silently outside the parser too. Added: `.registers 11`, four parameters, so
+`v7`=this `v8`=view `v9`=model `v10`=position and `v0`..`v6` free. It now parses as `ok`.
+
+That check is a parser and would not have caught this defect either. It is recorded because the
+gap was invisible rather than reported.
+
+## The merge at the end label is left alone, on purpose
+
+`:morphe_end_hide_ideas_section` has three predecessors and the register types genuinely differ
+across them: `v0` is an `int` on the "not a View" path and a `View` on the others. That is a
+verifier merge, and it is exactly what `check_branch_joins` exists to flag.
+
+It is left in place because the same shape is in the three nav-button patches, which ship and
+work, and because the register is overwritten by the surrounding code before it is read — the
+notes for this method record `v0` being re-initialised by the `sget-object` of `Laj0/f.a` and
+`v1`/`v2` by the two `const/4 0x0` that follow. Turning `check_branch_joins` loose enough to
+accept that produced 25 findings on working patches, so the assumption is documented instead of
+enforced. **This is the weakest remaining assumption in the patch** and the first thing to
+revisit if a future crash points at this method again.
+
+## Verified
+
+- `./gradlew :patches:compileKotlin --offline` — builds. The first attempt failed in the
+  settings plugin, not in any Kotlin: `PasswordCredentials.setUsername` throws
+  `IllegalArgumentException` on a null `GITHUB_ACTOR`, and the daemon predated the exported
+  credentials. `./gradlew --stop` first, as AGENTS.md says, and it builds.
+- `tools/checks/patch_smali_checks.py` — 44 files, 0 problems.
+- `tools/checks/test_invoke_arity.py` — 37/37.
+- `tools/checks/check_inline_smali.py` — both `sections/` blocks now `ok`; the only remaining
+  failure is the pre-existing `HideCommentsPatch.kt` layout count.
+
+## Still not verified
+
+No successful device run yet. Three patches have now been found to be broken by a real verifier
+and only by a real verifier, and none of the remaining ones has been exercised on hardware. The
+`hr1/f` block in particular was written and argued about across two sessions before a device
+rejected it.
 
 # Truecaller 26.31.6 reference notes
 

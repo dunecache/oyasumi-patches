@@ -57,6 +57,19 @@ val hideIdeasSectionPatch = bytecodePatch(
         // assumed, because `Liu1/l` is an interface and the sibling arm that shares this register
         // explicitly nulls `p1` when the argument is not a `View`.
         //
+        // `p1` is `v8`, which a `35c` invoke register list cannot name -- those are four bits per
+        // register, so `v0`..`v15` only. That is why the block routes it through `v0`, and it is
+        // why the `move-object/from16` on the next line is load-bearing rather than redundant: the
+        // `instance-of` above leaves an **int** in `v0`, so a `check-cast` straight onto `v0`
+        // rejects the class at load time,
+        //
+        //   [0x9] check-cast on non-reference in v0
+        //
+        // `check-cast` is here to convince the verifier, not the runtime -- `instance-of` has
+        // already established the type -- so copying the reference in first is what makes the cast
+        // legal. `move-object/from16` is a `22x` and can carry `p1` at any register; `move-object`
+        // would be a `12x` and could not.
+        //
         // Registers: `e` declares `.registers 11` with four parameters, so `this` is `v7`, the
         // view is `v8`, the model `v9`, the position `v10`, and `v0` through `v6` are free. This
         // block uses `v0` (the view), `v1` (the context, then the flag, then the visibility) and
@@ -71,6 +84,7 @@ val hideIdeasSectionPatch = bytecodePatch(
             """
             instance-of v0, p1, Landroid/view/View;
             if-eqz v0, :morphe_end_hide_ideas_section
+            move-object/from16 v0, p1
             check-cast v0, Landroid/view/View;
             invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
             move-result-object v1

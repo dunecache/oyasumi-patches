@@ -1,3 +1,28 @@
+## [0.6.0-dev.29](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.28...v0.6.0-dev.29) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** stop reusing a call result as an invoke receiver ([635f95b](https://github.com/dunecache/oyasumi-patches/commit/635f95b37c88f3b9d963d6ace12251335a166ff6))
+
+## [0.6.0-dev.28](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.27...v0.6.0-dev.28) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** add the missing La0/f parameter to the more-ideas fingerprint ([13dc9a8](https://github.com/dunecache/oyasumi-patches/commit/13dc9a866d9f51a6bd6eda46cb8b14290dfe47fe))
+
+## [0.6.0-dev.27](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.26...v0.6.0-dev.27) (2026-10-08)
+
+### ✨ New Features
+
+* **pinterest:** hide the "More ideas for this board" section ([3bdfe9a](https://github.com/dunecache/oyasumi-patches/commit/3bdfe9a9cda33fa758be55f4957d40daea4f884a))
+
+## [0.6.0-dev.26](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.25...v0.6.0-dev.26) (2026-10-06)
+
+### ✨ New Features
+
+* **pinterest:** hide the "Ideas you might love" section ([2f13198](https://github.com/dunecache/oyasumi-patches/commit/2f131987e7f6e8a38786c2e0c6600df8020ead5b))
+* **pinterest:** hide the create button in the bottom nav bar ([7d239e8](https://github.com/dunecache/oyasumi-patches/commit/7d239e8daf17f4f331c86b1881fcfa71394e0adc))
+
 ## [0.6.0-dev.25](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.24...v0.6.0-dev.25) (2026-10-05)
 
 ### 🐛 Bug Fixes
