@@ -1,7 +1,7 @@
 package app.truecaller.patches.contacts
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.patcher.instanceOf
+import app.morphe.patcher.checkCast
 import app.morphe.patcher.string
 
 /**
@@ -75,6 +75,12 @@ object CachedContactsAccessorFingerprint : Fingerprint(
  * because `La52/g0` is a general-purpose collection wrapper that the rest of the app also uses —
  * 40 methods in `classes6.dex` alone touch its field `b`. The descriptor's two contacts-filter
  * parameter types are what make this specific to the contact list.
+ *
+ * The filter is `checkCast`, not `instanceOf`, and that distinction is load-bearing.
+ * `InstanceOfFilter` matches `Opcode.INSTANCE_OF` and nothing else — verified with `javap -c` on
+ * `morphe-patcher-1.13.0` — while this method contains a `check-cast` and **no `instance-of` at
+ * all**. An `instanceOf("[[Ljava/util/List;")` filter therefore matches nothing here and the patch
+ * dies with `Failed to match the fingerprint`, which is exactly how v0.6.0-dev.31 failed on device.
  */
 object PartitionedContactsLookupFingerprint : Fingerprint(
     definingClass = "La52/g0;",
@@ -85,7 +91,7 @@ object PartitionedContactsLookupFingerprint : Fingerprint(
         "Lcom/truecaller/contacts_list/ContactsHolder\$PhonebookFilter;"
     ),
     filters = listOf(
-        instanceOf("[[Ljava/util/List;"),
+        checkCast("[[Ljava/util/List;"),
         string("favoritesFilter"),
         string("phonebookFilter")
     )

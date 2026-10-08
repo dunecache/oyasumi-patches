@@ -5300,3 +5300,60 @@ two tools disagreed and the newer one was wrong.
   is covered because it reads the holder directly, not because it was identified.
 - Whether the app still requests `READ_CONTACTS` at runtime and what its UI shows when the list is
   empty.
+
+## Defect — `instanceOf` does not match `check-cast` (found on device, v0.6.0-dev.31)
+
+`v0.6.0-dev.31` shipped the patch with a filter that could never match, so it died on device with
+`PatchException: Failed to match the fingerprint` — the same failure
+`app.paresh.patches.truecaller.misc.ShouldTriggerUpdateFingerprint` produced in the same run, which
+made it easy to misattribute this one to the third-party bundle.
+
+`PartitionedContactsLookupFingerprint` filtered on `instanceOf("[[Ljava/util/List;")`.
+`InstanceOfFilter` matches **`Opcode.INSTANCE_OF` and nothing else**, verified with `javap -c` against
+`morphe-patcher-1.13.0`:
+
+```text
+$ javap -c -p app.morphe.patcher.InstanceOfFilter | rg -o 'Opcode\.[A-Z_]+'
+com/android/tools/smali/dexlib2/Opcode.INSTANCE_OF
+```
+
+But `La52/g0;->u` contains a **`check-cast` and no `instance-of` at all**:
+
+```text
+20 iget-object   v0, v4, La52/g0;->b Ljava/lang/Object;
+24 check-cast    v0, [[Ljava/util/List;
+```
+
+`checkCastFilter` is a separate class matching `Opcode.CHECK_CAST`, reached through the
+`checkCast(String, InstructionLocation)` entry point. The filter is now `checkCast`.
+
+Why nothing caught it: `tools/checks/README.md` states outright that **fingerprint resolution is not
+covered** by the static checks, because it needs the pinned APK. Both local checks passed, CI
+compiled it, and it still could not resolve. This is that gap, and the first time it has bitten a
+patch in this repository.
+
+The audit that would have caught it is cheap and is now recorded here: for every filter, confirm the
+opcode the filter class matches against the opcodes actually present in the target method. Done for
+all three fingerprints:
+
+| filter | matches | present in target |
+| --- | --- | --- |
+| `string("favoritesFilter")` | `CONST_STRING`, `CONST_STRING_JUMBO` | yes, all three methods |
+| `string("phonebookFilter")` | same | yes, all three methods |
+| `checkCast("[[Ljava/util/List;")` | `CHECK_CAST` | yes, `La52/g0;->u` |
+
+Both literals were confirmed present in all three target methods directly from the dex:
+
+```text
+Le81/x;.D   const-strings = ["favoritesFilter", "phonebookFilter"]
+Lj71/d;.D   const-strings = ["favoritesFilter", "phonebookFilter"]
+La52/g0;.u const-strings = ["favoritesFilter", "phonebookFilter"]
+```
+
+### Not yet verified
+
+- **The fix has not been applied to a bundle or run on device.** It compiles, its smali parses, and
+  its filters are now audited against the dex, but no patcher run has exercised these three
+  fingerprints end to end.
+- The other two fingerprints were never exercised either, for the same reason: the session aborted on
+  the Paresh failure before reaching them.
