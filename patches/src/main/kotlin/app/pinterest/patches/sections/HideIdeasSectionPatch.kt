@@ -15,7 +15,7 @@ private const val SETTINGS_KEY = "morphe_hide_ideas_section"
 
 @Suppress("unused")
 val hideIdeasSectionPatch = bytecodePatch(
-    name = "Hide \"Ideas you might love\" section",
+    name = "Hide \"Ideas you might love\" section (DIAGNOSTIC BUILD)",
     description = "Hide the suggested-topics section shown under a pin.",
     default = false
 ) {
@@ -83,7 +83,10 @@ val hideIdeasSectionPatch = bytecodePatch(
             2,
             """
             instance-of v0, p1, Landroid/view/View;
-            if-eqz v0, :morphe_end_hide_ideas_section
+            const-string v3, "MorpheIdeas"
+            const-string v4, "e reached"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+            if-eqz v0, :morphe_diag_notview
             move-object/from16 v0, p1
             check-cast v0, Landroid/view/View;
             invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;
@@ -91,9 +94,22 @@ val hideIdeasSectionPatch = bytecodePatch(
             const-string v2, "$SETTINGS_KEY"
             invoke-static {v1, v2}, $EXTENSION_CLASS->isEnabled(Landroid/content/Context;Ljava/lang/String;)Z
             move-result v1
-            if-eqz v1, :morphe_end_hide_ideas_section
+            const-string v3, "MorpheIdeas"
+            if-nez v1, :morphe_diag_on
+            const-string v4, "toggle OFF"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+            goto :morphe_end_hide_ideas_section
+            :morphe_diag_on
+            const-string v4, "toggle ON, hiding"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             const/16 v1, $GONE
             invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
+            const-string v4, "set GONE"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+            goto :morphe_end_hide_ideas_section
+            :morphe_diag_notview
+            const-string v4, "p1 is NOT a View"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             :morphe_end_hide_ideas_section
             nop
             """.trimIndent()
