@@ -4851,3 +4851,452 @@ No successful device run yet. Three patches have now been found to be broken by 
 and only by a real verifier, and none of the remaining ones has been exercised on hardware. The
 `hr1/f` block in particular was written and argued about across two sessions before a device
 rejected it.
+
+# Truecaller 26.31.6 reference notes
+
+Target of record for the `agent/truecaller` worktree. Supersedes the 26.10.6 notes that used to sit
+here; those are gone because that cache was deleted, and the section is rewritten rather than left
+pointing at a directory that no longer exists.
+
+## Source and target record
+
+- Cache: `~/apks/com.truecaller/26.31.6/`. It is the source of truth for every fingerprint below and
+  is the **only** Truecaller cache. Full detail in that directory's `README.md`.
+- Source artifact:
+  `/storage/emulated/0/Download/1DM/Programs/com.truecaller_26.31.6-2631006_2arch_7dpi_1feat_cea0d663120004a05052fe2d694d8486_apkmirror.com.apkm`,
+  SHA-256 `9ff323ce660aaaaaea327c42843eaf3fccb513abedc0556954df2f308e14c2c5`, 99,378,998 bytes.
+  Complete and undamaged: 17 entries, full CRC check clean.
+- `info.json` in the bundle records `pname com.truecaller`, `release_version 26.31.6`,
+  `versioncode 2631006`, `post_date 2026-08-09 09:24:52`.
+- `base.apk` was extracted to `~/apks/com.truecaller/26.31.6/base.apk`, SHA-256
+  `f6454d90b56469a00ac7b2608f43ab2410d7d89c94df05bd55c599283583a89d`, recorded in
+  `apk.sha256`. 125,787,622 bytes, itself a valid zip of 8,336 entries with clean CRCs.
+- **The bundle is signed `META-INF/APKMIRRO.RSA`, apkmirror's key, not the publisher's**, and carries
+  the `APKM_installer.url` marker. It is a redistribution and is *not* a verified original build.
+  Same caveat the 1DM notes record for their apkmirror reference.
+
+### Version scheme — do not read it as YY.MM
+
+Truecaller's `versionName` is `YY.N.build` with `N` a release/week counter, **not** a month, and
+`versionCode` is `YY` + `N` + a three-digit build:
+
+```text
+26.31.6 -> 2631006   (26 | 31 | 006)
+26.10.6 -> 2610006   (26 | 10 | 006)
+15.7.6  -> 1507006   (15 | 07 | 006)
+```
+
+`post_date 2026-08-09` on 26.31.6 proves `31` is a counter, not October. **Order versions by
+versionCode alone.** An earlier reading of `26.10.6` as October 2026 was wrong and briefly produced
+an incorrect "the newest file is older" conclusion.
+
+### Installability, unresolved
+
+versionCode 2631006 exceeds the 2610006 installed from the Play Store, so this is an upgrade *by
+versionCode*. But the signing key differs (apkmirror vs Google Play), so Android will refuse to
+install it over the existing app: uninstalling `com.truecaller` first is required, which discards app
+data and loses the Play Store copy of 26.10.6. Not yet decided whether to test on 26.31.6 by
+sideloading, or to keep the Play Store build.
+
+## Target declaration
+
+```text
+package      com.truecaller
+versionName  26.31.6
+versionCode  2631006
+fileType     base.apk, from an apkm bundle; base content only, ABI/density in splits
+compileSdk   36
+minSdk       26
+targetSdk    36
+```
+
+No other Truecaller version has been verified. Do not claim support for any.
+
+## DEX inventory
+
+86,463 classes total, **6,342** app-owned under `Lcom/truecaller/`.
+
+| dex | classes | app classes |
+| --- | --- | --- |
+| `classes.dex` | 9,466 | 48 |
+| `classes2.dex` | 9,661 | 0 |
+| `classes3.dex` | 13,460 | 159 |
+| `classes4.dex` | 9,820 | 1 |
+| `classes5.dex` | 11,356 | 2,193 |
+| `classes6.dex` | 12,010 | 2,017 |
+| `classes7.dex` | 11,675 | 1,924 |
+| `classes8.dex` | 8,208 | 0 |
+| `classes9.dex` | 807 | 0 |
+
+App code sits in five DEX files, concentrated in `classes5/6/7`; `classes2/8/9` hold none. A
+fingerprint must never assume a single DEX or a fixed class-to-DEX mapping.
+
+This is less than half the 13,601 app classes the 26.10.6 build had. That is a real property of the
+build, not a packaging artefact: histogramming every two-level package root shows `com/truecaller` is
+the only app-owned prefix at 6,342, so no app code moved to another namespace.
+
+`base.apk` also carries `assets/audience_network.dex` (3,288,116 bytes, Audience SDK). Not extracted.
+
+Largest app packages: `settings/impl/ui` 341, `ui` 125, `deeplink/handlers` 108,
+`surveys/data/dto` 99, `ads/api/model` 96, `ads/api/internal` 86, `wizard/verification` 82,
+`account/domain/auth` 82, `ads/util` 78, `search/global` 68, `details_view/ui` 62,
+`call_assistant/core/data` 61, `blockinglevel/presentation` 51, `android/sdk/oAuth` 49,
+`insights/core/llm` 46.
+
+## Feature split with its own DEX
+
+`requiredSplitTypes = base__abi,base__density`, eleven splits. Every ABI and density split was checked
+and holds no DEX. One does not:
+
+- `split_insights_category_model.apk` contains a `classes.dex`. 852,464 bytes, 7 entries: the DEX,
+  `resources.arsc`, `stamp-cert-sha256`, and an offline ML model — `assets/category_model_1_0.tflite`,
+  `assets/category_labels_1_0.txt`, `assets/category_vocab_1_0.txt`.
+- It is kept beside `base.apk` in the cache but was **not** folded into `dexindex.pickle`. So
+  `com/truecaller/**` classes are not guaranteed to be in `base.apk`'s DEX files; a fingerprint must
+  not assume that. Related code `com/truecaller/insights/core/llm` does live in `base.apk`.
+
+## Naming: readable packages, minified simple names
+
+Unchanged in character from 26.10.6.
+
+- App **package** paths are readable: `com/truecaller/settings/impl/ui`, `com/truecaller/ads/api/model`,
+  `com/truecaller/insights/core/llm`.
+- 1,485 of 6,342 app classes (23.4%) have R8-minified *simple* names:
+  `Lcom/truecaller/common/ui/d;`, `Lcom/truecaller/common/network/optout/a;`,
+  `Lcom/truecaller/common/network/lastactivity/bar;`.
+- Bundled third-party code is minified at package level: `com/google` 13,095, `com/mbridge` 3,494,
+  `com/ironsource` 3,158, `com/unity3d` 2,135, `com/fyber` 1,653, `com/inmobi` 1,542,
+  `com/moloco` 1,152.
+- Safe anchors: `com/truecaller/…` package path, field names, method names and descriptors, string
+  constants, access flags, distinctive instruction sequences. Unsafe: any minified simple class name or
+  any method name inside a minified class.
+- `mappings/` stays empty. Nothing to deobfuscate, so no mapping exists for this target.
+
+## Manifest surface
+
+- Launcher activity `com.truecaller.ui.TruecallerInit`, exported, `MAIN` + `LAUNCHER`.
+- 323 activities, 51 services, 72 receivers, 21 providers, 93 permissions.
+
+## Query tooling
+
+Helpers copied from the now-deleted 26.10.6 cache, which had copied them from the Substack 3.7.2
+cache. They already carry `logger.remove()` in `manifest.py` and `com/truecaller` defaults. Run them
+from inside `~/apks/com.truecaller/26.31.6/tools/`, where `dex` is a symlink to `../dex`.
+
+`dexindex.pickle` is built. `struse.json.gz` and `refs.json.gz` are built on first use and are not in
+the cache yet.
+
+`androguard` 4.1.4 and `loguru` 0.7.3 are installed. `apktool`, `baksmali`, `jadx` and the Android
+build tools are not available in Termux, so `disassembly/` is empty and instruction-level work goes
+through androguard rather than smali.
+
+## Superseded versions
+
+### 26.10.6 — cache deleted 2026-10-08, unrecoverable
+
+- Its `base.apk` came from the installed app at
+  `/data/app/~~1yBMxg5scYYtXj5zlEj5IA==/com.truecaller--ObsxnhvT3AhA3HBEA2TLA==/base.apk`,
+  SHA-256 `e4448a08a769910ad1fa0e543bb4c6390bb30a61177431a47bdc679d552b0a73`, versionCode 2610006.
+- **The VInstall backup is corrupt and must not be retried.** It is a streaming zip whose central
+  directory is untrustworthy — entry offsets off by up to 3 bytes and wrong CRC-32 values
+  (`manifest.json` declared `fffddb46`, actually `abc73920`) — while the per-entry data descriptors are
+  correct. It was caught mid-write twice: once at 37,747,640 bytes with no central directory and no
+  EOCD, then settled at 77,029,284 bytes with an intact EOCD but a **19,737,989-byte run of zeros** at
+  offset 45,877,562–65,615,551, entirely inside `base.apk`'s compressed span. ~25.6% of the stream is
+  gone. Inflating yields 119,537,664 bytes, *more* than the real 112,746,655, because the zero run
+  decodes as spurious stored blocks; output that is too large means a hole, whereas real truncation
+  yields too little. Its intact `manifest.json` did declare `base.apk` as `e4448a08…b0a73`, which is how
+  the installed copy was proven to be the intended build.
+- Reader trap worth keeping: passing fixed-size input chunks with a smaller `max_length` to
+  `decompress` while advancing the read cursor by the chunk size silently discards
+  `unconsumed_tail` and truncates recovery at exactly 1 MiB. Feed from `unconsumed_tail`.
+- That cache held 12 DEX files and 13,601 app classes, spread over eight DEX files, with 315
+  activities. All deleted. Its own `README.md` and these notes were the only record.
+- Consequence: because 26.10.6's only good source was the installed app, installing 26.31.6 makes that
+  build permanently unobtainable without a fresh download of exactly 26.10.6.
+
+### 15.7.6 — never cached
+
+- `/storage/0/Download/1DM/Programs/com.truecaller_15.7.6-1507006_minAPI26(arm64-v8a,armeabi-v7a)(nodpi)_apkmirror.com.apk`,
+  versionCode 1507006, SHA-256 `7376826031370070828d3da5f71f09e115f51b17c7f23a89a116c590c944fb7a`,
+  135,300,250 bytes. Complete and valid: 9,565 entries, CRC clean, 8 `classes*.dex`.
+- Much smaller, built against SDK 35, 286 activities, and Premium-free, so it stays a candidate if a
+  simpler older target is ever wanted. Not extracted.
+
+## Phase 1 investigation — return the contact list as an empty one
+
+**Behaviour, in one sentence:** when the app reads its contact list, it gets an empty list.
+
+**Status: awaiting review. No patch code written yet.**
+
+### What was ruled out first
+
+- Only 3 app methods reference `Landroid/provider/ContactsContract` at all, and none of them is a
+  contacts reader: `com/truecaller/account/domain/auth/i;.invokeSuspend` calls
+  `Lda/baz;->e(ContentResolver)` for `ContactsContract$RawContacts$DefaultAccount` (dual-SIM default
+  account detection), and `com/truecaller/service/MissedCallsNotificationWorker;.c` and `.d` call
+  `Contacts.getLookupUri` to build a notification deep link. So the phonebook read is **not** reached
+  through an obvious app-owned `ContactsContract` call site.
+- No `content://com.android.contacts/...` string literal exists anywhere in the APK, so a URI constant
+  is not a usable anchor either.
+- The obvious-sounding classes are **not in the DEX**. `com/truecaller/contacts_list/ContactsHolder;`,
+  `com/truecaller/contacts_list/data/SortedContactsRepository;` and
+  `com/truecaller/contacts_list/data/SortedContactsDao;` are all absent from `class_defs`; only their
+  nested enums survive (`ContactsHolder$FavoritesFilter`, `ContactsHolder$PhonebookFilter`,
+  `ContactsHolder$SortingMode`, `SortedContactsDao$ContactFullness`,
+  `SortedContactsRepository$ContactsLoadingMode`). Confirmed real and not a tooling artefact: the
+  type descriptor for each outer class appears in no dex string table, only the `$Nested` forms do.
+  R8 has dropped these Kotlin holders and kept the nested types that are still referenced. **They are
+  therefore not hookable**, and their nested enums remain perfectly good fingerprint material.
+
+### What the subsystem actually is
+
+Two obfuscated classes own the contact list:
+
+- `La52/g0;` (`classes6.dex`, `public`, 53 methods) holds the data. Field `b : Ljava/lang/Object;` is
+  in practice a `List[][]`, partitioned by favourites filter and phonebook filter.
+- `Le81/x;` (`classes6.dex`, `public final`, extends `Lyf0/baz;`, 24 methods) drives loading and
+  exposes the read accessor. Relevant fields: `G : La52/g0;`, `H : Z`, `J : Ljava/util/ArrayList;`.
+
+The accessors, both keyed on the two readable enum types:
+
+```text
+La52/g0;->u(FavoritesFilter, PhonebookFilter;)Ljava/util/List;   35 ins, 7 regs
+Le81/x;->D(FavoritesFilter, PhonebookFilter;)Ljava/util/List;    12 ins, 4 regs
+```
+
+`a52/g0.u` is a pure 2-D lookup: `iget-object b`, `check-cast [[Ljava/util/List;`, index by
+`favoritesFilter.ordinal()` through the `Le81/c0.a` switch, then by `phonebookFilter.ordinal()`
+through `Le81/c0.b`, then return. `e81/x.D` is a thin wrapper over it:
+
+```text
+  0 const-string        v0, "favoritesFilter"
+  4 invoke-static       Intrinsics.checkNotNullParameter
+ 10 const-string        v0, "phonebookFilter"
+ 14 invoke-static       Intrinsics.checkNotNullParameter
+ 20 iget-boolean        v0, v1, Le81/x;->H Z
+ 24 if-eqz              v0, +005h
+ 28 iget-object         v2, v1, Le81/x;->J Ljava/util/ArrayList;
+ 32 return-object       v2
+ 34 iget-object         v0, v1, Le81/x;->G La52/g0;
+ 38 invoke-virtual      a52/g0.u(v2, v3)
+ 44 move-result-object  v2
+ 46 return-object       v2
+```
+
+`K(FavoritesFilter, PhonebookFilter, List)V` on `a52/g0` is the matching writer.
+
+### Complete caller map
+
+A full scan of all 9 dex files and all 86,463 classes found every call site of `a52/g0.u` and `a52/g0.K`:
+
+| caller | dex | what it does |
+| --- | --- | --- |
+| `La52/g0;.<init>(Ljava/util/List;Z)V` | classes6 | builds the `List[][]`, calls `K` 3x, `u` once |
+| `Le81/x;.c2(x, ContactsLoadingMode, SortingMode, qux)` | classes6 | the loader; `u` at 832/946/996, `K` at 840 |
+| `Le81/x;.D(FavoritesFilter, PhonebookFilter)List` | classes6 | the read accessor |
+| `Le81/x;.z(String)V` | classes6 | `u` at 72 |
+| `Lcom/truecaller/account/domain/auth/i;.invokeSuspend` | classes5 | `u` at 1804 |
+| `Ldj2/o;.invokeSuspend` | classes7 | `u` at 3630 |
+
+Only 5 distinct methods outside the class itself read the list, and every read goes through `u`. So
+neutering `u` — or the `e81/x.D` wrapper — makes the contact list empty everywhere with no other
+read path to cover.
+
+### Candidate hook, and why the fingerprint is stable
+
+Preferred target is **`Le81/x;->D(FavoritesFilter, PhonebookFilter;)Ljava/util/List;`**: smallest body
+in the subsystem (12 instructions, 4 registers) and the natural accessor, so a patch is a single
+early return of an empty `List` rather than an edit to a 35-instruction method.
+
+The obfuscated class and method names alone would be a bad fingerprint, per AGENTS.md. What makes it
+specific is that the signature and body are pinned by **readable, app-owned types and literals**:
+
+- parameter types `Lcom/truecaller/contacts_list/ContactsHolder$FavoritesFilter;` and
+  `Lcom/truecaller/contacts_list/ContactsHolder$PhonebookFilter;` — app enum names
+- return type `Ljava/util/List;`
+- const-strings `"favoritesFilter"` and `"phonebookFilter"` — Kotlin parameter names emitted by
+  `Intrinsics.checkNotNullParameter`, stable and human-readable
+- two `Intrinsics.checkNotNullParameter` calls, and the `iget-boolean …->H Z` branch
+- 12 instructions, 4 registers
+
+### Open questions, stated plainly
+
+- **The behaviour is ambiguous and the user has not yet disambiguated it.** Two app-level callers of
+  `u` are not UI: `com/truecaller/account/domain/auth/i` sits in the account/auth domain, which is
+  where an onboarding phonebook upload would live, and `dj2/o` is unidentified. So hooking this
+  accessor would empty the contacts list *and* starve anything that uploads or matches against it. That
+  may be exactly what is wanted, or it may break a flow that merely reads contacts for a legitimate
+  reason. Needs a decision before implementing.
+- The callers of `e81/x.D` itself were **not** enumerated. Only callers of `a52/g0.u` and `.K` were,
+  because the scan was aimed at the data holder. `e81/x.D` may have callers beyond those five.
+- What boolean field `H` and ArrayList field `J` mean is unknown. `D` returns `J` when `H` is set,
+  bypassing `a52/g0` entirely, so a patch that only rewrites the `a52/g0` branch would miss that case.
+  A patch on `D` itself covers both.
+- Whether the app still needs `READ_CONTACTS` to function, and what the UI does with an empty list
+  (empty state vs blank screen vs error), is untested.
+- Nothing here has been device-tested.
+
+## Patch 1 — Return an empty contact list
+
+Three methods, each made to return `Collections.emptyList()`. Scope was widened from the single
+method originally put to the user, because two further read paths were found afterwards and a
+one-method patch would have been a **silent no-op** for two of the three.
+
+### Why one method was not enough
+
+`Le81/x;->D` was the confirmed target, but after it was confirmed the full call graph showed:
+
+- `Le81/x;->D` has **zero direct callers**. It is reached only through `invoke-interface` on
+  `Le81/g;`. A grep for its name suggests it is unused when it is in fact the main path, which is
+  exactly the trap AGENTS.md warns about.
+- `Le81/g;` is an **interface** and its `D` is `public abstract`, so there is no body to patch.
+- `Le81/g;` has exactly **two** implementors, both `public final`: `Le81/x;` and `Lj71/d;`. Patching
+  one leaves the other live.
+- `Lj71/d;->D` does **not** go through `La52/g0`. It reads a cached `List` from field `d : Leh3/c2;`
+  → `Lj71/b;->c`. Its one caller, `Ldz1/i;.x()`, asks for
+  `INCLUDE_NON_FAVORITES` + `PHONEBOOK_ONLY` — the whole phonebook.
+- Two app classes call `La52/g0;->u` **directly**, bypassing the interface:
+  `com/truecaller/account/domain/auth/i;.invokeSuspend` and `Ldj2/o;.invokeSuspend`.
+
+Exhaustiveness argument: a scan of all 9 dex files and all 86,463 classes found exactly 4 methods
+carrying that descriptor — `La52/g0;->u`, the abstract `Le81/g;->D`, and the two implementors — and
+exactly 2 classes listing `Le81/g;` as an interface. So patching the three concrete ones covers
+every route found. `La52/g0;->K`, the matching writer, is left alone: it only populates the holder
+and nothing reads the result once the readers return empty.
+
+Callers of the patched accessors, for the record:
+
+| caller | what it wants |
+| --- | --- |
+| `com/moloco/sdk/xenoss/sdkdevkit/android/adrenderer/internal/media/b;.x()` | `invoke-interface` on `Le81/g;` — the **Moloco ad SDK** asking for the contact list |
+| `Ldz1/i;.x()` | `Lj71/d.D(INCLUDE_NON_FAVORITES, PHONEBOOK_ONLY)` — the whole phonebook |
+| `Le81/x;.z(String)`, `Le81/x;.c2(...)`, `La52/g0;.<init>` | internal loader paths |
+| `com/truecaller/account/domain/auth/i;.invokeSuspend`, `Ldj2/o;.invokeSuspend` | direct holder reads |
+
+### Files
+
+```text
+patches/src/main/kotlin/app/truecaller/patches/shared/Constants.kt
+patches/src/main/kotlin/app/truecaller/patches/contacts/ContactListFingerprints.kt
+patches/src/main/kotlin/app/truecaller/patches/contacts/EmptyContactListPatch.kt
+```
+
+Declared target: `com.truecaller` 26.31.6, versionCode 2631006, `ApkFileType.APK`.
+Patch default is `true`.
+
+### Register budget, checked against the dex
+
+| method | `.registers` | parameters | free local |
+| --- | --- | --- | --- |
+| `Le81/x;->D` | 4 | 3 (`this` + 2 filters) | `v0` |
+| `Lj71/d;->D` | 4 | 3 | `v0` |
+| `La52/g0;->u` | 7 | 3 (`this`=`v4`, filters `v5`/`v6`) | `v0`–`v3` |
+
+Payload touches `v0` only:
+
+```smali
+invoke-static {}, Ljava/util/Collections;->emptyList()Ljava/util/List;
+move-result-object v0
+return-object v0
+```
+
+`Collections.emptyList()` erases to `()Ljava/util/List;`, so the `move-result-object` and the
+`return-object` agree with the declared return type. An empty list is returned rather than `null`
+because every original path returns a real `List` and callers are not obliged to null-check.
+
+### Verification status
+
+**Smali: verified. Kotlin: still not compiled.**
+
+`python3 tools/checks/check_inline_smali.py` parses every injected smali block through the patcher's
+own `SmaliTestUtils.compileSmali`, which is the same entry point `addInstructions` uses at patch time.
+It needs no APK, no device and no network, and it works in Termux because the jars in
+`~/apks/_tools/smali` are auto-discovered. All three Truecaller blocks return `PARSE OK`:
+
+```text
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> ContactsHolderAccessor.D
+        v1=this v2,v3=filters; v0 free
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> CachedContactsAccessor.D
+        v1=this v2,v3=filters; v0 free
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> PartitionedContactsLookup.u
+        v4=this v5,v6=filters; v0..v3 free
+checked 5 file(s), 6 block(s): 1 failure(s)
+```
+
+The single failure is **pre-existing and unrelated**:
+`pinterest/patches/comments/HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s) declared`.
+Verified against `HEAD`, where the file already had two triple-quoted blocks against one declared
+layout. That file is untouched by this change. `release.yml` only runs `patch_smali_checks.py`, never
+`check_inline_smali.py`, so CI does not surface it. Left alone deliberately: AGENTS.md says not to
+refactor unrelated patches in the same change.
+
+`python3 tools/checks/patch_smali_checks.py`, the check CI does run, passes: `checked 41 file(s):
+0 problem(s)`. That covers the `->member:Type` field-reference form, invoke arity, imports, and the
+`$Nested`-in-a-Kotlin-template trap — the last of which matters here, because all three fingerprints
+name `ContactsHolder$FavoritesFilter` and are escaped as `\$` in Kotlin.
+
+`./gradlew :patches:compileKotlin` **still cannot be run here**:
+
+```text
+* Where: settings.gradle.kts line: 19
+> Failed to apply plugin 'app.morphe.patches'.
+   > java.lang.IllegalArgumentException (no error message)
+```
+
+Environmental, not the patch. `settings.gradle.kts` resolves the plugin from GitHub Packages with
+`username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")` and the
+matching `GITHUB_TOKEN`; both are unset, so the provider yields `null` and Gradle's `ValueSupplier.of`
+rejects it. Needs `GITHUB_TOKEN` + `GITHUB_ACTOR` exported, then `./gradlew --stop` per AGENTS.md so a
+stale daemon does not reuse the old environment. On CI both are supplied automatically by
+`secrets.GITHUB_TOKEN`, and `release.yml` runs `./gradlew :patches:buildAndroid clean` on any push to a
+branch that is not `dev` or `main`, so pushing `agent/truecaller` verifies compilation without
+publishing a release.
+
+Note that neither local check can substitute for the real build: `patch_smali_checks.py` and
+`check_inline_smali.py` both work by reading patch sources, and `tools/checks/README.md` is explicit
+that **fingerprint resolution is not covered** — whether a filter chain still matches a given APK needs
+the pinned APK, which CI cannot fetch. That gap is the one that bit v0.4.0, where a wrong
+`returnType` made a fingerprint match nothing, silently.
+
+### Change to the shared checker
+
+`tools/checks/check_inline_smali.py` hardcoded `PATCHES` to
+`patches/src/main/kotlin/app/pinterest/patches` and keyed `LAYOUTS` by path within it, so no other
+app's injected smali could ever be checked. `PATCHES` now points at `.../app` and the four existing
+keys carry a `pinterest/patches/` prefix. That is a mechanical path change to existing entries — no
+layout values were altered — and it is what lets the Truecaller blocks be verified by the same
+mechanism that caught five bad releases.
+
+The payload is inlined at each `addInstructionsWithLabels` call site rather than shared through a
+`private const val`, because the checker collects blocks by matching a literal triple-quoted string at
+the call. A bare identifier compiles identically but would sit outside the only check that can catch
+malformed smali without a device.
+
+### A bug in the query tooling, found the hard way
+
+`apprefs.py` matched field accessors with `name in FIELD` instead of `name.startswith(FIELD)`, and the
+opcodes are `iget-object`, `iput-object`, `sget-object` — never the bare `iget`. Every field access
+was therefore invisible, which is why an early scan for direct readers of the holder's fields
+reported `0` hits, and why the first `ContactsContract` scan was invoke-only. Fixed to `startswith`;
+re-run reported 73 field accessors. That count is *not* 73 contact readers: `La52/g0` is a
+general-purpose collection wrapper the rest of the app also uses, which is why
+`PartitionedContactsLookupFingerprint` is pinned on the two contacts-filter parameter types and the
+`check-cast` to `[[Ljava/util/List;` rather than on the class alone.
+
+`refs.py`, the older whole-APK indexer, gets this right — it uses `name.startswith(FIELD)` — so the
+two tools disagreed and the newer one was wrong.
+
+### Still not verified
+
+- **Nothing compiled, nothing assembled, nothing run on device.**
+- Whether an empty list breaks a caller that assumed a non-empty result. `Le81/x;.c2` is the loader
+  and still populates the holder, so the data is built in memory and simply never handed out; if any
+  caller uses the list to drive a precondition rather than to display, it may misbehave.
+- The **Moloco ad SDK** calls the accessor through the interface. Emptying it changes what the ad
+  SDK sees for contact-based targeting. Intended, but untested, and it is the most likely source of a
+  surprising side effect.
+- `com/truecaller/account/domain/auth/i` was never traced to confirm it is the phonebook upload. It
+  is covered because it reads the holder directly, not because it was identified.
+- Whether the app still requests `READ_CONTACTS` at runtime and what its UI shows when the list is
+  empty.
