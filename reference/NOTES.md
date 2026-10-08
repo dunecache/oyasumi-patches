@@ -4140,3 +4140,368 @@ The register claim checks out against the dex as well: `registers = 11`, four pa
   The dump's `thumbnail_image_layer` points to `xx0/o`, and `wx0/e.r3` chooses at runtime from
   item state. It does not affect this patch, which hides the container either way, but it would
   matter for a patch that targets the cells individually.
+
+# "More ideas for your board" — investigation (2026-10-08)
+
+## Behaviour requested
+
+Extend `Hide "Ideas you might love" section` so it also removes the "More ideas for your board"
+element.
+
+## Pinned target
+
+Unchanged: `com.pinterest` `14.38.0`, versionCode `14388010`. Cache `~/apks/com.pinterest/14.38.0/`,
+APK SHA-256 `af6b383adb445cebee1ca43f14ac409f91475c1d62e0e11ef52ef52e29fb0553`.
+
+## The string is a resource, unlike the existing patch's header
+
+The existing patch notes that "Ideas you might love" is server-supplied. This one is not:
+
+- `resources.arsc`, string id `2132021139` / `0x7f140f93`, resource name
+  **`more_idea_half_sheet_title`** = **`More ideas for this board`**.
+- It sits in a contiguous feature block with two siblings: `more_ideas_card_default_header`
+  (`0x7f140f94`) = "More ideas for", and `more_ideas_from_your_home_feed_banner` (`0x7f140f95`)
+  = "More ideas from your home feed".
+- `rg -F more_idea_half_sheet_title` over the smali: exactly **one** hit outside the `R` class,
+  `com/pinterest/feature/board/common/newideas/sba/w.smali:767`.
+
+Resolving the id to its name needed a fix to the cache's own helper,
+`~/apks/com.pinterest/14.38.0/tools/res_query.py`, which was written against an older androguard
+(`APK(..., logger=...)`, `get_resource_table`) and crashed immediately on the installed
+androguard 4.1.4. Rewritten to the 4.x API (`get_resolved_strings()` returns
+`{pkg: {locale: {id: value}}}`; `get_public_resources()` returns an XML `bytes` blob, not a
+pair). The note is recorded because the helper is part of the cache and a future agent will hit
+the same wall.
+
+## What `more_idea_half_sheet_title` actually titles
+
+`newideas/sba/w.smali` is a synthetic `Function1` (`when` over the sealed
+`newideas/sba/a0` hierarchy), `.registers 25`, 1015 lines. At its `:pswitch_278` arm:
+
+```
+ 763  check-cast    v0, Lxy1/d;
+ 767  sget          v1, Lad0/d;->more_idea_half_sheet_title:I
+ 773  new-instance  v2, Ljb0/h1;
+ 775  invoke-direct {v2, v1, v4}, Ljb0/h1;-><init>(ILjava/util/List;)V
+ 777  iput-object   v2, v0, Lxy1/d;->c:Ljb0/f1;
+ 779  iput-object   v3, v0, Lxy1/d;->f:Lty1/b;
+ 781  sget-object   v1, Lty1/t;->Center:Lty1/t;
+ 783  invoke-virtual {v0, v1}, Lxy1/d;->a(Lty1/t;)V
+```
+
+- `Ljb0/f1` is an interface with the single method `b(Landroid/content/Context;)Ljava/lang/CharSequence;`
+  — a **title provider**. `Ljb0/h1` is its implementation: a string resource id plus format args.
+  So field `c` of `Lxy1/d` is a title, and this resource is the title.
+- `Lxy1/d` is a sheet config DTO (fields `a: Lty1/t` alignment, `c`/`d`: `Ljb0/f1` titles,
+  `e`/`f`: `Lty1/b`, `g: Lty1/n`, `i: Lty1/j`). `Lty1/t;->Center` is an alignment, which is what
+  makes this a **half sheet / bottom sheet** rather than a list row.
+
+So `more_idea_half_sheet_title` is the **title of a half sheet**, not a row in a feed list. The
+sheet's content header is `BoardMoreIdeasHeaderView` (board cover `board_cover_image`,
+`board_name`, `board_metadata`, plus a secret-board lock icon), inflated from the
+`board_more_ideas_header` layout (`nd0/b.smali:6`, `0x7f0d0097`).
+
+## The problem: there are at least four different "More ideas" surfaces
+
+Searching on the word "ideas" turns up more than one candidate, and I cannot tell from the
+available evidence which one the request means. Enumerated:
+
+1. **The board "More ideas" half sheet** — the one titled `more_idea_half_sheet_title`
+   ("More ideas for this board"). Entry point above. Header
+   `BoardMoreIdeasHeaderView`, bound from `aa1/b.smali:2840`; the header/board-name views are
+   built by a synthetic `Function0` `bz1/c.smali` whose only two callers are
+   `c2/c.smali:123` and `bb1/z0.smali:106` — the latter goes to
+   `com/pinterest/adsCollageHeroCutout/container/f;->e(ZLbz1/c;)V`, i.e. **an ads collage hero
+   cutout ad unit**. Unclear from the smali alone whether this half sheet also appears on an
+   ordinary board page.
+
+2. **The public-board more-ideas list header** —
+   `com/pinterest/feature/board/detail/view/PublicBoardMoreIdeasListStaticHeader`. A
+   `FrameLayout` implementing `Liu1/l` (the same bind interface the existing patch targets),
+   holding one `GestaltText`. Created in exactly two places, both view factories with
+   `packed-switch` view-type dispatchers: `fu0/j.smali:471` (`:pswitch_1a0`) and `q41/j.smali:66`.
+   Its text is supplied by the caller, not by a resource.
+
+3. **The board "Ideas preview" card** on the board content tab —
+   `feature/board/detail/contenttab/view/BoardIdeasPreviewDetailedView` (`preview_title` +
+   `see_more_button`, `0x7f0a0ff9` / `0x7f0a12f2`) and `BoardIdeasPreviewFooterView`. Both
+   created from `fu0/j` (`:pswitch_1b2`, `:pswitch_1b8`). Title text not traced; probably
+   server-supplied.
+
+4. **The "More ideas" feed section title** —
+   `feature/board/common/newideas/view/MoreIdeasFeedSectionTitleView`, inflated from
+   `feed_section_title_view` (`nd0/b`), one `GestaltText` field `a`. Bound at
+   `aa1/n.smali:160-183` (`:pswitch_89`), where the text comes from
+   `com/pinterest/api/model/u7;->o()Ljava/lang/String;`. `u7` is a server-side typography/text
+   node (`id`, `node_id`, paddings, `font_size`, `font_weight`), so **this title cannot be
+   fingerprinted by text at all**. Registered in the Dagger component at `pr/c9.smali:129978`
+   via `Lf01/h0;->d()`, dispatched from `d2/g.smali:48`.
+
+Also present but almost certainly not what is meant: `feature/search/results/view/SearchMoreIdeasView`
+(search results), `shopping/shoppingstories/.../BoardMoreIdeasUpsellCardView` (uses
+`more_ideas_card_default_header` at line 598), and
+`upsell/toast/view/BoardMoreIdeasPostRepinUpsellToastView`.
+
+## What I could not establish
+
+- **Which surface the request refers to.** No device dump of a board page exists; the only
+  Pinterest dump in `/storage/emulated/0/Download` is `pinterst_love.xml`, which is the pin
+  closeup and contains only the "Ideas you might love" section. Nothing on the device shows the
+  string in question, so I cannot map text to a node.
+- For candidate 1, whether the half sheet is reachable without tapping something else first.
+- For candidates 2 and 3, the text actually rendered.
+- The view-type constants for candidates 2 and 3 in `fu0/j` (the `packed-switch` covers 23 arms;
+  the key for each arm was not mapped back to the constant).
+
+## Not implemented
+
+No patch code written, per the Phase 1 review gate. Guessing between four surfaces is exactly
+the failure mode this gate exists to prevent: three of the four would produce a patch that
+applies cleanly and hides the wrong thing.
+
+## Correction: the target is the section header, not the half sheet
+
+The user picked "the board 'More ideas' half sheet" from the four candidates above, and asked me to
+proceed without a device dump. Chasing that choice led to the actual resource, and it changes the
+seam. Two strings in 14.38.0 could be described as "more ideas for your board":
+
+| resource | id | value |
+| --- | --- | --- |
+| `board_more_ideas_section_header` | `0x7f1402a9` | **"More ideas for this board"** |
+| `ideas_for_your_board` | `0x7f140d87` | "Ideas for your board" |
+
+`board_more_ideas_section_header` is the match — the value is the request almost verbatim, and the
+name says what it is. It is **not** the half-sheet title; the half sheet keeps
+`more_idea_half_sheet_title`, which is a separate string with the same text, set on a different
+class. So the half sheet is not the thing to patch. `ideas_for_your_board` lacks the leading
+"More" and is used by `bundledCart/cart/y.smali:153` and `newideas/view/b0.smali:78`, neither of
+which is a board page section.
+
+`board_more_ideas_section_header` appears in exactly four places in the smali: the `R` field at
+`fd0/f.smali:32`, and three consumers.
+
+### The three consumers are all Compose, not a RecyclerView bind path
+
+This is the load-bearing difference from `HideIdeasSectionPatch`, which hides a view in a
+`Lc01/g` presenter and could not work here.
+
+| site | section id | builder discriminator | tracking enum |
+| --- | --- | --- | --- |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali:208` | `0x2714` | `share/board/video/pinselection/ui/m;-><init>(0x6)` | `rv0/k0.MoreIdeasHeader` |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali:549` | `0x4e24` | `share/board/video/pinselection/ui/m;-><init>(0x11)` | `wv0/i0.MoreIdeasHeader` |
+| `a2/c0.smali:1583` (in `i(La2/c0;Lt30/l0;Lsv0/c;I)Lax2/a0;`) | `0x3ef` | `share/board/video/pinselection/ui/m;-><init>(0xb)` | `sv0/d2.MoreIdeasHeader` |
+
+All three build an `ax2/m3` text node and hand it to
+`La0/f;->a0(La0/f;Lax2/o3;Lax2/m;Lax2/u1;ZLax2/f;Lax2/l;Lax2/v1;Lax2/l;Ljava/lang/String;Lax2/v1;Lax2/n;I)V`,
+the board-feed section DSL. `rv0/x.smali:523` re-keys the same `0x2714` into the feed, and
+`wv0/w.smali:483` does the same for `0x4e24`. So there are two board feeds plus a helper, all
+Compose, and the header is registered rather than bound.
+
+### The seam: `Lh5/n;->m0(I)Lax2/m3;`
+
+```
+2859: .method public static final m0(I)Lax2/m3;
+2860:     .registers 3
+2862:     new-instance v0, Ljava/util/ArrayList;
+2864:     const/4 v1, 0x0
+2866:     invoke-direct {v0, v1}, Ljava/util/ArrayList;-><init>(I)V
+2868:     new-instance v1, Ljb0/h1;
+2870:     invoke-direct {v1, p0, v0}, Ljb0/h1;-><init>(ILjava/util/List;)V
+2872:     new-instance p0, Lax2/m3;
+2874:     new-instance v0, Liv0/o;
+2876:     invoke-direct {v0, v1}, Liv0/o;-><init>(Ljb0/t0;)V
+2878:     invoke-static {v0}, Lkotlin/collections/b0;->c(Ljava/lang/Object;)Ljava/util/List;
+2879:     move-result-object v0
+2881:     invoke-direct {p0, v0}, Lax2/m3;-><init>(Ljava/util/List;)V
+2883:     return-object p0
+```
+
+`rg -F 'Lh5/n;->m0(I)Lax2/m3;'` over the whole smali tree returns **3 hits, and all three are
+the `board_more_ideas_section_header` sites** — in every case the instruction is immediately
+preceded by `sget ..., Lfd0/f;->board_more_ideas_section_header:I`. The helper is
+"string resource id → `ax2/m3` text node" and it exists in the dex solely for this one header.
+`h5/n` declares exactly one method named `m0`, so class + name + signature resolves uniquely.
+
+This matters more than it looks: the blast radius is provably zero. There is no other caller to
+collateral-damage, and no id check is even required — but the id check is kept anyway so a future
+release that reuses `m0` for other strings cannot silently blank them.
+
+### The empty-string target, and why not `0`
+
+`jb0/h1.b(Context)` (`jb0/h1.smali:95-159`) ends in
+`Context.getString(int, Object[])`, so substituting `0` would raise
+`Resources$NotFoundException` at render time. Three app strings have an empty default value:
+
+| resource | id | value |
+| --- | --- | --- |
+| `empty` | `0x7f1409d7` | `""` |
+| `empty_placeholder` | `0x7f1409e7` | `""` |
+| `empty_string` | `0x7f1409fe` | `""` |
+
+`empty` is the semantically correct one. Any locale missing it falls back to the default value,
+which is `""`, so there is no per-locale hazard.
+
+### Register budget for the insert
+
+`.registers 3` with one parameter, so `p0` is `v2` and `v0`/`v1` are the only locals. Inserting
+at index 0 — before `v0`/`v1` are first written — makes clobbering both safe. The block needs one
+scratch register for the two constants and rewrites `p0` in place; no other register is touched.
+
+### Two consequences the user has to choose between
+
+1. **Blanking the text is not the same as removing the section.** Compose renders a `Text("")`
+   with zero width but still reserves a line. The header words disappear; an empty row may
+   remain. Removing the whole section means skipping the `La0/f;->a0(...)` registration at the
+   three sites, which means branching over large register-shuffle blocks inside Compose functions
+   declaring `.registers 23`, `.registers 26` and `.registers 31`. I have not verified that
+   those jumps are safe and would not ship that without a device.
+2. **No runtime toggle is available on either seam.** `HideIdeasSectionPatch` reads
+   `morphe_hide_ideas_section` at runtime because it has a `View` to call `getContext()` on.
+   `m0` has no `Context` parameter and is not passed one, and a `resourcePatch` has no runtime at
+   all. So the new behaviour can only be gated by patch selection, like
+   `ForceOriginalImagePatch` and `DisableAppsFlyerPatch`, not by the toggle that drives
+   `HideIdeasSectionPatch`. It cannot be folded into the existing patch's toggle.
+
+# Patch 10 — Hide the "More ideas for this board" section (implemented)
+
+User decision: remove the **whole section**, not just blank its header, and do it with bytecode.
+Implemented as `sections/HideMoreIdeasSectionPatch.kt` +
+`sections/MoreIdeasSectionFingerprint.kt`, default off.
+
+## The seam: skip the registration, do not hide a view
+
+`HideIdeasSectionPatch` works because the pin-closeup section is *bound* into a `View` it can set
+`GONE`. The board page is Compose: there is no bound view to hide, and the section exists only
+because it is in the builder. So the seam is the registration itself.
+
+`La0/f` is the board page's Compose scope. Its single method `a0` **appends one section**:
+
+- builds an `Lax2/k2` descriptor, `ArrayList.add`s it into field `b`;
+- builds an `Lax2/z` wrapper, `ArrayList.add`s that into field `c`;
+- `LinkedHashSet.contains`/`add`s the section id into field `d`, and **throws** on a duplicate id.
+
+It returns `void`, contains **no `iput`**, and reads no builder field other than those three
+collections. So "return early" is exactly "never registered", not merely similar: there is no
+derived state left half-updated. `b0()` (`a0/f.smali:2589`), which builds the final `Lax2/a0`
+from the same three collections, is a pure read and requires no particular section to be present.
+
+The gate is on the **section id**, the tenth declared parameter (`p9`, `Ljava/lang/String;`, loaded
+into `v9` by the body). Every caller builds it from an enum's `getId()`, so it is a readable
+camelCase string. One hook therefore covers all three board variants:
+
+| consumer | ids |
+| --- | --- |
+| `com/pinterest/feature/board/redesign/tabbed/i2.smali` | `rv0/k0` (`0x2714` header, `0x228` content), `wv0/i0` (`0x4e24` header) |
+| `a2/c0.smali` | `sv0/d2` (`0x3ef` header) |
+
+Both ids are needed. `MoreIdeasHeader` is the section whose title is
+`board_more_ideas_section_header`; `MoreIdeas` is the list registered immediately after it.
+Skipping only the header leaves an unlabelled list, so the header alone is not enough.
+
+## `MoreIdeas` is not a unique string, and how that was settled
+
+Five enums declare a constant whose id is exactly `MoreIdeas`, and three declare
+`MoreIdeasHeader` — seven in total:
+
+```
+MoreIdeas        Lrv0/k0;  Lsv0/d2;  Liv0/l;  Len1/d;
+MoreIdeasHeader  Lrv0/k0;  Lsv0/d2;  Lwv0/i0;
+```
+
+Gating on the bare string would therefore have been a guess. It was checked instead, by scanning
+every `.smali` for enums whose `<clinit>` assigns one of those two ids and then finding which
+files both reference such a constant *and* call `a0`:
+
+```
+enum constants with a more-ideas id: 7
+files calling La0/f;->a0( that also reference them: 2
+  a2/c0.smali                                                              ['MoreIdeas', 'MoreIdeasHeader']
+  com/pinterest/feature/board/redesign/tabbed/i2.smali                     ['MoreIdeas', 'MoreIdeasHeader']
+```
+
+`iv0/l` and `en1/d` are consumed by unrelated code — `rv0/x.smali:734` builds an `ArrayList` of
+`iv0/n`, it does not register a section — so **nothing else can reach the gate**. This is the
+check that makes the seam safe rather than plausible.
+
+## A defect `:patches:compileKotlin` cannot catch
+
+The first version of the block was:
+
+```
+invoke-virtual {p9, v0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+```
+
+`p9` is `v21`. A `35c` invoke register list encodes each register in **four bits**, so every
+register in one must be `v0`..`v15`. `tools/checks/check_inline_smali.py` rejected it:
+
+```
+Invalid register: v20. Must be between v0 and v15, inclusive.
+```
+
+(sp20 because the wrapper computes `p9` from its own register map.) The fix is to copy the
+parameter into a local with an eight-bit form first:
+
+```
+if-eqz p9, :morphe_end_hide_more_ideas_section
+move-object/from16 v0, p9
+const-string v1, "MoreIdeasHeader"
+invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+```
+
+`move-object/from16` is a `22x` (eight-bit registers) so it can carry `p9` freely, and the
+compares then name only `v0`/`v1`. `move-object` would **not** work: it is a `12x` with the same
+four-bit limit. This is the class of defect `tools/checks/README.md` was written for, and it is
+the reason the layout entry was added to `check_inline_smali.py` rather than trusting the build.
+
+`p9` is null-tested rather than assumed: the id comes from `getId()` at every known call site,
+but `String.equals` on a null receiver throws, and null there must mean "not a more-ideas
+section" rather than a crash.
+
+## Verification performed
+
+- `./gradlew :patches:compileKotlin --offline` succeeds (Java 21). **Proves the Kotlin and the
+  fingerprint DSL type-check, not that the fingerprint matches the APK.**
+- `python3 tools/checks/patch_smali_checks.py` → `checked 44 file(s): 0 problem(s)`.
+- `python3 tools/checks/check_inline_smali.py` → the new block is `ok`. The run also reports
+  `comments/HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s) declared`, which is
+  **pre-existing**: confirmed by stashing this work and re-running, which reproduces the same
+  single failure on 4 files. Left alone as unrelated to this change, but it does mean one
+  `HideCommentsPatch` block is currently unchecked, which is worth fixing separately.
+- Fingerprint resolution, `.scratch/resolve_more_ideas_fp.py`, against the pinned dex — this is
+  the gap `tools/checks/README.md` names as uncovered:
+
+  ```
+  SURVIVOR  classes3.dex  La0/f;->a0(La0/f;Lax2/o3;...;I)V  instructions=90
+  methods on La0/f;:        73
+  named 'a0':                1
+  SURVIVORS all filters:     1
+  ```
+
+  One survivor, so `match()` returns a single match and `.method` is unambiguous. Note `La0/f`
+  declares 73 methods, so the name alone would not have been enough.
+
+  Three androguard quirks bit this resolver and are the same ones recorded for the ideas-section
+  fingerprint: an invoke prints as `v7, v9, v1, Lref;->m(...)V`, so the reference is the **last**
+  comma-separated field; descriptors are printed **with the receiver** even though Morphe's
+  `parameters` excludes it; and whitespace inside a descriptor is inconsistent
+  (`ZLax2/f;` → `Z Lax2/f;`), so both sides need `re.sub(r"\s+", "")` rather than a targeted fix.
+
+## Not verified
+
+- **No device test.** The argument that the section disappears is static: `a0` only appends, and
+  nothing downstream requires a given section to be registered. What a device would confirm is
+  that the board page still composes, that no *other* section depended on `MoreIdeasHeader`
+  having been registered, and that the duplicate-id `throw` in `a0` is not reached by a path that
+  assumed this section existed.
+- **Not a runtime toggle.** Deliberate, and it does not match the "extend Hide Ideas you might
+  love" phrasing: `a0` takes no `Context` and `La0/f` stores no `Context` field, so there is
+  nothing to call `MorpheSettingsActivity.isEnabled(Context, String)` with, and
+  `morphe-patcher` 1.13.0 ships no application-context helper (checked: `AndroidAppHelper` is
+  absent from the jar). A runtime toggle would mean adding a `ContentProvider` to the manifest
+  purely to capture an application context at process start. So this is gated by patch selection,
+  like `ForceOriginalImagePatch` and `DisableAppsFlyerPatch`, and is a separate switch from
+  `HideIdeasSectionPatch`'s toggle. Merging the two under one toggle is possible and is the
+  obvious next step if the extra manifest surface is wanted.
+- `board_more_ideas_section_header` is present in 46 of the APK's 48 locales, so the alternative
+  resource-rewrite approach would have had to touch 46 `res/values*/strings.xml` files. Recorded
+  because it was the option considered and rejected, not because it is needed.

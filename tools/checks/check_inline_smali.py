@@ -89,6 +89,21 @@ LAYOUTS = {
             "method": "LegacyPromotedCloseupActionButtonModule.createView",
         },
     ],
+    # The board section-registration DSL. registers=25 with thirteen parameters, so p0..p12 are
+    # v12..v24 and only v0..v11 are locals. `p9` -- the section id the block gates on -- is v21,
+    # and `v0` is not written until the method's own `move/from16 v0, p12`, which is the
+    # instruction the block is inserted in front of.
+    "sections/HideMoreIdeasSectionPatch.kt": [
+        {
+            "signature": "(La0/f; Lax2/o3; Lax2/m; Lax2/u1; Z Lax2/f; Lax2/l; Lax2/v1; Lax2/l; "
+                         "Ljava/lang/String; Lax2/v1; Lax2/n; I)V",
+            "registers": 25,
+            "ins": 12,
+            "live": "v12=this v13=o3 v14=m v15=u1 v16=boolean v17=f v18=l v19=v1 v20=l "
+                    "v21=sectionId v22=v1 v23=n v24=int flags; v0..v11 free",
+            "method": "La0/f;.a0",
+        },
+    ],
 }
 
 # private const val NAME = "value"  /  = 0x8  (unquoted numeric constants too)
