@@ -4746,3 +4746,108 @@ blocks never do. Leaving that check on `string_concat_in` keeps it quiet; the ga
 
 Still no successful device run. What this note establishes is that the specific fault ART reported
 is gone and that a check now guards its shape; it does not establish that the board page renders.
+
+# Defect — `check-cast` applied to the result of `instance-of` (found on device)
+
+## Symptom
+
+Same shape as the previous crash, one patch further on. `a0.f` was fixed, so the app got
+past it and died in the next patched class:
+
+```
+java.lang.VerifyError: Verifier rejected class hr1.f:
+void hr1.f.e(iu1.l, java.lang.Object, int) failed to verify:
+[0x9] check-cast on non-reference in v0
+    at pr.i9.get
+```
+
+`hr1.f.e` is `HideIdeasSectionPatch`'s target, not the more-ideas one. **That patch had never
+run on a device** — its own note ended "Still not verified: **No device test**". Two of the
+three pin-closeup/nav patches were likewise only ever statically argued.
+
+## Cause
+
+```
+instance-of v0, p1, Landroid/view/View;    ; v0 = the RESULT: an int
+if-eqz v0, :morphe_end_hide_ideas_section
+check-cast v0, Landroid/view/View;         ; *** v0 is an int, not a reference ***
+```
+
+The intent was to cast the *view parameter* `p1`. `p1` is `v8`, and a `35c` invoke register list
+is four bits per register, so `v0`..`v15` only — `v8` happens to be inside that, but the
+parameter of a `.registers 11` method with four parameters is `v8` and the block needed a
+register it could also hand to `getContext` as a `View`. The routing was right; the copy was
+missing. `instance-of` leaves a boolean in `v0`, so the `check-cast` had nothing to cast.
+
+The fix is one instruction between the guard and the cast:
+
+```
+instance-of v0, p1, Landroid/view/View;
+if-eqz v0, :morphe_end_hide_ideas_section
+move-object/from16 v0, p1
+check-cast v0, Landroid/view/View;
+```
+
+`check-cast` is here to satisfy the verifier, not the runtime — `instance-of` has already
+established the type — so copying the reference in is what makes the cast legal.
+`move-object/from16` is a `22x` and carries `p1` at any register; `move-object` would be a `12x`
+with the same four-bit ceiling that forced the detour in the first place.
+
+## The check now covers both shapes
+
+`check_invoke_receiver_type` was written for the previous defect — a `move-result` used as an
+invoke receiver. `instance-of` is the same mistake wearing a different opcode: it also leaves an
+int. Both are now tracked as primitive writes, and both reference-requiring positions are
+checked:
+
+| position | requires a reference |
+| --- | --- |
+| first register of `invoke-virtual`/`-direct`/`-interface` | receiver |
+| `check-cast`'s register | source and destination |
+
+Three more cases in `test_invoke_arity.py`: the shipped `instance-of` → `check-cast` shape
+(flagged), the fixed block with `move-object/from16` (quiet), and `check-cast` on a
+`move-result-object` (quiet). 37/37.
+
+## A register map that was never checked
+
+`check_inline_smali.py` reported `HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s)
+declared` on every run, and its message is explicit that "every injected block needs a layout,
+otherwise its register map goes unchecked". `HideIdeasSectionPatch.kt` had **no layout entry at
+all**, so it was silently outside the parser too. Added: `.registers 11`, four parameters, so
+`v7`=this `v8`=view `v9`=model `v10`=position and `v0`..`v6` free. It now parses as `ok`.
+
+That check is a parser and would not have caught this defect either. It is recorded because the
+gap was invisible rather than reported.
+
+## The merge at the end label is left alone, on purpose
+
+`:morphe_end_hide_ideas_section` has three predecessors and the register types genuinely differ
+across them: `v0` is an `int` on the "not a View" path and a `View` on the others. That is a
+verifier merge, and it is exactly what `check_branch_joins` exists to flag.
+
+It is left in place because the same shape is in the three nav-button patches, which ship and
+work, and because the register is overwritten by the surrounding code before it is read — the
+notes for this method record `v0` being re-initialised by the `sget-object` of `Laj0/f.a` and
+`v1`/`v2` by the two `const/4 0x0` that follow. Turning `check_branch_joins` loose enough to
+accept that produced 25 findings on working patches, so the assumption is documented instead of
+enforced. **This is the weakest remaining assumption in the patch** and the first thing to
+revisit if a future crash points at this method again.
+
+## Verified
+
+- `./gradlew :patches:compileKotlin --offline` — builds. The first attempt failed in the
+  settings plugin, not in any Kotlin: `PasswordCredentials.setUsername` throws
+  `IllegalArgumentException` on a null `GITHUB_ACTOR`, and the daemon predated the exported
+  credentials. `./gradlew --stop` first, as AGENTS.md says, and it builds.
+- `tools/checks/patch_smali_checks.py` — 44 files, 0 problems.
+- `tools/checks/test_invoke_arity.py` — 37/37.
+- `tools/checks/check_inline_smali.py` — both `sections/` blocks now `ok`; the only remaining
+  failure is the pre-existing `HideCommentsPatch.kt` layout count.
+
+## Still not verified
+
+No successful device run yet. Three patches have now been found to be broken by a real verifier
+and only by a real verifier, and none of the remaining ones has been exercised on hardware. The
+`hr1/f` block in particular was written and argued about across two sessions before a device
+rejected it.

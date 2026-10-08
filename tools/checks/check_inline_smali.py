@@ -89,6 +89,15 @@ LAYOUTS = {
             "method": "LegacyPromotedCloseupActionButtonModule.createView",
         },
     ],
+    "sections/HideIdeasSectionPatch.kt": [
+        {
+            "signature": "(Liu1/l;Ljava/lang/Object;I)V",
+            "registers": 11,
+            "ins": 7,
+            "live": "v7=this v8=view p1 v9=model v10=position; v0..v6 free",
+            "method": "Lhr1/f;.e",
+        },
+    ],
     # The board section-registration DSL. registers=25 with thirteen parameters, so p0..p12 are
     # v12..v24 and only v0..v11 are locals. `p9` -- the section id the block gates on -- is v21,
     # and `v0` is not written until the method's own `move/from16 v0, p12`, which is the

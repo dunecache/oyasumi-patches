@@ -345,6 +345,32 @@ RECEIVER_CASES: list[tuple[str, str, bool, bool]] = [
         False,
     ),
     (
+        "instance-of result cast without copying the reference in",
+        "instance-of v0, p1, Landroid/view/View;\n"
+        + "if-eqz v0, :end\n"
+        + "check-cast v0, Landroid/view/View;\n"
+        + "invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;",
+        True,
+        False,
+    ),
+    (
+        "the same block with the reference copied in first",
+        "instance-of v0, p1, Landroid/view/View;\n"
+        + "if-eqz v0, :end\n"
+        + "move-object/from16 v0, p1\n"
+        + "check-cast v0, Landroid/view/View;\n"
+        + "invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;",
+        False,
+        False,
+    ),
+    (
+        "check-cast on a move-result-object is fine",
+        "move-result-object v0\n"
+        + "check-cast v0, Landroid/view/View;",
+        False,
+        False,
+    ),
+    (
         "wide result is not reported by the end of the caller's block",
         "move-result v0\n"
         + "const-string v1, \"x\"\n"

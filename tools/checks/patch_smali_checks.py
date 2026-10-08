@@ -384,6 +384,14 @@ def _locals_defined(body: str) -> set[str]:
 #: `move-result-object` and `move-result-wide-object` are deliberately absent.
 MOVE_RESULT_PRIMITIVE = re.compile(r"^move-result(?:-wide)?\s+(v\d+)$")
 
+#: `instance-of v0, v1, Lx;` also leaves an int, and forgetting that is the same defect:
+#: `HideIdeasSectionPatch` cast the result of one straight to a `check-cast`, and the device
+#: reported `[0x9] check-cast on non-reference in v0`.
+INSTANCE_OF_PRIMITIVE = re.compile(r"^instance-of\s+(v\d+)\s*,")
+
+#: `check-cast v0, Lx;` reads and writes one register, and both ends need a reference.
+CHECK_CAST = re.compile(r"^check-cast\s+(v\d+)\s*,")
+
 #: Opcodes whose first register operand is a destination, so they overwrite whatever the
 #: register held. Only used to *clear* a tracked register, so a false positive here is silent.
 WRITES_FIRST = re.compile(
@@ -476,6 +484,23 @@ def check_invoke_receiver_type(path: Path) -> list[str]:
                 primitive[m.group(1)] = lineno
                 continue
 
+            m = INSTANCE_OF_PRIMITIVE.match(line)
+            if m:
+                primitive[m.group(1)] = lineno
+                continue
+
+            m = CHECK_CAST.match(line)
+            if m:
+                reg = m.group(1)
+                if reg in primitive:
+                    problems.append(
+                        f"{path.name}:{offset}+{lineno}: `{line}` casts {reg}, but {reg} was "
+                        f"last assigned a primitive at line {primitive[reg]}. Copy the "
+                        f"reference in first, e.g. `move-object/from16 {reg}, pN`."
+                    )
+                primitive.pop(reg, None)
+                continue
+
             if INVOKE_WITH_RECEIVER.match(line):
                 regs = REGISTER_LIST.search(line)
                 if regs:
@@ -484,8 +509,7 @@ def check_invoke_receiver_type(path: Path) -> list[str]:
                         problems.append(
                             f"{path.name}:{offset}+{lineno}: `{line}` uses {first} as its "
                             f"receiver, but {first} was last assigned a primitive at line "
-                            f"{primitive[first]}. Use a different register for the call's "
-                            f"result."
+                            f"{primitive[first]}. Keep it in another register."
                         )
                 continue
 
