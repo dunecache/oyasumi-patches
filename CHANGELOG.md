@@ -1,3 +1,9 @@
+## [0.6.0-dev.30](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.29...v0.6.0-dev.30) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **pinterest:** copy the view in before check-cast in the ideas-section patch ([7e357e8](https://github.com/dunecache/oyasumi-patches/commit/7e357e85ec511cc5f1c9b331874d26f4bba1bd9b))
+
 ## [0.6.0-dev.29](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.28...v0.6.0-dev.29) (2026-10-08)
 
 ### 🐛 Bug Fixes
