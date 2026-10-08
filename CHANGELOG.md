@@ -1,3 +1,9 @@
+## [0.6.0-dev.33](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.32...v0.6.0-dev.33) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **truecaller:** drop the type filter that never matched ([4975b2e](https://github.com/dunecache/oyasumi-patches/commit/4975b2ea7c528fe179dee68699785bfb5f68df75))
+
 ## [0.6.0-dev.32](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.31...v0.6.0-dev.32) (2026-10-08)
 
 ### 🐛 Bug Fixes
