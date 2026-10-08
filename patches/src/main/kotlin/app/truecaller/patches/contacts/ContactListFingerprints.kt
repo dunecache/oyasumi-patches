@@ -1,7 +1,6 @@
 package app.truecaller.patches.contacts
 
 import app.morphe.patcher.Fingerprint
-import app.morphe.patcher.checkCast
 import app.morphe.patcher.string
 
 /**
@@ -71,16 +70,18 @@ object CachedContactsAccessorFingerprint : Fingerprint(
 /**
  * `La52/g0;->u`, the 2-D lookup into `La52/g0.b`.
  *
- * Filtered on the `check-cast` to `[[Ljava/util/List;` as well as the two parameter-name literals,
- * because `La52/g0` is a general-purpose collection wrapper that the rest of the app also uses —
- * 40 methods in `classes6.dex` alone touch its field `b`. The descriptor's two contacts-filter
- * parameter types are what make this specific to the contact list.
+ * **No type filter, deliberately.** This fingerprint failed on device twice, once per attempt:
+ * `instanceOf("[[Ljava/util/List;")` in v0.6.0-dev.31, then `checkCast` with the same operand in
+ * v0.6.0-dev.32. The method really does contain `check-cast v0, [[Ljava/util/List;` -- verified
+ * against the dex -- so the fault is in how the filter compares an array-typed operand, not in the
+ * target. Both spellings are dropped rather than guessed at a third time.
  *
- * The filter is `checkCast`, not `instanceOf`, and that distinction is load-bearing.
- * `InstanceOfFilter` matches `Opcode.INSTANCE_OF` and nothing else — verified with `javap -c` on
- * `morphe-patcher-1.13.0` — while this method contains a `check-cast` and **no `instance-of` at
- * all**. An `instanceOf("[[Ljava/util/List;")` filter therefore matches nothing here and the patch
- * dies with `Failed to match the fingerprint`, which is exactly how v0.6.0-dev.31 failed on device.
+ * Nothing is lost by dropping it. Class plus name plus this descriptor already identifies the
+ * method uniquely: across all 9 dex files only four methods carry the descriptor, and `La52/g0;->u`
+ * is the only one named `u`. The two `string` filters are what make it fail loudly if the method is
+ * ever repurposed, and they are proven -- `ContactsHolderAccessorFingerprint` and
+ * `CachedContactsAccessorFingerprint`, which use nothing but these same two literals, both
+ * resolved successfully against this build on device.
  */
 object PartitionedContactsLookupFingerprint : Fingerprint(
     definingClass = "La52/g0;",
@@ -91,7 +92,6 @@ object PartitionedContactsLookupFingerprint : Fingerprint(
         "Lcom/truecaller/contacts_list/ContactsHolder\$PhonebookFilter;"
     ),
     filters = listOf(
-        checkCast("[[Ljava/util/List;"),
         string("favoritesFilter"),
         string("phonebookFilter")
     )
