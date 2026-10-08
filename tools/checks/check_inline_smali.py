@@ -43,7 +43,9 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PATCHES = ROOT / "patches/src/main/kotlin/app/pinterest/patches"
+# Root for LAYOUTS keys. Was hardcoded to the Pinterest package, so no other app's injected
+# smali could ever be checked; keys are now paths relative to this directory.
+PATCHES = ROOT / "patches/src/main/kotlin/app"
 
 # How to wrap each block so the assembler sees the real target method's register layout.
 # Keyed by the Kotlin file that contains the block.
@@ -55,30 +57,67 @@ PATCHES = ROOT / "patches/src/main/kotlin/app/pinterest/patches"
 #               tell you that v0 holds `this`.
 #   comment:    which method is being patched, and what is live where
 LAYOUTS = {
-    "navigation/HideSearchNavButtonPatch.kt": [{
+    "pinterest/patches/navigation/HideSearchNavButtonPatch.kt": [{
         "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
         "registers": 8,
         "ins": 2,
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
     }],
-    "navigation/HideNotificationsNavButtonPatch.kt": [{
+    "pinterest/patches/navigation/HideNotificationsNavButtonPatch.kt": [{
         "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
         "registers": 8,
         "ins": 2,
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
     }],
-    "navigation/HideCreateNavButtonPatch.kt": [{
+    "pinterest/patches/navigation/HideCreateNavButtonPatch.kt": [{
         "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
         "registers": 8,
         "ins": 2,
         "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
         "method": "FloatingBottomNavBar.Q1",
     }],
+    # Truecaller 26.31.6 "Return an empty contact list". Three identical blocks, one per patched
+    # accessor, in source order. All three declare `.registers 4` or 7 with three parameters, so
+    # `v0` is free in each; the payload writes only `v0` and returns immediately.
+    "truecaller/patches/contacts/EmptyContactListPatch.kt": [
+        {
+            # Le81/x;.D: registers=4 ins=1, so this=v1, favoritesFilter=v2, phonebookFilter=v3 and
+            # v0 is the only local. The block returns before any of them are read.
+            "signature": "(Lcom/truecaller/contacts_list/ContactsHolder$FavoritesFilter;"
+                         "Lcom/truecaller/contacts_list/ContactsHolder$PhonebookFilter;)"
+                         "Ljava/util/List;",
+            "registers": 4,
+            "ins": 1,
+            "live": "v1=this v2,v3=filters; v0 free",
+            "method": "ContactsHolderAccessor.D",
+        },
+        {
+            # Lj71/d;.D: registers=4 ins=1, same register map as the block above.
+            "signature": "(Lcom/truecaller/contacts_list/ContactsHolder$FavoritesFilter;"
+                         "Lcom/truecaller/contacts_list/ContactsHolder$PhonebookFilter;)"
+                         "Ljava/util/List;",
+            "registers": 4,
+            "ins": 1,
+            "live": "v1=this v2,v3=filters; v0 free",
+            "method": "CachedContactsAccessor.D",
+        },
+        {
+            # La52/g0;.u: registers=7 ins=4. The dump shows iget-object v0, v4, La52/g0;->b, so
+            # this=v4, favoritesFilter=v5, phonebookFilter=v6 and v0..v3 are locals.
+            "signature": "(Lcom/truecaller/contacts_list/ContactsHolder$FavoritesFilter;"
+                         "Lcom/truecaller/contacts_list/ContactsHolder$PhonebookFilter;)"
+                         "Ljava/util/List;",
+            "registers": 7,
+            "ins": 4,
+            "live": "v4=this v5,v6=filters; v0..v3 free",
+            "method": "PartitionedContactsLookup.u",
+        },
+    ],
     # One entry per injected block, in source order, because the two constructors have different
     # register maps. Writing v0 in the two-parameter block would overwrite `this`.
-    "comments/HideCommentsPatch.kt": [
+    "pinterest/patches/comments/HideCommentsPatch.kt": [
         {
             # createView: registers=6 ins=1, so this=v5 and v0..v4 are free. v1 is the
             # findViewById scratch register; the block re-initialises it before use.
