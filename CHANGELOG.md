@@ -1,3 +1,9 @@
+## [0.6.0-dev.32](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.31...v0.6.0-dev.32) (2026-10-08)
+
+### 🐛 Bug Fixes
+
+* **truecaller:** match check-cast, not instance-of, in the holder lookup ([0decc06](https://github.com/dunecache/oyasumi-patches/commit/0decc06c062775d024e988e77df4b33255ce9ce7))
+
 ## [0.6.0-dev.31](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.30...v0.6.0-dev.31) (2026-10-08)
 
 ### ✨ New Features
