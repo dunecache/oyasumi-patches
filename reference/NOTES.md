@@ -4505,3 +4505,118 @@ section" rather than a crash.
 - `board_more_ideas_section_header` is present in 46 of the APK's 48 locales, so the alternative
   resource-rewrite approach would have had to touch 46 `res/values*/strings.xml` files. Recorded
   because it was the option considered and rejected, not because it is needed.
+
+# Defect — the more-ideas fingerprint shipped one parameter short (found on device)
+
+## Symptom
+
+Applying the bundle on a device (Pinterest 14.38.0, Oyasumi 0.6.0-dev.27, patcher **1.15.1**)
+failed on this patch alone; every other patch applied.
+
+```
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+    app.pinterest.patches.sections.MoreIdeasSectionFingerprint@739dc97
+    at app.morphe.patcher.Fingerprint.patchException
+    at app.morphe.patcher.Fingerprint.getMethod
+    at ...HideMoreIdeasSectionPatchKt...(HideMoreIdeasSectionPatch.kt:75)
+```
+
+## Cause
+
+The fingerprint omitted one parameter:
+
+```kotlin
+parameters = listOf(
+    "Lax2/o3;", "Lax2/m;", ...          // 12 entries
+)
+```
+
+The real descriptor is:
+
+```
+a0(La0/f;Lax2/o3;Lax2/m;Lax2/u1;ZLax2/f;Lax2/l;Lax2/v1;Lax2/l;Ljava/lang/String;Lax2/v1;Lax2/n;I)V
+```
+
+**13** declared parameters. `La0/f;` was dropped because it looks like the receiver. It is not: an
+instance method's dex descriptor never spells out its receiver, so `La0/f;` is `p0`, the scope
+being registered into. The receiver is implicit. Every other fingerprint in this repo already
+follows that rule — `IdeasSectionFingerprint` lists all 3 of `e`'s parameters, and
+`BottomNavTabAdderFingerprint` all 5 of `Q1`'s — which is the convention this patch broke.
+
+Confirmed from the body rather than assumed: `a0/f.smali:830` is `move-object/from16 v9, p9`, and
+`v9` is what reaches `LinkedHashSet.add` at `a0/f.smali:927`. So `p9` is the section id, the
+tenth declared parameter, which is `Ljava/lang/String;` in the corrected list — the gate in the
+patch is still reading the right register, and `p9` still names `v21` because the register map did
+not change. Only the fingerprint's parameter list was wrong; the injected smali was always right.
+
+## Why the resolver that existed to catch this agreed with the bug
+
+`.scratch/resolve_more_ideas_fp.py` reported `SURVIVORS all filters: 1`. It was wrong, because it
+built the expected descriptor like this:
+
+```python
+wanted_desc = "(" + DEFINING_CLASS + "".join(PARAMETERS) + ")" + RETURN_TYPE
+```
+
+It prepended the class name to a 12-entry list to make a 13-entry descriptor, so it reproduced
+the very assumption under test and certified it. **A verifier must not encode the same assumption
+as the thing it verifies.** The fix is to build the expected descriptor from `PARAMETERS` alone,
+which is possible only because a dex descriptor has no receiver to account for:
+
+```
+$ python3 .scratch/resolve_more_ideas_fp.py
+SURVIVOR  classes3.dex  La0/f;->a0(La0/f;Lax2/o3;...;I)V  instructions=90
+methods on La0/f;:        73
+named 'a0':                1
+SURVIVORS all filters:     1
+```
+
+## Negative control, so the resolver is known to discriminate
+
+Dropping `"La0/f;"` again reproduces the shipped state and the resolver now rejects it:
+
+```
+$ python3 neg_control.py     # identical, minus the "La0/f;" entry
+dropped   classes3.dex  La0/f;->a0(Lax2/o3;...;I)V
+          descriptor (La0/f;Lax2/o3;...)V != (Lax2/o3;...)V
+SURVIVORS all filters:      0
+```
+
+Without this, "1 survivor" only says the script is self-consistent.
+
+## The filter was not implicated
+
+The first instinct was to blame the `methodCall` filter, since that was the only part not checked
+by `:patches:compileKotlin`. It was checked, with the library's own code rather than a
+reimplementation (`.scratch` probe, Morphe's real `MethodCallFilter` against `classes3.dex`):
+
+```
+class La0/f; found
+  method a0([La0/f;, Lax2/o3;, ...])V
+  MATCH at ins 61: INVOKE_VIRTUAL
+  MATCH at ins 76: INVOKE_VIRTUAL
+  filter hits: 2
+```
+
+So the filter matches under 1.13.0. It could not be re-checked under 1.15.1, which is not available
+offline, but the reasoning is that it is not the problem: the repo's other fingerprints use
+`methodCall` with default opcodes and location and they applied cleanly in the same session that
+failed on this patch. The signature was wrong; the filter was fine.
+
+## What this cost, and the generalisable part
+
+This is the second fingerprint in this repo to be wrong in a way that compiles cleanly and ships,
+after `returnType = "Ljava/util/Timer;"` on `Timer.schedule` (v0.4.0). Both were caught only on a
+device. The check that would have caught this one — comparing a fingerprint's `parameters` against
+the target method's declared parameter count — needs the pinned APK, which CI cannot fetch, so it
+is the same gap `tools/checks/README.md` already documents.
+
+Two rules worth keeping:
+
+1. **Copy the descriptor verbatim into `parameters`.** A dex method descriptor never contains the
+   receiver, so there is nothing to add and nothing to subtract — for an instance method *and* for
+   a static one alike. `a0` is `public static`, and its descriptor still opens with `La0/f;`
+   because that is a declared parameter (`p0`), not a receiver; a static method has no receiver to
+   spell out. Every entry in the descriptor is one entry in `parameters`, always.
+2. A resolver that reconstructs the expected descriptor must assemble it from the same inputs the
+   patch declares and nothing else. Anything it adds to make a match is a place a bug can hide.

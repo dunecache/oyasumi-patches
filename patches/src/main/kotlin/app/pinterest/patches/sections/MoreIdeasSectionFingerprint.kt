@@ -23,16 +23,22 @@ import app.morphe.patcher.methodCall
  * binding them, so there is no view to hide and no `View.getContext()` to read a toggle with.
  *
  * Resolved against the pinned APK: `La0/f` declares exactly one method named `a0`, so class,
- * name and the twelve-parameter descriptor already resolve uniquely. The `methodCall` filter is
+ * name and the thirteen-parameter descriptor already resolve uniquely. The `methodCall` filter is
  * kept as insurance and documents intent — it pins the `ArrayList.add` that makes this the
  * appending entry point, which is what a future overload would most likely be confused with.
+ *
+ * **Every** entry of `parameters` is a descriptor parameter and `La0/f;` is one of them. An
+ * instance method's dex descriptor never spells out its receiver, so `La0/f;` is not the
+ * receiver here, it is `p0`, the scope this method is registering into. The receiver is implicit.
+ * Omitting it made this fingerprint match nothing on device, and the omission was invisible to
+ * the resolver that was supposed to catch it — see NOTES.md.
  */
 object MoreIdeasSectionFingerprint : Fingerprint(
     definingClass = "La0/f;",
     name = "a0",
     returnType = "V",
     parameters = listOf(
-        "Lax2/o3;", "Lax2/m;", "Lax2/u1;", "Z", "Lax2/f;", "Lax2/l;",
+        "La0/f;", "Lax2/o3;", "Lax2/m;", "Lax2/u1;", "Z", "Lax2/f;", "Lax2/l;",
         "Lax2/v1;", "Lax2/l;", "Ljava/lang/String;", "Lax2/v1;", "Lax2/n;", "I"
     ),
     filters = listOf(
