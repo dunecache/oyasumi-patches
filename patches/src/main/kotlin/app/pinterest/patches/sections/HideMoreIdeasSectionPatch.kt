@@ -57,17 +57,36 @@ val hideMoreIdeasSectionPatch = bytecodePatch(
         // call site, but `String.equals` on a null receiver throws, and a null there must mean
         // "not a more-ideas section" rather than a crash.
         //
+        // `p9` is the section id and is never null in practice — every call site builds it from an
+        // enum's `getId()` — but that cannot be proven from the smali, so the compares go
+        // through `Ljava/util/Objects;->equals`, which is null-safe on both sides rather than
+        // through `String.equals`, which throws on a null receiver. The alternative, an
+        // `if-eqz p9` guard, was rejected because it gave `:morphe_end_...` a second
+        // predecessor, and a label with two predecessors is a verifier merge whose types this
+        // patch cannot reason about. With `Objects.equals` the label has exactly one, and
+        // `:morphe_skip_...` is a `return-void`, so no path merges anywhere in the block.
+        //
         // Registers: `.registers 25` with thirteen parameters, so `p0`..`p12` are `v12`..`v24`
-        // and `v0`..`v11` are the only locals. The block uses `v0` and `v1`, inserted before the
-        // method's own first instruction (`move/from16 v0, p12`), so neither is live yet.
+        // and `v0`..`v11` are the only locals. The block uses `v0`, `v1` and `v2`, inserted before
+        // the method's own first instruction, so none is live yet. All three are re-initialised by
+        // the surrounding code before it reads them: `v0` by `move/from16 v0, p12`, then `v1` by
+        // `and-int/lit8 v1, v0, 0x8` and `v2` by the `const/4 v2, 0x0` beside it.
+        //
+        // `v0` holds the section id for the whole block and the flag goes to `v2`. That split is
+        // not cosmetic. An earlier version reused `v0` for both, so after the first `equals` it
+        // held a boolean and the second `invoke-virtual {v0, v1}` used a boolean as its receiver:
+        //
+        //   [0xE] tried to get class from non-reference register v0 (type=Boolean)
+        //
+        // `check_invoke_receiver_type` now flags that shape, and `check_inline_smali.py` still
+        // only parses the block: neither is a verifier.
         //
         // `p9` is `v21`, and it is **copied into `v0` rather than named in place**. That is not
-        // style. A `35c` invoke register list is four bits per register, so every register in one
-        // must be `v0`..`v15`; `invoke-virtual {p9, v0}` names `v21` and the assembler rejects it
+        // style either. A `35c` invoke register list is four bits per register, so every register
+        // in one must be `v0`..`v15`; naming `p9` would be `v21` and the assembler rejects it
         // with "Invalid register". `move-object/from16` is a `22x`, whose registers are eight
-        // bits, so it can carry `p9` freely, and the compares then name only `v0`/`v1`. The
-        // alternative spellings are no better: `move-object` is a `12x` and has the same four-bit
-        // limit. `check_inline_smali.py` catches this and `:patches:compileKotlin` does not.
+        // bits, so it can carry `p9` freely. `move-object` would not work: it is a `12x` with
+        // the same four-bit limit.
         //
         // This is gated by patch selection rather than by the Morphe settings toggle that
         // `HideIdeasSectionPatch` reads, because there is no `Context` here to read it with:
@@ -75,16 +94,15 @@ val hideMoreIdeasSectionPatch = bytecodePatch(
         MoreIdeasSectionFingerprint.method.addInstructionsWithLabels(
             0,
             """
-            if-eqz p9, :morphe_end_hide_more_ideas_section
             move-object/from16 v0, p9
             const-string v1, "$HEADER_SECTION_ID"
-            invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-            move-result v0
-            if-nez v0, :morphe_skip_more_ideas_section
+            invoke-static {v0, v1}, Ljava/util/Objects;->equals(Ljava/lang/Object;Ljava/lang/Object;)Z
+            move-result v2
+            if-nez v2, :morphe_skip_more_ideas_section
             const-string v1, "$CONTENT_SECTION_ID"
-            invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-            move-result v0
-            if-eqz v0, :morphe_end_hide_more_ideas_section
+            invoke-static {v0, v1}, Ljava/util/Objects;->equals(Ljava/lang/Object;Ljava/lang/Object;)Z
+            move-result v2
+            if-eqz v2, :morphe_end_hide_more_ideas_section
             :morphe_skip_more_ideas_section
             return-void
             :morphe_end_hide_more_ideas_section

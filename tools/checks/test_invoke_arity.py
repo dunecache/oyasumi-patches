@@ -234,6 +234,127 @@ def join_flagged(smali: str, comment: bool = False) -> bool:
         path.unlink(missing_ok=True)
 
 
+def receiver_flagged(smali: str, triple: bool = False) -> bool:
+    """Write `smali` as the body of an addInstructions call, in either spelling."""
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        if triple:
+            src = (
+                'val p = bytecodePatch(n = "x") {\n'
+                "    execute {\n"
+                "        Foo.bar.addInstructionsWithLabels(\n"
+                "            0,\n"
+                '            """\n'
+                f"{smali}\n"
+                '            """.trimIndent()\n'
+                "        )\n"
+                "    }\n"
+                "}\n"
+            )
+        else:
+            escaped = smali.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            src = (
+                'val p = bytecodePatch(n = "x") {\n'
+                "    execute {\n"
+                "        addInstructions(0,\n"
+                '            "const/4 v0, 0\\n" +\n'
+                f'            "{escaped}"\n'
+                "        )\n"
+                "    }\n"
+                "}\n"
+            )
+        path.write_text(src)
+        return bool(checks.check_invoke_receiver_type(path))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+#: `check_invoke_receiver_type` cases. The first two rows are the shipped defect and its fix,
+#: and the third row is the same defect in the triple-quoted spelling — which no check could
+#: see before, because `string_concat_in` does not fold a triple-quoted literal.
+RECEIVER_CASES: list[tuple[str, str, bool, bool]] = [
+    (
+        "shipped defect: result reused as the next receiver",
+        "move-object/from16 v0, p9\n"
+        + 'const-string v1, "MoreIdeasHeader"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "move-result v0\n"
+        + "if-nez v0, :skip\n"
+        + 'const-string v1, "MoreIdeas"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "return-void",
+        True,
+        False,
+    ),
+    (
+        "the fix: a separate register holds the flag",
+        "move-object/from16 v0, p9\n"
+        + 'const-string v1, "MoreIdeasHeader"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "move-result v2\n"
+        + "if-nez v2, :skip\n"
+        + 'const-string v1, "MoreIdeas"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "return-void",
+        False,
+        False,
+    ),
+    (
+        "same defect, triple-quoted block",
+        "move-result v0\n"
+        + 'const-string v1, "x"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z",
+        True,
+        True,
+    ),
+    (
+        "register re-initialised before use is fine",
+        "move-result v0\n"
+        + "move-object/from16 v0, p9\n"
+        + "invoke-virtual {v0}, Ljava/lang/String;->length()I",
+        False,
+        False,
+    ),
+    (
+        "move-result-object as a receiver is fine",
+        "move-result-object v0\n"
+        + "invoke-virtual {v0}, Ljava/lang/Object;->toString()Ljava/lang/String;",
+        False,
+        False,
+    ),
+    (
+        "move-result-wide is a primitive too",
+        "move-result-wide v0\n"
+        + "invoke-direct {v0, v1}, Lx/Y;->z(Ljava/lang/String;)V",
+        True,
+        False,
+    ),
+    (
+        "invoke-static has no receiver to get wrong",
+        "move-result v0\n"
+        + "invoke-static {v0}, Ljava/lang/Integer;->toHexString(I)Ljava/lang/String;",
+        False,
+        False,
+    ),
+    (
+        "after a label the type is a merge and cannot be proven",
+        "move-result v0\n"
+        + ":merge\n"
+        + "invoke-virtual {v0}, Ljava/lang/String;->length()I",
+        False,
+        False,
+    ),
+    (
+        "wide result is not reported by the end of the caller's block",
+        "move-result v0\n"
+        + "const-string v1, \"x\"\n"
+        + "invoke-virtual {v1, v0}, Ljava/lang/String;->format(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;",
+        False,
+        False,
+    ),
+]
+
+
 def main() -> int:
     failures = 0
     for label, instruction, expected in CASES:
@@ -242,6 +363,12 @@ def main() -> int:
         failures += not ok
         print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     total = len(CASES)
+    for label, smali, expected, triple in RECEIVER_CASES:
+        got = receiver_flagged(smali, triple=triple)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     for label, smali, expected in BRANCH_CASES:
         got = join_flagged(smali, comment="comment" in label)
         ok = got == expected

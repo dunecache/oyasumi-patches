@@ -4620,3 +4620,129 @@ Two rules worth keeping:
    spell out. Every entry in the descriptor is one entry in `parameters`, always.
 2. A resolver that reconstructs the expected descriptor must assemble it from the same inputs the
    patch declares and nothing else. Anything it adds to make a match is a place a bug can hide.
+
+# Defect — boolean reused as an invoke receiver (found on device)
+
+## Symptom
+
+The patch applied and the fingerprint resolved, but the app would not start:
+
+```
+java.lang.VerifyError: Verifier rejected class a0.f:
+void a0.f.a0(a0.f, ax2.o3, ..., java.lang.String, ax2.v1, ax2.n, int) failed to verify:
+[0xE] tried to get class from non-reference register v0 (type=Boolean)
+```
+
+`a0.f` is the class `MoreIdeasSectionFingerprint` targets, so the crash is this patch's. Note
+`classes9.dex` in the path: the patched APK has one more dex than the original, which is normal
+after patching and is not related to the fault.
+
+## Cause
+
+The block reused one register for two incompatible things:
+
+```
+move-object/from16 v0, p9                              ; v0 = the section id, a String
+const-string v1, "MoreIdeasHeader"
+invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+move-result v0                                          ; v0 = the boolean RESULT
+if-nez v0, :morphe_skip_more_ideas_section
+const-string v1, "MoreIdeas"
+invoke-virtual {v0, v1}, ...->equals(Ljava/lang/Object;)Z   ; *** v0 is a Boolean receiver ***
+```
+
+The first `equals` overwrote the receiver with its own return value, and the second `equals` then
+used that boolean as the receiver. The fix is a separate register for the flag:
+
+```
+move-result v2
+if-nez v2, :morphe_skip_more_ideas_section
+```
+
+`v0` now holds the id for the whole block and `v2` holds the flag. `v0`, `v1` and `v2` are all
+free at insertion index 0 (`.registers 25`, thirteen parameters, so `v0`..`v11` are locals), and
+the surrounding code re-initialises all three before reading them — `v0` by `move/from16 v0, p12`,
+then `v1` by `and-int/lit8 v1, v0, 0x8` and `v2` by the `const/4 v2, 0x0` beside it.
+
+## Second change: `String.equals` → `Objects.equals`
+
+The null guard written first was `if-eqz p9, :end`. It works, but it gives
+`:morphe_end_hide_more_ideas_section` a second predecessor, and a label with two predecessors is a
+verifier merge whose types cannot be reasoned about here. `Ljava/util/Objects;->equals` is
+null-safe on both sides and removes the branch, so `:morphe_end_...` has exactly one predecessor
+and `:morphe_skip_...` is a `return-void` — **no path merges anywhere in the block**. It is also
+`invoke-static`, which has no receiver to get wrong. API 19+, and the device is API 35.
+
+## Why nothing caught it
+
+Three checks ran clean on this block:
+
+- `:patches:compileKotlin` — correct Kotlin, and the smali is a string literal to it.
+- `check_inline_smali.py` — parses the block; its own docstring says it is not a verifier.
+- `tools/checks/patch_smali_checks.py` — reported "0 problem(s)".
+
+The third is the interesting one, and the reason is a bug in the check suite itself.
+
+## The check suite could not read any injected block
+
+`string_concat_in` folds `"..." + "..."` chains. Its pattern forbids newlines and requires at
+least two parts, so it cannot match a triple-quoted literal — and **every injected block in this
+repo is a single triple-quoted literal**:
+
+```
+$ python3 -c "read each file, count string_concat_in blocks vs triple-quoted blocks"
+HideMoreIdeasSectionPatch.kt   string_concat_in: 1   triple-quoted: 1
+HideSearchNavButtonPatch.kt    string_concat_in: 0   triple-quoted: 1
+```
+
+`check_invoke_arity`, `check_branch_joins` and `check_dollar_in_strings` all iterate
+`string_concat_in`, so they had been reading a patch's `name`/`description` concatenation — the
+one thing in a patch file that is *not* smali — and no smali at all. (Only
+`check_inline_smali.py` had its own extractor, which is why it did see the block, and why it
+caught the earlier `35c` defect.)
+
+`injected_blocks` now locates the literal relative to the `addInstructions`/`addInstructionsWithLabels`
+call it is an argument of, and accepts both spellings. It finds 26 blocks where the old extractor
+found none of the real ones.
+
+## `check_invoke_receiver_type`, and why only it uses the new extractor
+
+The new check walks a block straight-line, tracking registers whose most recent write was a
+non-object `move-result`, and flags one that is then used as an `invoke` receiver. It reproduces
+the shipped defect and stays quiet on the fix:
+
+```
+$ python3 tools/checks/patch_smali_checks.py        # fixed block
+checked 44 file(s): 0 problem(s)
+$ # same block with move-result v2 -> move-result v0
+broken.kt:5164+9: `invoke-virtual {v0, v1}, ...->equals(Ljava/lang/Object;)Z` uses v0 as its
+  receiver, but v0 was last assigned a primitive at line 6. Use a different register for the
+  call's result.
+```
+
+It deliberately **stops at a label**: after a merge a register's type depends on which path
+arrived, so nothing can be proven. Conditional branches do not stop it — the defect had an `if`
+between the `move-result` and the bad invoke. Nine cases in `test_invoke_arity.py` pin both
+directions, including the fix, `move-result-object`, `move-result-wide`, `invoke-static`, a
+re-initialised register, and the post-label case.
+
+**Pointing `check_branch_joins` at triple-quoted blocks too was tried and reverted.** It produced
+**25 findings across patches that ship and work**, because its premise — that two paths giving one
+register different types at a join is fatal — is stricter than ART turns out to be. A merge
+conflict appears to be fatal only when the register is *read* before being reassigned, which those
+blocks never do. Leaving that check on `string_concat_in` keeps it quiet; the gap is documented in
+`tools/checks/README.md` rather than papered over with a check that cries wolf.
+
+## Verified
+
+- `./gradlew :patches:compileKotlin --offline` — builds.
+- `tools/checks/patch_smali_checks.py` — 44 files, 0 problems.
+- `tools/checks/test_invoke_arity.py` — 34/34, up from 25 with the 9 new cases.
+- `tools/checks/check_inline_smali.py` — the new block parses. The run still reports
+  `comments/HideCommentsPatch.kt: 2 block(s) in source but 1 layout(s) declared`, which is
+  pre-existing and unrelated.
+
+## Not verified
+
+Still no successful device run. What this note establishes is that the specific fault ART reported
+is gone and that a check now guards its shape; it does not establish that the board page renders.
