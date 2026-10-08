@@ -61,9 +61,9 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.26](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.26)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;18 patches total
+> **[v0.6.0-dev.27](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.27)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;19 patches total
 <details open>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;13 patches</summary>
+<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;14 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -78,6 +78,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
 | [Force original image download](#force-original-image-download) | Load the original full-resolution asset for pin images instead of the 736x rendition, at the cost of considerably more data. |  |
 | [Hide "Ideas you might love" section](#hide-ideas-you-might-love-section) | Hide the suggested-topics section shown under a pin. |  |
+| [Hide "More ideas for this board" section](#hide-more-ideas-for-this-board-section) | Remove the "More ideas for this board" section from a board, header and contents alike. |  |
 | [Hide Create nav button](#hide-create-nav-button) | Hide the create (+) button in the bottom navigation bar. |  |
 | [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
 | [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |

@@ -1,3 +1,9 @@
+## [0.6.0-dev.27](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.26...v0.6.0-dev.27) (2026-10-08)
+
+### ✨ New Features
+
+* **pinterest:** hide the "More ideas for this board" section ([3bdfe9a](https://github.com/dunecache/oyasumi-patches/commit/3bdfe9a9cda33fa758be55f4957d40daea4f884a))
+
 ## [0.6.0-dev.26](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.25...v0.6.0-dev.26) (2026-10-06)
 
 ### ✨ New Features
