@@ -83,9 +83,6 @@ val hideIdeasSectionPatch = bytecodePatch(
             2,
             """
             instance-of v0, p1, Landroid/view/View;
-            const-string v3, "MorpheIdeas"
-            const-string v4, "e reached"
-            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             if-eqz v0, :morphe_diag_notview
             move-object/from16 v0, p1
             check-cast v0, Landroid/view/View;
@@ -100,18 +97,40 @@ val hideIdeasSectionPatch = bytecodePatch(
             invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             goto :morphe_end_hide_ideas_section
             :morphe_diag_on
-            const-string v4, "toggle ON, hiding"
+            const-string v4, "toggle ON"
             invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             const/16 v1, $GONE
             invoke-virtual {v0, v1}, Landroid/view/View;->setVisibility(I)V
-            const-string v4, "set GONE"
-            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             goto :morphe_end_hide_ideas_section
             :morphe_diag_notview
-            const-string v4, "p1 is NOT a View"
+            const-string v3, "MorpheIdeas"
+            const-string v4, "p1 NOT a View"
             invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             :morphe_end_hide_ideas_section
             nop
+            """.trimIndent()
+        )
+
+        // Inserted at 0, i.e. before the `packed-switch`, so it fires on EVERY call whatever the
+        // discriminator is. The block above only runs on the fall-through, and the first logcat
+        // contained no `MorpheIdeas` line at all -- which cannot distinguish "this method is never
+        // called" from "it is called but not with the discriminator that falls through". This one
+        // log answers that: nothing means the wrong presenter, a number means the wrong arm.
+        //
+        // `p0` is `this` and is live at method entry, so field `a` is readable before the method's
+        // own `iget p0, p0, Lhr1/f;->a:I`. A separate tag keeps the discriminator distinguishable
+        // from the outcome lines.
+        //
+        // Inserted after the index-2 block on purpose: insertions are applied against the indices
+        // as they were, so the higher one has to go first.
+        IdeasSectionFingerprint.method.addInstructionsWithLabels(
+            0,
+            """
+            iget v4, p0, Lhr1/f;->a:I
+            invoke-static {v4}, Ljava/lang/String;->valueOf(I)Ljava/lang/String;
+            move-result-object v4
+            const-string v3, "MorpheIdeasEntry"
+            invoke-static {v3, v4}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
             """.trimIndent()
         )
     }

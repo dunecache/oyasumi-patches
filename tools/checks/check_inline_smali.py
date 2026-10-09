@@ -128,13 +128,22 @@ LAYOUTS = {
             "method": "LegacyPromotedCloseupActionButtonModule.createView",
         },
     ],
+    # Two blocks, in source order: the index-2 outcome log and the index-0 entry log. The stub
+    # gets leading NOPs so the live map matches either insertion point.
     "pinterest/patches/sections/HideIdeasSectionPatch.kt": [
         {
             "signature": "(Liu1/l;Ljava/lang/Object;I)V",
             "registers": 11,
             "ins": 7,
             "live": "v7=this v8=view p1 v9=model v10=position; v0..v6 free",
-            "method": "Lhr1/f;.e",
+            "method": "Lhr1/f;.e (index 2, outcome)",
+        },
+        {
+            "signature": "(Liu1/l;Ljava/lang/Object;I)V",
+            "registers": 11,
+            "ins": 11,
+            "live": "v7=this, v8..v10 unwritten; v0..v6 free",
+            "method": "Lhr1/f;.e (index 0, entry)",
         },
     ],
     # The board section-registration DSL. registers=25 with thirteen parameters, so p0..p12 are
