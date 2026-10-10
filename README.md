@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.5.3](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.5.3)**&nbsp;&nbsp;•&nbsp;&nbsp;`main`&nbsp;&nbsp;•&nbsp;&nbsp;5 patches total
+> **[v0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.34)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;7 patches total
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -90,7 +90,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Disable home screen ads](#disable-home-screen-ads) | Keep 1DM's home screen banner from loading, rotating, or rendering, including the built-in "install 1DM+" banner ad. |  |
+| [Disable home screen ads](#disable-home-screen-ads) | Keep the home screen banner from loading, rotating, or rendering. The banner in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo banner, including the built-in "install 1DM+" ad and the server-driven fallback banner (defaultBannerViewNew), is suppressed at its source, never rendered, and its footer slot is collapsed. |  |
 
 </details>
 
@@ -105,7 +105,23 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
-| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Report 10,000 steps to Djezzy's Walk & Win campaign, both on every step-counter event and once when the step stream is first subscribed. The subscribe push is a zero followed by 10,000, because one value cannot both open the counter's accumulation window and jump through it. |  |
+| [Force Walk & Win steps to 10000](#force-walk-win-steps-to-10000) | Make Djezzy's Walk & Win counter read 10,000 with no walk at all, by forcing the stored step total itself rather than the pedometer event stream. The card's figures are lifetime accumulators read back out of storage, so an event delivered before a walk is never counted. |  |
+
+</details>
+
+<details open>
+<summary>📦 Truecaller&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 26.31.6 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Return an empty contact list](#return-an-empty-contact-list) | Make the app see an empty contact list, so nothing is shown from your address book and nothing can be matched or uploaded from it. |  |
+| [Stop call history sync](#stop-call-history-sync) | Stop uploading your call history to Truecaller's servers, and stop it reading the system call log to do so. |  |
 
 </details>
 

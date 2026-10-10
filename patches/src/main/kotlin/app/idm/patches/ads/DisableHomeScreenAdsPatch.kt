@@ -19,13 +19,30 @@ private const val GONE = "0x8"
 @Suppress("unused")
 val disableHomeScreenAdsPatch = bytecodePatch(
     name = "Disable home screen ads",
-    description = "Keep 1DM's home screen banner from loading, rotating, or rendering, " +
-        "including the built-in \"install 1DM+\" banner ad.",
+    description = "Keep the home screen banner from loading, rotating, or rendering. The banner " +
+        "in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo " +
+        "banner, including the built-in \"install 1DM+\" ad and the server-driven fallback " +
+        "banner (defaultBannerViewNew), is suppressed at its source, never rendered, " +
+        "and its footer slot is collapsed.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_1DM)
 
     execute {
+        // The banner on the home screen footer is Appodeal's, so these three are the edits
+        // that actually remove what is on screen. 1DM brings the SDK up by two unrelated
+        // methods and both register the same banner view id, so both have to go: the
+        // start-up path, the consent-completion path, and the one caller of `Appodeal.cache`.
+        //
+        // Suppressing only the second of those is what left the banner on screen in
+        // v0.6.0-dev.8, so the start-up one is listed first and returns from index 1. That
+        // index is after the store into `Li/rm;->ۦۖ۠`, which every `onBanner*` and
+        // `onInterstitial*` callback in that class reads and calls through, so the callbacks
+        // stay safe even though the SDK is never brought up.
+        AppodealStartupInitFingerprint.method.addInstructions(1, "return-void")
+        AppodealFetchFingerprint.method.addInstructions(0, "return-void")
+        AppodealAdInitFingerprint.method.addInstructions(0, "return-void")
+
         // The app already has a no-ads state: `BrowserApp` calls `disable()` instead of
         // `load()` when the ad configuration says the banner is off, and `disable()` sets
         // `mDisabled`, empties `bannerInfoList`, drops the current ad, and cancels the
@@ -100,5 +117,49 @@ val disableHomeScreenAdsPatch = bytecodePatch(
                     "return-object v0"
             )
         }
+
+        // The fallback banner is 1DM's own view, not Appodeal's, and none of the above
+        // touches it: the dump shows `defaultBannerViewNew` -> `default_banner` with an
+        // `icon`, a `title` ("Play fun Quizzes and Get Rewards") and an `action` ("PLAY")
+        // button, while Appodeal's banner would hold a `WebView`. `BannerManager.load()`
+        // -> `disable()` does not stop it either, because `Li/s82` drives
+        // `manager.NewBannerView` directly, bypassing `BannerManager`, and
+        // `BannerViewSetAdFingerprint` patches `acr.browser...BannerView`, a different
+        // class. So the view that is on screen is hidden here, with the same trick as
+        // the `setAd` patch.
+        //
+        // Hiding the banner alone leaves an empty slot: the banner is `<include>`d into
+        // a vertical `LinearLayout` column (`activity_main.xml`, `activity_main_bottom.xml`
+        // and `activity_torrent_details.xml` all share the identical column) that carries
+        // `android:minHeight="60dip"`, so the column keeps a 60dp strip even with every
+        // child `GONE`. The column holds nothing but ad views (the two banner includes,
+        // two already-`GONE` promo slots, the `GONE` Appodeal view), and it is the direct
+        // parent of `defaultBannerViewNew` in all three layouts, so hiding the parent
+        // collapses the slot without touching any legitimate view.
+        //
+        // `NewBannerView.ۦۖۦ(Li/ru;)V` is the renderer: 122 instructions, `.registers 6`
+        // with `this` in `v4` and the ad in `v5`, measured against the on-device 18.2
+        // `classes11.dex`. Index 0 writes `v0` (`iget-object v0, v4`) and `v1` is still
+        // unassigned there, so both are safe scratch locals before the original body runs.
+        // `GONE` (8) needs `const/16`, the same width the app itself uses.
+        // `getParent()` takes no argument, so its 35c list names only the receiver
+        // (`{v4}`); `setVisibility(I)V` takes one argument, so its list names the
+        // receiver *and* the int (`{v0, v1}`); naming only the receiver is the arity
+        // crash that took down v0.3.4. `this` is never null and an inflated layout child
+        // always has a parent, so no null check is needed; the parent is a `ViewGroup`,
+        // hence a `View`, so the `check-cast` cannot fail.
+        FallbackBannerRendererFingerprint.method.addInstructions(
+            0,
+            "invoke-virtual {v4}, Landroid/view/View;->getParent()Landroid/view/ViewParent;\n" +
+                "move-result-object $VISIBILITY_REGISTER\n" +
+                "check-cast $VISIBILITY_REGISTER, Landroid/view/View;\n" +
+                "const/16 v1, $GONE\n" +
+                "invoke-virtual {$VISIBILITY_REGISTER, v1}, " +
+                "Landroid/view/View;->setVisibility(I)V\n" +
+                "const/16 $VISIBILITY_REGISTER, $GONE\n" +
+                "invoke-virtual {v4, $VISIBILITY_REGISTER}, " +
+                "Landroid/view/View;->setVisibility(I)V\n" +
+                "return-void"
+        )
     }
 }

@@ -1,6 +1,6 @@
 {
   "NOTE": "Do NOT manually edit this file. This file is automatically updated when semantic release (release.yml) runs. Manually editing this file can break your releases and break third party tools that use this file.",
-  "version": "0.5.3",
+  "version": "0.6.0-dev.34",
   "patches": [
     {
       "name": "Disable ads",
@@ -36,7 +36,7 @@
     },
     {
       "name": "Disable home screen ads",
-      "description": "Keep 1DM's home screen banner from loading, rotating, or rendering, including the built-in \"install 1DM+\" banner ad.",
+      "description": "Keep the home screen banner from loading, rotating, or rendering. The banner in the footer is Appodeal's, so the ad SDK is never brought up; 1DM's own promo banner, including the built-in \"install 1DM+\" ad and the server-driven fallback banner (defaultBannerViewNew), is suppressed at its source, never rendered, and its footer slot is collapsed.",
       "default": true,
       "category": null,
       "dependencies": [],
@@ -100,7 +100,7 @@
     },
     {
       "name": "Force Walk & Win steps to 10000",
-      "description": "Report 10,000 steps to Djezzy's Walk & Win campaign, both on every step-counter event and once when the step stream is first subscribed. The subscribe push is a zero followed by 10,000, because one value cannot both open the counter's accumulation window and jump through it.",
+      "description": "Make Djezzy's Walk & Win counter read 10,000 with no walk at all, by forcing the stored step total itself rather than the pedometer event stream. The card's figures are lifetime accumulators read back out of storage, so an event delivered before a walk is never counted.",
       "default": true,
       "category": null,
       "dependencies": [],
@@ -152,6 +152,70 @@
                 "ARMEABI_V7A": 140039,
                 "X86_64": 140039,
                 "X86": 140039
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Return an empty contact list",
+      "description": "Make the app see an empty contact list, so nothing is shown from your address book and nothing can be matched or uploaded from it.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.truecaller",
+          "name": "Truecaller",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.31.6",
+              "versionCodes": {
+                "ARM64_V8A": 2631006,
+                "ARMEABI_V7A": 2631006,
+                "X86_64": 2631006,
+                "X86": 2631006
+              },
+              "isExperimental": false,
+              "minSdk": null,
+              "description": null
+            }
+          ]
+        }
+      ],
+      "options": []
+    },
+    {
+      "name": "Stop call history sync",
+      "description": "Stop uploading your call history to Truecaller's servers, and stop it reading the system call log to do so.",
+      "default": true,
+      "category": null,
+      "dependencies": [],
+      "compatiblePackages": [
+        {
+          "packageName": "com.truecaller",
+          "name": "Truecaller",
+          "description": null,
+          "apkFileType": "APK",
+          "appIconColor": null,
+          "signatures": null,
+          "targets": [
+            {
+              "version": "26.31.6",
+              "versionCodes": {
+                "ARM64_V8A": 2631006,
+                "ARMEABI_V7A": 2631006,
+                "X86_64": 2631006,
+                "X86": 2631006
               },
               "isExperimental": false,
               "minSdk": null,
