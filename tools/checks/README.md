@@ -4,9 +4,15 @@ Both scripts run without a device, an APK, or the Morphe plugin.
 
 ```sh
 python3 tools/checks/patch_smali_checks.py            # the CI check
+python3 tools/checks/check_inline_smali.py            # injected smali, via the real compiler
+python3 tools/checks/resolve_fp.py com.truecaller 26.31.6   # do the fingerprints match?
 python3 tools/checks/replay_history_check.py v0.3.4   # replay a released tag
 python3 tools/checks/test_invoke_arity.py             # the arity check's own cases
 ```
+
+`resolve_fp.py` is the one that closes the fingerprint gap described below. It needs the pinned APK
+in the `~/apks` cache and `androguard`, so it does not run in CI; run it locally before tagging a
+patch for a new version.
 
 `test_invoke_arity.py` holds the cases `check_invoke_arity` and `check_dollar_in_strings`
 must and must not flag. They exist because a check that is wrong in the strict direction
@@ -62,13 +68,34 @@ v0.4.1  chore: Release v0.4.1 [skip ci]
    -> 0 problem(s)
 ```
 
-## What is not covered
+## Fingerprint resolution — `resolve_fp.py`
 
-**Fingerprint resolution.** Whether a filter chain still matches a given APK needs the
-pinned APK, which is a user-supplied 80 MB file that CI cannot fetch. That gap is real:
-v0.4.0 declared `returnType = "Ljava/util/Timer;"` for `Timer.schedule`, which returns
-`void`, and the fingerprint silently matched nothing. Checking that needs the reference
-DEX and is not implemented here.
+Whether a filter chain still matches a given APK is now checked, by `resolve_fp.py`, against
+the `~/apks` cache. This gap was closed after it cost two Truecaller releases:
+
+| release | defect | caught by |
+| --- | --- | --- |
+| v0.6.0-dev.31 | `instanceOf` filter on a method that contains `check-cast` and no `instance-of` | `resolve_fp.py`, once written |
+| v0.6.0-dev.32 | `checkCast` with the same operand — still no match | device, again |
+
+Both were rejected only on device, as `PatchException: Failed to match the fingerprint`, and both
+compiled cleanly and passed `patch_smali_checks.py`. The second release was shipped on the strength
+of a `javap` reading that was correct about the opcode and wrong about the operand comparison.
+
+What it checks, per fingerprint: the class, name, return type and parameter list must match exactly
+and in order; then each declared filter must be satisfied by at least one instruction in that
+method. `string`, `opcode`, `instanceOf`, `checkCast`, `methodCall` and `fieldAccess` are understood.
+More than one method sharing a descriptor is reported rather than silently taking the first.
+
+**A note on writing such a checker.** Its first version reported every fingerprint as resolving,
+including a deliberately planted one whose literal existed nowhere, because `check_filter` collapsed
+"this instruction is not the kind the filter inspects" into "the filter is satisfied". Three states
+are needed, not two. The regression cases are in the script's own use: re-adding `instanceOf` to
+`PartitionedContactsLookupFingerprint` makes it fail with *"no instruction of this kind in the
+method"*, which is the dev.31 defect reproduced exactly.
+
+It reports a **likely** outcome, not a guarantee: it is a reimplementation of the patcher's matching
+rules in Python, so treat a PASS as strong evidence and a FAIL as a stop-and-investigate.
 
 **Verifier-visible register typing.** A patch can be arity-correct and still leave a
 register holding a reference where an integer is required. `check_invoke_receiver_type` covers

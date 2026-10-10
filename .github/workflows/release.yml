@@ -38,6 +38,29 @@ jobs:
       - name: Check patch sources
         run: python3 tools/checks/patch_smali_checks.py
 
+      # Fingerprint resolution, which patch_smali_checks.py cannot cover: whether a filter
+      # chain still matches a given APK. v0.6.0-dev.31 and .32 shipped a filter that could
+      # never match and were only rejected on device. This needs the pinned APK and the
+      # androguard stack, neither of which CI has, so it is run from the local cache instead
+      # and is NOT wired into this workflow. Run it before tagging a patch for a new version.
+      #
+      #   python3 tools/checks/resolve_fp.py com.truecaller 26.31.6
+      - name: Check fingerprint resolution (cached APKs)
+        continue-on-error: true
+        run: |
+          if [ -d "$HOME/apks" ]; then
+            for dir in "$HOME"/apks/*/*/; do
+              [ -d "$dir/dex" ] || continue
+              package=$(basename "$(dirname "$dir")")
+              version=$(basename "$dir")
+              echo "::group::$package $version"
+              python3 tools/checks/resolve_fp.py "$package" "$version" || true
+              echo "::endgroup::"
+            done
+          else
+            echo "no local apk cache; skipping (see tools/checks/README.md)"
+          fi
+
       - name: Install dependencies
         run: npm install
 
