@@ -115,6 +115,18 @@ LAYOUTS = {
             "method": "PartitionedContactsLookup.u",
         },
     ],
+    # Truecaller 26.31.6 "Stop call history sync". One block. doWork declares .registers 31 with
+    # two parameters (this and Lzf3/bar;), so v0..v28 are locals and v0 is free. The block writes
+    # only v0 and returns.
+    "truecaller/patches/privacy/StopCallHistorySyncPatch.kt": [
+        {
+            "signature": "(Lzf3/bar;)Ljava/lang/Object;",
+            "registers": 31,
+            "ins": 29,
+            "live": "v29=this v30=coroutineScope; v0..v28 free",
+            "method": "CallHistoryFullSyncWorker.doWork",
+        },
+    ],
     # One entry per injected block, in source order, because the two constructors have different
     # register maps. Writing v0 in the two-parameter block would overwrite `this`.
     "pinterest/patches/comments/HideCommentsPatch.kt": [

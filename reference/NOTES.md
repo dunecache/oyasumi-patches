@@ -5403,3 +5403,163 @@ real artifact. `javap` says which opcode a filter class matches, which caught th
 `check-cast` confusion, but it says nothing about how the filter compares its operand, and nothing
 here can be validated without running the patcher. When two of three sibling fingerprints resolve
 and one does not, the difference between them is the diagnosis.
+
+## Phase 1 investigation — call log: hide, and stop reading the system call log
+
+Behaviour, in one sentence: the app shows no call history, and reads nothing from the system call log
+regardless of whether `READ_CALL_LOG` is granted.
+
+Chosen design: **Option 3, two patches** — one that makes the permission read as never granted, one
+that empties every query at the `ContentResolver` boundary.
+
+### The finding that changed the plan
+
+I expected to find one query chokepoint. There is not one, but there is something better: **only four
+of the eight call-log sites read the provider, and three of those four are not reads at all.**
+
+Every reference to `Landroid/provider/CallLog` in the whole APK, from a scan of all 9 dex files and
+all 86,463 classes:
+
+| site | dex | what it actually does |
+| --- | --- | --- |
+| `cv0/bar` | classes5 | holds `Calls.CONTENT_URI` in static field `b`, exposes it via `b()` |
+| `cv0/n;.invokeSuspend` | classes5 | **`ContentResolver.delete`** on `Calls.CONTENT_URI`, then delete on `k81/c.b()` with `"type IN (1,2,3) "` |
+| `u63/k;.invokeSuspend` | classes5 | the real read — 1259 instructions, `checkNotNullExpressionValue("CONTENT_URI")`, then a **5000 ms window** (`const-wide/16 v4, 5000`) |
+| `vn0/c;.a` | classes5 | **`registerContentObserver`** on `Calls.CONTENT_URI`, then constructs `u63/k` with mask 27 |
+| `jb0/a;.invokeSuspend` | classes7 | **`registerContentObserver`**, flag 1, in a `com/truecaller/qa/user_growth/CallLogExporter` context |
+| `ll0/a;.b`, `rewardprogram/impl/ui/qa/e`, `acs/qa/AcsQaActivity` | classes5–7 | QA/debug screens |
+
+So of the four non-observer sites, only **`u63/k;.invokeSuspend` genuinely reads the call log.**
+`cv0/n` *deletes* from it, and `vn0/c` + `jb0/a` only register change observers.
+
+That collapses the target set enormously. The earlier estimate of "8 targets including a 1259-instruction
+coroutine" was wrong on both counts: there is one reader, and the observers do not read.
+
+### Where the permission is actually checked
+
+**It is not.** A scan for `PackageManager.checkSelfPermission`, `ContextCompat.checkSelfPermission`,
+`PackageManager.checkPermission`, `PackageManager.checkOp`, `isPermissionGranted`, and `hasPermission`
+returns **only third-party SDK code** — Huawei HMS, Google GMS ads, IronSource, mBridge, Moloco,
+Unity. No `com/truecaller/**` class calls any of them.
+
+`com/truecaller/familyprotect/api/protectionconfig/model/PermissionName` does **not** model
+`READ_CALL_LOG` at all. Its constants are `ACTIVITY`, `AVAILABILITY`, `BATTERY_OPTIMIZATION`,
+`CALLER_ID_ROLE`, `DRAW_OVER_OTHER_APPS`, `NOTIFICATIONS_ENABLED`, `UNRECOGNIZED` — a family-protection
+feature list, unrelated to call log access.
+
+Conclusion: **the app never asks "am I allowed to read the call log".** It queries and lets the
+framework throw. So there is no app-owned permission check to hook, and the Option 1 hook I
+speculated about does not exist. This is exactly the uncertainty I flagged before promising Option 1,
+and it resolves against it.
+
+The manifest still declares `READ_CALL_LOG`, and the string `android.permission.READ_CALL_LOG` appears
+in four dex files, so the app requests it somewhere in onboarding — but the request path and the
+read path are independent.
+
+### Revised plan
+
+Option 1 as originally conceived is not implementable. What replaces it, keeping the spirit of
+"enforce it at the source":
+
+- **Patch A — stop the observer registrations.** `vn0/c;.a` and `jb0/a;.invokeSuspend` each
+  `registerContentObserver` on the call-log URI. Suppressing those means the app is never notified
+  when the call log changes, so nothing downstream re-queries it. Two small-ish targets, and it is
+  the mechanism that actually keeps the call log out of the app's hands over time rather than only at
+  first read.
+- **Patch B — the single reader.** `u63/k;.invokeSuspend` is the only method that reads it. It is a
+  1259-instruction coroutine, which is a poor edit target, so the return value is produced rather
+  than the body rewritten. Needs its return path identified before this is implementable.
+- **cv0/bar;.b()** remains the cheap defence-in-depth hook: it is 2 instructions and feeds any other
+  consumer, though on this build nothing besides the registerers reads it.
+
+### Open questions, stated plainly
+
+- **`u63/k;.invokeSuspend`'s return path is not yet identified.** Whether it returns `Unit`, `Boolean`,
+  or a list decides whether Patch B can be an early return or needs a wider edit. Not yet read.
+- `cv0/n` *deleting* from the system call log is unexpected and worth understanding — an app that
+  deletes call-log rows is doing something to the user's history. Left alone; noted as a finding.
+- `CallHistoryFullSyncWorker` (the backend sync) is untouched by both patches. It is the highest-value
+  target in the app and is still unaddressed.
+- Nothing here is implemented or verified.
+
+## Patch 2 — Stop call history sync
+
+`com/truecaller/callhistory/CallHistoryFullSyncWorker;.doWork` returns `Unit` immediately, so the
+sync never reads the system call log and never uploads it.
+
+### The chain, read from the dex
+
+```text
+TruecallerApp;.onCreate                 registers the worker under the name
+                                        "com.truecaller.callhistory.CallHistoryFullSyncWorker"
+Lcs0/bar;.invokeSuspend                1128-instruction coroutine that also enqueues it, by Class
+CallHistoryFullSyncWorker;.doWork       264 instructions, CoroutineWorker
+  -> state machine on field E (values 0..4), literal "hasMatchingEntries"
+  -> Lcv0/e;.invokeSuspend             the 48-instruction leaf
+       -> ns/l;.M(ContentResolver, k81/a;.w(),
+                   "conversation_id = ? AND date >= ?",
+                   "sequence_number DESC, date DESC, _id DESC",
+                   "COUNT(*)")                                    <- reads the call log
+       -> Lcv0/c0;.f(I J J)             "expCallLogSyncPartial", dv0/bar;.a(...) cursor,
+                                        then ContentResolver.applyBatch("com.truecaller", ...)
+                                        with a "call_log" argument <- writes it out
+```
+
+Two independent schedulers — `TruecallerApp.onCreate` (336 instructions, string-keyed registration)
+and `Lcs0/bar;.invokeSuspend` (1128 instructions, enqueues by `Class`) — so this is the main path
+rather than one of several.
+
+### Why the worker entry, not the query
+
+Stopping at the top means there is no read to cover and therefore nothing to upload, so no other
+consumer has to be enumerated. `u63/k;.invokeSuspend` (1259 instructions, the one genuine reader of
+`CallLog.Calls.CONTENT_URI`) and the two `registerContentObserver` registrations in `vn0/c;.a` and
+`jb0/a;.invokeSuspend` remain live as readers of the *system* call log; they simply have no sync
+result to hand upwards any more. Those are the remaining work, deliberately separate.
+
+### Return value
+
+`doWork` is declared `(Lzf3/bar;)Ljava/lang/Object;` on a `CoroutineWorker`. Its own success path
+goes through `Lsw0/r;.l(ILjava/lang/Object;)`, never returning a `ListenableWorker.Result` directly,
+and the leaf is resolved by `Lml3/p;.o(Boolean)Z`. Returning `Unit` is what that path yields for a
+`CoroutineWorker`, which WorkManager reads as `Result.success()`.
+
+`failure()` was deliberately **not** used: a failed `ListenableWorker` is re-enqueued, which would
+produce a retry loop against the backend instead of silence.
+
+```smali
+sget-object v0, Lkotlin/Unit;->a:Lkotlin/Unit;
+return-object v0
+```
+
+Registers: `.registers 31`, two parameters, so `v0`..`v28` are locals and `v0` is free.
+
+### The static checker earned its keep
+
+This block was first written with baksmali's `->member Type` spelling and
+`check_inline_smali.py` rejected it:
+
+```text
+FAILED: RuntimeException: Error occurred while compiling text
+  [35,49] ... insn_format21c_field, field_reference] missing COLON
+```
+
+The inline compiler is an ANTLR grammar that wants `->member:Type`. Corrected, and the block parses
+clean. This is the `v0.6.0-dev.12` failure mode the checker's own README describes.
+
+### Fingerprint
+
+Class plus name plus descriptor plus two `string` literals from the body: `"hasMatchingEntries"` and
+`"workerClass"`. The class name is additionally load-bearing, because the worker is constructed
+reflectively by name and resolved through a `WorkerFactory` (`Ltx/r;.a`, 759 instructions), so a
+rename would break scheduling independent of any patch. No type filter, for the reason recorded under
+the contact-list defect.
+
+### Not verified
+
+- **Not compiled and not run.** Smali parses and `patch_smali_checks.py` passes at 45 files, but
+  neither says the fingerprint resolves.
+- The app's own call log list will still populate from other paths; only the upload is stopped.
+- `cv0/n;.invokeSuspend` deletes rows from the *system* call log and is untouched. Unexplained.
+- Call recordings and their transcriptions (`call_recording`, `call_recording_feedback`) are a
+  separate store and a separate patch.
