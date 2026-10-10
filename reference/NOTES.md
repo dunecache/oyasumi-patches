@@ -2458,3 +2458,69 @@ the contact-list defect.
 - `cv0/n;.invokeSuspend` deletes rows from the *system* call log and is untouched. Unexplained.
 - Call recordings and their transcriptions (`call_recording`, `call_recording_feedback`) are a
   separate store and a separate patch.
+
+## Device failure 2026-10-10 — `CallHistorySyncWorkerFingerprint` did not match
+
+Manager 1.35.0-dev.1, Patcher 1.15.1, target `com.truecaller` 26.31.6:
+
+```text
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+  app.truecaller.patches.privacy.CallHistorySyncWorkerFingerprint@1ef6399
+```
+
+### Root cause: the two `string` filters are declared in reverse instruction order
+
+Morphe does **not** evaluate filters independently. `Fingerprint.matchOrNull$matchFilters` in
+`morphe-patcher-1.13.0.jar` walks the instruction list once with a forward-only cursor:
+
+- filter 0 is searched from instruction 0; on a match the cursor steps past it;
+- filter *k > 0* is searched only at indices **≥ that cursor**;
+- if it finds nothing and the filter's `InstructionLocation` is the default
+  `MatchAfterAnywhere` (what `string(x)` passes when no location is given), the method returns
+  `null` immediately — no backtracking, because `MatchAfterAnywhere.indexIsValidForMatching`
+  returns `true` for every index and the retry branch is only taken for the other location types.
+
+In `CallHistoryFullSyncWorker;.doWork` the two literals appear in this order:
+
+| instruction index | literal |
+| --- | --- |
+| 3 | `"workerClass"` |
+| 23 | `"hasMatchingEntries"` |
+
+The fingerprint declares `string("hasMatchingEntries")` first. It matches at index 23, so the
+cursor becomes 24, and `"workerClass"` — which occurs only at index 3 — can never be found at
+≥ 24. The match fails unconditionally, which is exactly the device error.
+
+### Why this was not caught
+
+`tools/checks/resolve_fp.py` models each filter as independent ("Every filter must be satisfied by
+at least one instruction"), so it reported PASS. The declaration order is not modelled at all.
+The three contact-list fingerprints, which did resolve on device, declare `"favoritesFilter"` then
+`"phonebookFilter"` — and in the dex those appear at instruction indices 0 and 2, i.e. declaration
+order equals instruction order. That ordering is why they passed and this one did not, not any
+difference in filter kind.
+
+### Fix applied
+
+Declared the filters in instruction order (commit on `dev`, 2026-10-10):
+
+```kotlin
+filters = listOf(
+    string("workerClass"),
+    string("hasMatchingEntries")
+)
+```
+
+Nothing else in the fingerprint changes; class, name, descriptor and both literals are correct for
+the cached build, and reordering is a no-op under the checker's current (weaker) model, so the fix
+cannot make a currently-matching fingerprint stop matching.
+
+### Caveats
+
+- The bytecode above was read from the locally cached `morphe-patcher-1.13.0.jar`, which is what
+  `gradle/libs.versions.toml` pins. The device ran Patcher 1.15.1; that version was not inspected
+  (the jar comes from GitHub Packages and no token is available here). If 1.15.1 relaxed matching
+  to independent filters, this ordering would not have been the cause — but the reorder is still
+  correct under either model.
+- `resolve_fp.py` still reports PASS for the broken order. Teaching it to model the forward-only
+  cursor is a separate change and was not made here.
