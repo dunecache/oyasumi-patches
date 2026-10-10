@@ -27,7 +27,7 @@ Development happens in Termux on Android. Avoid heavy builds. Do not run a full 
 
 ## Working cache
 
-Extracting and deobfuscating an APK is the single most expensive step in this project. For Pinterest 14.38.0 it produced 8 DEX files, 73,720 classes, and 14,099 app-owned classes, and it takes hours of wall clock. That work must never be repeated.
+Extracting and deobfuscating an APK is the single most expensive step in this project. On the largest target so far it produced 8 DEX files, 73,720 classes, and 14,099 app-owned classes, and it takes hours of wall clock. That work must never be repeated.
 
 **Everything extracted goes under `~/apks`, never in the repository.** The repository holds only the small notes in `reference/`.
 
@@ -35,7 +35,7 @@ Organize `~/apks` by app name, then by version. Every target gets its own leaf d
 
 ```text
 ~/apks/
-  <package.name>/                 com.pinterest, com.instagram, app.idm, ...
+  <package.name>/                 com.truecaller, app.idm, com.dv.adm, ...
     <version>/                    14.38.0, 283.0.0.0.108, ...
       <package.name>-<version>-<versionCode>_<abi>_<source>.apk
       apk.sha256                  hash of that exact APK

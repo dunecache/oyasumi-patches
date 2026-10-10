@@ -21,7 +21,7 @@ result is pass/fail per fingerprint, with the reason, so a failure names its own
 arriving as "Failed to match the fingerprint" from a phone.
 
     python resolve_fp.py com.truecaller 26.31.6
-    python resolve_fp.py com.pinterest 14.38.0 --patch contacts
+    python resolve_fp.py app.idm 18.2 --patch contacts
 """
 
 from __future__ import annotations

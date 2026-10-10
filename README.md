@@ -61,36 +61,8 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.34)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;21 patches total
-<details>
-<summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;14 patches</summary>
-<br>
-
-**🎯 Supported versions:**
-
-| 14.38.0 |
-| :---: |
-
-| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
-|----------|----------------|-----------|
-| [Disable AppsFlyer tracking](#disable-appsflyer-tracking) | Neutralize the AppsFlyer attribution SDK, so no state is returned to the external data tracker. |  |
-| [Disable Google Engage](#disable-google-engage) | Stop Pinterest publishing user actions to Google, so nothing is sent to Snooper, Analytics, Play or Ads. |  |
-| [Disable email confirmation dialog](#disable-email-confirmation-dialog) | Hide the "Confirm your email" prompt and related screen, whether in home or settings. |  |
-| [Force original image download](#force-original-image-download) | Load the original full-resolution asset for pin images instead of the 736x rendition, at the cost of considerably more data. |  |
-| [Hide "Ideas you might love" section (DIAGNOSTIC BUILD)](#hide-ideas-you-might-love-section-diagnostic-build) | Hide the suggested-topics section shown under a pin. |  |
-| [Hide "More ideas for this board" section](#hide-more-ideas-for-this-board-section) | Remove the "More ideas for this board" section from a board, header and contents alike. |  |
-| [Hide Create nav button](#hide-create-nav-button) | Hide the create (+) button in the bottom navigation bar. |  |
-| [Hide Notifications nav button](#hide-notifications-nav-button) | Hide the notifications button in the bottom navigation bar. |  |
-| [Hide Search nav button](#hide-search-nav-button) | Hide the search button in the bottom navigation bar. |  |
-| [Hide comments](#hide-comments) | Hide the comments button on a pin, so comments cannot be opened from the pin. |  |
-| [Morphe settings entry](#morphe-settings-entry) | Add the "Morphe" entry to the Account Settings list, opening the Morphe settings screen. |  |
-| [Morphe settings screen (label)](#morphe-settings-screen-label) | Rename the reused string resource to "Morphe" in every shipped language, so the settings entry is identifiable. |  |
-| [Morphe settings screen (manifest)](#morphe-settings-screen-manifest) | Register the Morphe settings activity in the manifest, with an intent-filter for the morphe:// scheme. |  |
-| [Neutralize advertising ID](#neutralize-advertising-id) | Return a random advertising ID instead of the real one, so the app has no advertising identifier to hand to Pinterest or to any bundled tracker. |  |
-
-</details>
-
-<details>
+> **[v0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.34)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;7 patches total
+<details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
 
@@ -107,7 +79,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details>
+<details open>
 <summary>📦 1DM&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
 
@@ -122,7 +94,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details>
+<details open>
 <summary>📦 Djezzy&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
 
@@ -137,7 +109,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details>
+<details open>
 <summary>📦 Truecaller&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
 <br>
 
@@ -158,7 +130,3 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Further documentation
 
 See the [Morphe patcher documentation](https://github.com/MorpheApp/morphe-documentation) for the current patch API and [Morphe Desktop](https://github.com/MorpheApp/morphe-desktop) for applying a local bundle.
-
-## Credits
-
-The Pinterest settings patches (settings entry, label, manifest) adapt the mechanism proven in [browzomje-patches](https://github.com/browzomje/browzomje-patches): reusing Pinterest's own external-link settings row with a `morphe://` URL instead of building a custom row, renaming the row's existing string resource across all locales instead of adding a new one, declaring the settings activity with a framework theme and a `morphe://` intent-filter, and resolving obfuscated class names from the dex at patch time rather than pinning them. All fingerprints, the locale list, and the extension code here were re-derived and rewritten for the builds targeted by this repository; consult that project for the original implementation and its version-to-version obfuscation notes.

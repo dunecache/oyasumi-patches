@@ -43,8 +43,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# Root for LAYOUTS keys. Was hardcoded to the Pinterest package, so no other app's injected
-# smali could ever be checked; keys are now paths relative to this directory.
+# Root for LAYOUTS keys, which are paths relative to this directory.
 PATCHES = ROOT / "patches/src/main/kotlin/app"
 
 # How to wrap each block so the assembler sees the real target method's register layout.
@@ -57,27 +56,6 @@ PATCHES = ROOT / "patches/src/main/kotlin/app"
 #               tell you that v0 holds `this`.
 #   comment:    which method is being patched, and what is live where
 LAYOUTS = {
-    "pinterest/patches/navigation/HideSearchNavButtonPatch.kt": [{
-        "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
-        "registers": 8,
-        "ins": 2,
-        "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
-        "method": "FloatingBottomNavBar.Q1",
-    }],
-    "pinterest/patches/navigation/HideNotificationsNavButtonPatch.kt": [{
-        "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
-        "registers": 8,
-        "ins": 2,
-        "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
-        "method": "FloatingBottomNavBar.Q1",
-    }],
-    "pinterest/patches/navigation/HideCreateNavButtonPatch.kt": [{
-        "signature": "(Lae0/o; I Lf82/l; Lf82/j; Lf82/n;)V",
-        "registers": 8,
-        "ins": 2,
-        "live": "v2=this v3=descriptor v4=int v5,l v6=tab View v7=listener; v0,v1 free",
-        "method": "FloatingBottomNavBar.Q1",
-    }],
     # Truecaller 26.31.6 "Return an empty contact list". Three identical blocks, one per patched
     # accessor, in source order. All three declare `.registers 4` or 7 with three parameters, so
     # `v0` is free in each; the payload writes only `v0` and returns immediately.
@@ -125,52 +103,6 @@ LAYOUTS = {
             "ins": 29,
             "live": "v29=this v30=coroutineScope; v0..v28 free",
             "method": "CallHistoryFullSyncWorker.doWork",
-        },
-    ],
-    # One entry per injected block, in source order, because the two constructors have different
-    # register maps. Writing v0 in the two-parameter block would overwrite `this`.
-    "pinterest/patches/comments/HideCommentsPatch.kt": [
-        {
-            # createView: registers=6 ins=1, so this=v5 and v0..v4 are free. v1 is the
-            # findViewById scratch register; the block re-initialises it before use.
-            "signature": "()V",
-            "registers": 6,
-            "ins": 5,
-            "live": "v5=this; v0..v4 free",
-            "method": "LegacyPromotedCloseupActionButtonModule.createView",
-        },
-    ],
-    # Two blocks, in source order: the index-2 outcome log and the index-0 entry log. The stub
-    # gets leading NOPs so the live map matches either insertion point.
-    "pinterest/patches/sections/HideIdeasSectionPatch.kt": [
-        {
-            "signature": "(Liu1/l;Ljava/lang/Object;I)V",
-            "registers": 11,
-            "ins": 7,
-            "live": "v7=this v8=view p1 v9=model v10=position; v0..v6 free",
-            "method": "Lhr1/f;.e (index 2, outcome)",
-        },
-        {
-            "signature": "(Liu1/l;Ljava/lang/Object;I)V",
-            "registers": 11,
-            "ins": 11,
-            "live": "v7=this, v8..v10 unwritten; v0..v6 free",
-            "method": "Lhr1/f;.e (index 0, entry)",
-        },
-    ],
-    # The board section-registration DSL. registers=25 with thirteen parameters, so p0..p12 are
-    # v12..v24 and only v0..v11 are locals. `p9` -- the section id the block gates on -- is v21,
-    # and `v0` is not written until the method's own `move/from16 v0, p12`, which is the
-    # instruction the block is inserted in front of.
-    "pinterest/patches/sections/HideMoreIdeasSectionPatch.kt": [
-        {
-            "signature": "(La0/f; Lax2/o3; Lax2/m; Lax2/u1; Z Lax2/f; Lax2/l; Lax2/v1; Lax2/l; "
-                         "Ljava/lang/String; Lax2/v1; Lax2/n; I)V",
-            "registers": 25,
-            "ins": 12,
-            "live": "v12=this v13=o3 v14=m v15=u1 v16=boolean v17=f v18=l v19=v1 v20=l "
-                    "v21=sectionId v22=v1 v23=n v24=int flags; v0..v11 free",
-            "method": "La0/f;.a0",
         },
     ],
 }
