@@ -1,3 +1,9 @@
+## [0.6.0-dev.35](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.34...v0.6.0-dev.35) (2026-10-10)
+
+### 🐛 Bug Fixes
+
+* **truecaller:** declare sync fingerprint filters in instruction order ([a2cbe40](https://github.com/dunecache/oyasumi-patches/commit/a2cbe40bf0029e1e794e8a3321a9b64f0ce1cf6a))
+
 ## [0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.33...v0.6.0-dev.34) (2026-10-10)
 
 ### ✨ New Features
