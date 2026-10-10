@@ -1,3 +1,9 @@
+## [0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.33...v0.6.0-dev.34) (2026-10-10)
+
+### ✨ New Features
+
+* **truecaller:** stop call history sync ([f20cb8d](https://github.com/dunecache/oyasumi-patches/commit/f20cb8d13c37cd9f87cfe8ebbe2cad566d1b4d5f))
+
 ## [0.6.0-dev.33](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.32...v0.6.0-dev.33) (2026-10-08)
 
 ### 🐛 Bug Fixes

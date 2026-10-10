@@ -61,8 +61,8 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.33](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.33)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;20 patches total
-<details open>
+> **[v0.6.0-dev.34](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.34)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;21 patches total
+<details>
 <summary>📦 Pinterest&nbsp;&nbsp;•&nbsp;&nbsp;14 patches</summary>
 <br>
 
@@ -90,7 +90,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details open>
+<details>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
 
@@ -107,7 +107,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details open>
+<details>
 <summary>📦 1DM&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
 
@@ -122,7 +122,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details open>
+<details>
 <summary>📦 Djezzy&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
 <br>
 
@@ -137,8 +137,8 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 
 </details>
 
-<details open>
-<summary>📦 Truecaller&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
+<details>
+<summary>📦 Truecaller&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
 <br>
 
 **🎯 Supported versions:**
@@ -149,6 +149,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
 |----------|----------------|-----------|
 | [Return an empty contact list](#return-an-empty-contact-list) | Make the app see an empty contact list, so nothing is shown from your address book and nothing can be matched or uploaded from it. |  |
+| [Stop call history sync](#stop-call-history-sync) | Stop uploading your call history to Truecaller's servers, and stop it reading the system call log to do so. |  |
 
 </details>
 
