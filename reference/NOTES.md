@@ -2524,3 +2524,119 @@ cannot make a currently-matching fingerprint stop matching.
   correct under either model.
 - `resolve_fp.py` still reports PASS for the broken order. Teaching it to model the forward-only
   cursor is a separate change and was not made here.
+
+## Patch 3 — Spoof premium entitlement (investigation only, awaiting review)
+
+Make the app treat the logged-in account as an active premium subscriber, purely on the client:
+no paywalls, premium tier shown, expiry far in the future, and the premium feature set populated
+locally. Server-enforced premium (what Truecloud grants the account) is out of scope and cannot be
+patched from the client.
+
+Target pinned to `com.truecaller` 26.31.6, cache `~/apks/com.truecaller/26.31.6/` (base.apk SHA-256
+`f6454d90…3583a89d`). All findings below come from that dex via the `tools/` helpers; method
+instruction ordinals are as printed by `struse.py -l`.
+
+### The entitlement chain, read from the dex
+
+```text
+Ls92/p1;->b(qux)                       public refresh entry; launches Lqv2/c (opcode 27)
+  Lqv2/c;->n                           fetch -> Ls92/e1;->j(String,qux)  the subscription API
+    Ls92/p1;->c(Lga2/b;)Ls92/g0;       <- ONE mapper: server DTO -> local state g0
+    Ls92/p1;->e(Ls92/g0;qux)           persists g0 into prefs via Ld23/b, then builds
+                                       Ls92/x1;(r1,g0) and runs the paywall rules Lba2/qux;->a
+Ls92/p1;->a(p1,nc2/b,String,qux)       purchase/attach path; same c() then e(); error branches
+                                       return an empty g0() without touching prefs
+```
+
+`Ls92/g0;` is the local premium state (public final fields):
+
+| field | type | prefs key written by p1.e | meaning |
+| --- | --- | --- | --- |
+| a | J | `premiumExpiresTimestamp` | expiry, epoch millis |
+| b | J | `purchaseTime` | purchase time |
+| c | J | `premiumGraceExpiration` | grace expiry |
+| d | Z | `premiumRenewable` | renewable flag |
+| e | Boolean | `isFreeTrialActive` | free trial |
+| g | PremiumTierType | `premiumLevel` | tier id, e.g. `gold` |
+| h | List of PremiumFeature | `availableFeatures` (JSON) | feature entitlements |
+| i | ProductKind | `premiumKind` | product kind id |
+| j | InsuranceState | `insuranceState` | insurance |
+| k | String | `premiumScope` | scope remote id |
+| l | Z | `isPremiumExpired` | **the** active flag (true = not premium) |
+| m | Z | `isInGracePeriod` | grace |
+| n | Z | `isSubscriptionOnHoldOrPaused` | paused |
+| o | Z | `isInAppPurchaseAllowed` | iap allowed |
+| p | Store | `paymentProvider` | store |
+| q | String | `userCurrentSku` | sku |
+| r | I | `commitmentPeriod` | months (default 12) |
+| s | List of i92/n | `entitledCatalogItemIds` | catalog ids |
+
+Readers live on `Ls92/t1;` (prefs wrapper, extends `Ld23/bar`):
+
+- `G()Z` — `!prefs("isPremiumExpired", true)`, 134 call sites, incl. `TruecallerInit`. This is the
+  app-wide "is premium?" predicate; `t()Ls92/r1;` feeds its result into the rules engine snapshot.
+- `B()PremiumTierType` — `premiumLevel`, 47 call sites.
+- `x()J` — `premiumExpiresTimestamp`, 13 call sites.
+- `A()PremiumScope`, `z()ProductKind`, `F()Z` (grace+expired), `v()Z` (had premium before).
+
+Per-feature gating runs off `g0.h`: `p1.e` serialises it to the `availableFeatures` prefs key and
+`Laa2/j;` serves it to ~15-31 reader classes per feature (`NO_ADS` 15, `WHO_VIEWED_ME` 31,
+`INCOGNITO_MODE` 19, `GOLD_CALLER_ID` 15). An empty `h` therefore unlocks the premium *badge* but
+not the features, so `h` must be populated.
+
+### Proposed hook points (four, one patch)
+
+1. **`Ls92/p1;->c(Lga2/b;)Ls92/g0;`** (`classes6.dex`, 179 instructions, single `return-object v3`
+   at ordinal 178). Insert immediately before that return a block that builds a synthetic premium
+   `Ls92/g0;` and leaves it in `v3`; the original return then hands it back. Everything upstream
+   (the two prefs side writes at ordinals 22/31, the catalog parsing) is preserved. The
+   `invoke-direct/range` uses the same 23-register window the original uses (`v3..v25`), and the
+   method declares 29 registers with 2 params, so the block stays inside locals.
+   Synthetic values: a=`4102444800000` (2100-01-01), b=`1735689600000`, d=1, e=null, g=`GOLD`,
+   h=feature list (below), i=`SUBSCRIPTION_GOLD` (`goldyearly`), j=`UNKNOWN`, k=`"paid_premium"`
+   (→ `PremiumScope.PAID_PREMIUM`), l=0, m=0, n=0, o=1, p=`GOOGLE_PLAY`, q=null, r=12, s=null —
+   mirroring `g0.<init>()V`'s defaults (which already set o=1, r=12) with the premium fields swapped.
+   Feature list: all `PremiumFeature` enum constants except `UNKNOWN`, `FAMILY_SHARING`,
+   `FRAUD_INSURANCE` and `VERIFIED_BADGE` — family and insurance interact with separate state
+   (`p1.e` skips the family-key reset when `FAMILY_SHARING` is present, and `j` would disagree),
+   and the verified badge is a server-side identity claim.
+2. **`Ls92/t1;->G()Z`** (`classes6.dex`, 6 instructions, string at ordinal 0) — force
+   `const/4 v0, 1; return v0`, so the premium flag is true even before the first successful refresh
+   (fresh install, offline start). `registers 3 ins 1`, `v0` free.
+3. **`Ls92/t1;->B()PremiumTierType`** (`classes6.dex`, 11 instructions, string at ordinal 4) —
+   return `PremiumTierType.GOLD`. Without this the app would claim premium while the tier reader
+   still says `FREE` until a refresh lands. `registers 4 ins 1`, `v0` free.
+4. **`Ls92/t1;->x()J`** (`classes6.dex`, 5 instructions, string at ordinal 0) — return
+   `4102444800000`. Expiry comparisons pass before the refresh. `registers 4 ins 1`, `v0/v1` free.
+
+### Fingerprint candidates and stability
+
+All four targets sit in R8-minified packages (`Ls92/`, `Lga2/`), so no class or method name is
+stable on its own — the same position as the contact-list fingerprints, which are pinned by version
+(`Constants.COMPATIBILITY_TRUECALLER`, 26.31.6 only) and anchored by material renames do not touch:
+
+1. `definingClass "Ls92/p1;", name "c", returnType "Ls92/g0;", parameters ["Lga2/b;"]`, plus
+   `string("subscriptionStatusChangedReason")` then `string("familySubscriptionStatus")` — both
+   literals are from the method's own body, declared in instruction order (ordinals 22 then 31, so
+   the forward-only filter cursor is satisfied). The pair also occurs in `Ls92/b2;->a()V`, but the
+   class + name + descriptor exclude it; if `c` were ever repurposed the literals fail loudly.
+2. `definingClass "Ls92/t1;", name "G", returnType "Z", parameters []`, `string("isPremiumExpired")`.
+   The only other holders of that literal are the writer `p1.e` and the grace reader `F()Z`, both
+   excluded by class+name.
+3. Same class, `name "B"`, `returnType "Lcom/truecaller/premium/data/tier/PremiumTierType;"`,
+   `string("premiumLevel")` — the return type is app-owned and readable.
+4. Same class, `name "x", returnType "J", parameters []`, `string("premiumExpiresTimestamp")`.
+
+### What this cannot do / open questions
+
+- **Server-enforced premium is untouched.** Anything Truecaller's backend authorises for the
+  account (verified badge as seen by others, cloud-side quotas, carrier billing offers) stays free.
+  Expect premium-only *server* calls to fail with normal error handling, not to crash.
+- **First minutes after patching:** state flips only when a refresh runs (`p1.b` is called from
+  startup coroutines and the premium workers) — hooks 2-4 cover that window locally.
+- The premium tab may still render purchase/history sections that expect a real receipt (`q` sku,
+  `s` catalog ids are left empty). Device testing decides whether that is cosmetic or confusing.
+- Not read: exactly how `Laa2/j;` re-derives its list from prefs on cold start, and whether any
+  gate compares `g0.i` (`ProductKind`) against `NONE` in a way that an empty `q` sku breaks.
+- Nothing here is implemented, compiled or run. Per the two-phase rule this note is the review
+  gate; implementation waits for a go-ahead.
