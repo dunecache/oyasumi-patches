@@ -2640,3 +2640,159 @@ stable on its own — the same position as the contact-list fingerprints, which 
   gate compares `g0.i` (`ProductKind`) against `NONE` in a way that an empty `q` sku breaks.
 - Nothing here is implemented, compiled or run. Per the two-phase rule this note is the review
   gate; implementation waits for a go-ahead.
+
+## Phase 1 investigation — favorite contacts: stop retrieving them
+
+Behaviour, in one sentence: Truecaller never learns which of the user's phone-book contacts are
+favorites (starred), and — pending the open question below — may also be made to stop carrying its
+own Favorites feature data at all.
+
+**Status: awaiting review. No patch code written yet.** Target pinned to `com.truecaller` 26.31.6,
+cache `~/apks/com.truecaller/26.31.6/`. All findings below come from that dex via the `tools/`
+helpers; method ordinals are instruction ordinals as printed by `struse.py -l`.
+
+### "Favorites" means two independent things in this build
+
+1. **The system starred flag, ingested by contact sync.** The phonebook projection used by the
+   contact reader `Lm61/b` includes the `starred` column, and the row mapper stores it as a boolean
+   on the app's contact entity. There is **no dedicated favorites fetch**: no method references
+   `ContactsContract$Contacts.STARRED` (the only `STARRED` field refs in the APK are Truecaller's own
+   `SearchFilter.STARRED` for starred *messages*), there is no `starred=1` selection, and there is no
+   favorites content URI. The starred flag simply rides along with the general phonebook sync and is
+   persisted into the app DB column `contact_is_favorite`.
+2. **Truecaller's own Favorites feature** (the heart-marked list): Room table `favorite_contact`
+   (migration DDL in `Leq/m;.d`), entities `FavoriteContact` / `ContactFavoriteInfo` under
+   `com/truecaller/favorite_contacts_data/data/`, UI under
+   `com/truecaller/favourite_contacts/add_favourite_contact/` (`AddFavouriteContactActivity`),
+   repository `Ldp1/g`, store `Luo1/bar;->a(FavoriteContact)Unit`, and a periodic worker
+   `FavoriteContactsHeartbeatWorkAction` (`Lyo1/a;->a`). The heartbeat reads the local favorites list
+   (`Lu23/e` over `Luo1/bar`, dedup by `FavoriteContact.b : Long`) and emits one tracking event,
+   `Lmy2/w6`, whose payload is `ClientHeaderV2` plus **two integer counts** (`c`, `d`) — counts, not
+   numbers. No network path carrying the favorite numbers themselves was found; the feature is
+   local-storage plus count analytics.
+
+### Where the retrieval happens (system starred)
+
+```text
+Lk61/baz;->a(Z)V                     sync trigger
+  callers: Los0/e;.onReceive          a contact-change broadcast receiver
+           Lv72/d;.f(Context), Lss1/u;.invokeSuspend, Ltx/a1;.e(List),
+           Lk83/l;.invokeSuspend, QMActivity (QA)
+  -> Lm61/b;.d(Uri, J, String, String[])
+  -> Lm61/b;.c(Cursor, Uri, String, String[])     the cursor reader
+       projection built by Lm61/bar;.<init>(Cursor):
+         _id, contact_id, raw_contact_id, lookup, data_version, mimetype,
+         display_name, starred, is_super_primary, data1..data10, photo_uri
+  -> Lm61/b;.a(Lm61/bar;)Contact                  the row mapper
+       ordinals 22-36: read column "starred" (bar field i, KProperty index 7),
+       booleanize, iput-boolean -> Contact.e0 : Z   (ordinal 36, byte 134)
+```
+
+`Lm61/b;.a` has exactly **one** caller: `Lm61/b;.c` at byte 1354. `Lm61/b;.c` itself is called from
+`Lm61/b;.d` and from one fragment of the large coroutine class `Lgj2/o;.invokeSuspend`.
+
+### What `Contact.e0` is, and who reads it
+
+`Lcom/truecaller/data/entity/Contact;->e0 : Z` is the app's per-contact "is favorite" flag. Twelve
+methods touch it:
+
+| method | role |
+| --- | --- |
+| `Lm61/b;.a` | ingest: phonebook `starred` → e0 (the target above) |
+| `Ls81/qux;.b(Cursor)Contact` | app DB cursor → entity; also reads `contact_is_favorite` via readable `ContactFields.isFavorite()` |
+| `Ls81/c;.k(ArrayList, ArrayList, Contact, Z)` | applies app DB favorite columns to an entity |
+| `Contact;.<init>(Parcel)` / `writeToParcel` | parcel propagation |
+| `La00/b;.invokeSuspend` | **write-back**: sets `starred` on the *system* contact (`ContentResolver.update(getLookupUri, ContentValues("starred", bool))`, gated on `WRITE_CONTACTS`) |
+| `Le81/l;.invoke` | returns e0 as the `FavoritesFilter` partitioning key for the contacts list |
+| `Lfd1/e;.b`, `Lix1/baz;.h`, `La01/a;.invokeSuspend`, `Lfl1/baz;.invokeSuspend` | details-view / UI parameter building (read-only; `La01/a`, `Lfl1`, `Lfd1` not fully traced) |
+| `Lru0/h0;.y2(Lmu0/e; Z)` | puts e0 into an analytics map under the literal `"IsFavorite"` |
+
+The app DB persists it as `contact_is_favorite` (and `contact_favorite_position`): written by
+`La91/qux;.c(ContentValues, ContentValues, ContentValues)`, defined in the schema classes
+`Lf91/bar`/`Lf91/d`, constants in `Lk81/b;-><clinit>`.
+
+### Candidate hook, and why it is stable
+
+**`Lm61/b;.a(Lm61/bar;)Lcom/truecaller/data/entity/Contact;`** — insert `const/4 v6, 0` immediately
+before ordinal 36 so `Contact.e0` is always false when the row comes from the phonebook. `v6` is the
+temp holding the booleanized column value and is dead after the `iput-boolean`; the method has 29
+registers and 2 parameters, so the edit adds no register pressure and no new references.
+
+Fingerprint: `definingClass "Lm61/b;"`, `name "a"`, `parameters ["Lm61/bar;"]`,
+`returnType "Lcom/truecaller/data/entity/Contact;"`, plus two `string` filters **declared in
+instruction order** (the forward-only filter cursor cost CallHistorySyncWorkerFingerprint a device
+round): `"vnd.android.cursor.item/phone_v2"` (ordinal 97) then `"vnd.android.cursor.item/name"`
+(ordinal 304). Class plus name plus descriptor is already unique — `Lm61/b` has exactly one method
+named `a` — and the MIME-type literals are Android constants that survive any R8 pass; the two
+parameter/return types are app-owned descriptors that pin the method against a same-named sibling in
+a future version, which cannot happen here anyway because the patch is version-pinned to 26.31.6.
+
+### What this hook does not do
+
+- Contact sync still retrieves the **entire phonebook**; only the favorite flag is suppressed. A
+  patch that stops the phonebook read altogether is a different, larger feature (and Patch 1 only
+  empties the in-memory list handed to the UI — the sync keeps filling the app DB regardless).
+- Rows already stored with `contact_is_favorite=1` keep that value until a re-sync overwrites them.
+- The in-app Favorites feature is untouched: heart-marked favorites still store, list, toggle, fire
+  `AddFavorite`/`RemoveFavorite` analytics, and heartbeat their counts, because their write path sets
+  `Contact.e0` directly rather than through the phonebook ingest.
+- The write-back (`La00/b`) still writes `starred` into the system contacts when the user favorites
+  inside Truecaller.
+- Unknowns stated plainly: `La01/a`, `Lfl1/baz`, `Lfd1/e;.b` read e0 for reasons not fully traced
+  (all appear read-only); whether any caller *branches* on e0 in a way that changes control flow
+  beyond UI/analytics was not audited method-by-method.
+- Nothing compiled, nothing applied, nothing device-tested.
+
+### Open questions, stated plainly
+
+1. **Which "favorites" is the request about?** (a) the phone-book starred contacts Truecaller picks
+   up during contact sync — the candidate hook above; (b) Truecaller's own Favorites feature — the
+   heart-marked list it stores locally and heartbeats counts of; or (c) both. The two are
+   independent in the dex and need separate decisions.
+2. If (b): disable the feature outright (empty its list accessor and block adds), or keep it working
+   locally and only stop the heartbeat/analytics?
+3. The write-back direction: Truecaller *writes* `starred` into your system contacts when you
+   favorite in-app (`La00/b`, needs `WRITE_CONTACTS`). Stop that too, or leave it since it only fires
+   on a user action?
+
+### Related: the call-log retrieval the user reports
+
+Recorded separately per one-feature-per-task: Patch 2 stopped only the **sync worker upload**
+(`CallHistoryFullSyncWorker;.doWork`). The system call log is still **read** by
+`u63/k;.invokeSuspend` (the in-app history list, 1259 instructions) and still **observed** by
+`vn0/c;.a` and `jb0/a;.invokeSuspend` (`registerContentObserver`), which is the "remaining work,
+deliberately separate" the Patch 2 note already scoped (Patch A = the two observer registrations,
+Patch B = the single reader). That is the next feature after this one is confirmed.
+
+### Query-tooling gotchas found while investigating
+
+- `refs.py` caller rows key invoke targets exactly as androguard prints them, i.e. **with spaces**
+  after `;` inside descriptors (`Lm61/b;->c(Landroid/database/Cursor; Landroid/net/Uri; ...)`),
+  while `callees`/`ckey` strips spaces. `refs.py callers` with a pasted no-space descriptor reports
+  a false "no callers"; query the `refs.json.gz` directly when in doubt.
+- `struse.py -l` prints **instruction ordinals**; `struse.py <regex>` and `refs.py` rows store
+  **byte offsets** (sum of instruction lengths). The two numberings differ for any method with
+  wide/payload instructions — do not cross-reference them naively.
+
+# Spotify 9.1.90.2270 reference notes
+
+## Source and target record
+
+- Reference APK: `~/storage/0/Download/1DM/Programs/com.spotify.music_9.1.90.2270-147078674_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk`
+- Recorded cache copy: `~/apks/com.spotify.music/9.1.90.2270/com.spotify.music-9.1.90.2270-147078674_minAPI24_arm64-v8a_armeabi-v7a_x86_x86_64_nodpi_apkmirror.com.apk`
+- SHA-256: `5c05366de31788fd0eec6e046c3610311acf5e63c15345e5bdaca6e8f09fb3b4`
+- Size: `142,124,037` bytes.
+- Format: regular universal APK, 18 DEX files (`classes.dex` through `classes17.dex`).
+- Package: `com.spotify.music`. Version name: `9.1.90.2270`. Version code: `147078674`.
+- Minimum SDK: `24`. Target SDK: `37`. Main activity: `com.spotify.music.MainActivity`.
+- Query cache: `~/apks/com.spotify.music/9.1.90.2270/tools/` (dex index and struse index built).
+
+## First planned patch — Remove audio & UI ads
+
+- Behavior: never fetch or render Spotify's served ads; return an empty ad response at Spotify's ads RPC seam.
+- Target method: `Lp/x22;->a(Lcom/spotify/ads/esperanto/proto/GetAdsRequest;Lp/xel;)Ljava/lang/Object;`. This is the coroutine wrapper for `spotify.ads.esperanto.proto.Ads.GetAds`.
+- The method currently parses the server response into `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;`; returning `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE` at method entry should present an ad payload with no ads.
+- `Lp/x22;` is constructed in `Lp/az60;->x(...)` and used as `Lp/rt51;->b` inside `Lp/rt51;`. UI/slot handling through `Lp/rt51;->b` is separate and will be revisited if ads still surface there.
+- Candidate fingerprint: defining class `Lp/x22;`, name `a`, return type `Ljava/lang/Object;`, parameters `Lcom/spotify/ads/esperanto/proto/GetAdsRequest;` and `Lp/xel;`, plus anchors for literals `"spotify.ads.esperanto.proto.Ads"` and `"GetAds"` and the `GetAdsResponse.r([B)` call. The literal occurrences were confirmed once each by struse in this DEX.
+- Earliest possible edit: prepend `sget-object v0, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE ...` plus `return-object v0` at instruction index `0`, without deleting existing instructions.
+- Uncertainty: this seam is only one of Spotify's ad paths; UI ads, cached/session ads, premium-upsell prompts, and playback slates may use other services. Runtime behavior is untested. The method is a suspend function, so an unconditional early return may interact with caller state-machine expectations and must be smoke-tested on a device.
