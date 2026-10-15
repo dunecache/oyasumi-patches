@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-15T17:40:31",
-  "description": "## [0.6.0-dev.36](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.35...v0.6.0-dev.36) (2026-10-15)\n\n### ✨ New Features\n\n* **spotify:** add server-side ads patch for 9.1.90.2270 ([e5cb0fb](https://github.com/dunecache/oyasumi-patches/commit/e5cb0fb542174bc64cdc7b08094096d2d2c70321))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.36/patches-0.6.0-dev.36.mpp",
+  "created_at": "2026-10-15T18:53:09",
+  "description": "## [0.6.0-dev.37](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.36...v0.6.0-dev.37) (2026-10-15)\n\n### 🐛 Bug Fixes\n\n* **spotify:** correct smali colon syntax in disable ads patch ([2e5c225](https://github.com/dunecache/oyasumi-patches/commit/2e5c2259f018ff83a576612075b4dbc2b9eb92a7))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.37/patches-0.6.0-dev.37.mpp",
   "signature_download_url": "",
-  "version": "0.6.0-dev.36"
+  "version": "0.6.0-dev.37"
 }

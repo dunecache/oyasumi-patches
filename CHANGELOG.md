@@ -1,3 +1,9 @@
+## [0.6.0-dev.37](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.36...v0.6.0-dev.37) (2026-10-15)
+
+### 🐛 Bug Fixes
+
+* **spotify:** correct smali colon syntax in disable ads patch ([2e5c225](https://github.com/dunecache/oyasumi-patches/commit/2e5c2259f018ff83a576612075b4dbc2b9eb92a7))
+
 ## [0.6.0-dev.36](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.35...v0.6.0-dev.36) (2026-10-15)
 
 ### ✨ New Features

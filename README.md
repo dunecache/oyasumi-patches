@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.36](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.36)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
+> **[v0.6.0-dev.37](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.37)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
