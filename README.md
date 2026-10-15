@@ -61,7 +61,23 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.37](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.37)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;8 patches total
+> **[v0.6.0-dev.38](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.38)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;9 patches total
+<details open>
+<summary>📦 Spotify&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 9.1.90.2270 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Disable Smart Shuffle default](#disable-smart-shuffle-default) | Make Smart Shuffle not the default for playlists and liked songs, so playback follows the normal queue order. |  |
+| [Disable ads](#disable-ads) | Return Spotify's default empty ad response from GetAds, so no server-provided audio ad is used. |  |
+
+</details>
+
 <details open>
 <summary>📦 ADM&nbsp;&nbsp;•&nbsp;&nbsp;3 patches</summary>
 <br>
@@ -76,21 +92,6 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable ads](#disable-ads) | Skip ADM's Appodeal and AppBrain ad setup and display routines, and the Telegram join prompt. |  |
 | [Disable rating prompts](#disable-rating-prompts) | Skip ADM's automatic rating prompt. The menu item that opens the same dialog on request is left intact. |  |
 | [Increase connection limits](#increase-connection-limits) | Raise the download ceilings to 32 simultaneous downloads and 64 connections per download, and set torrent defaults to 500 global and 100 per torrent. |  |
-
-</details>
-
-<details open>
-<summary>📦 Spotify&nbsp;&nbsp;•&nbsp;&nbsp;1 patch</summary>
-<br>
-
-**🎯 Supported versions:**
-
-| 9.1.90.2270 |
-| :---: |
-
-| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
-|----------|----------------|-----------|
-| [Disable ads](#disable-ads) | Return Spotify's default empty ad response from GetAds, so no server-provided audio ad is used. |  |
 
 </details>
 

@@ -1,3 +1,9 @@
+## [0.6.0-dev.38](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.37...v0.6.0-dev.38) (2026-10-15)
+
+### ✨ New Features
+
+* **spotify:** disable Smart Shuffle defaults for playlist and liked songs ([6d7ba57](https://github.com/dunecache/oyasumi-patches/commit/6d7ba57ad9c309801fd4008e067c04208432f0e3))
+
 ## [0.6.0-dev.37](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.36...v0.6.0-dev.37) (2026-10-15)
 
 ### 🐛 Bug Fixes
