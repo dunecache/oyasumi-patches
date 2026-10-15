@@ -15,7 +15,7 @@ val disableSpotifyAdsPatch = bytecodePatch(
     execute {
         GetAdsFingerprint.method.addInstructions(
             0,
-            "sget-object v0, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE:Lcom/spotify/ads/esperanto/proto/GetAdsResponse;\nreturn-object v0"
+            "const/4 v0, 0\nnew-array v0, v0, [B\ninvoke-static {v0}, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->r([B)Lcom/spotify/ads/esperanto/proto/GetAdsResponse;\nmove-result-object v0\nreturn-object v0"
         )
     }
 }

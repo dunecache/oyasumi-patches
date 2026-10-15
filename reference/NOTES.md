@@ -2791,7 +2791,7 @@ Patch B = the single reader). That is the next feature after this one is confirm
 
 - Behavior: never fetch or render Spotify's served ads; return an empty ad response at Spotify's ads RPC seam.
 - Target method: `Lp/x22;->a(Lcom/spotify/ads/esperanto/proto/GetAdsRequest;Lp/xel;)Ljava/lang/Object;`. This is the coroutine wrapper for `spotify.ads.esperanto.proto.Ads.GetAds`.
-- The method currently parses the server response into `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;`; returning `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE` at method entry should present an ad payload with no ads.
+- The method currently parses the server response into `GetAdsResponse`; returning `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->r(empty byte array)` at method entry should present an ad payload with no ads. `DEFAULT_INSTANCE` is private, so it cannot be referenced directly from `Lp/x22;`.
 - `Lp/x22;` is constructed in `Lp/az60;->x(...)` and used as `Lp/rt51;->b` inside `Lp/rt51;`. UI/slot handling through `Lp/rt51;->b` is separate and will be revisited if ads still surface there.
 - Candidate fingerprint: defining class `Lp/x22;`, name `a`, return type `Ljava/lang/Object;`, parameters `Lcom/spotify/ads/esperanto/proto/GetAdsRequest;` and `Lp/xel;`, plus anchors for literals `"spotify.ads.esperanto.proto.Ads"` and `"GetAds"` and the `GetAdsResponse.r([B)` call. The literal occurrences were confirmed once each by struse in this DEX.
 - Earliest possible edit: prepend `sget-object v0, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE ...` plus `return-object v0` at instruction index `0`, without deleting existing instructions.
