@@ -1,3 +1,9 @@
+## [0.6.0-dev.39](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.38...v0.6.0-dev.39) (2026-10-15)
+
+### 🐛 Bug Fixes
+
+* **spotify:** use empty GetAdsResponse parse instead of private default ([f0f4cc3](https://github.com/dunecache/oyasumi-patches/commit/f0f4cc3ce824e047d412fbadae95158cd9fc9514))
+
 ## [0.6.0-dev.38](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.37...v0.6.0-dev.38) (2026-10-15)
 
 ### ✨ New Features

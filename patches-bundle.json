@@ -1,7 +1,7 @@
 {
-  "created_at": "2026-10-15T20:59:36",
-  "description": "## [0.6.0-dev.38](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.37...v0.6.0-dev.38) (2026-10-15)\n\n### ✨ New Features\n\n* **spotify:** disable Smart Shuffle defaults for playlist and liked songs ([6d7ba57](https://github.com/dunecache/oyasumi-patches/commit/6d7ba57ad9c309801fd4008e067c04208432f0e3))",
-  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.38/patches-0.6.0-dev.38.mpp",
+  "created_at": "2026-10-15T21:22:17",
+  "description": "## [0.6.0-dev.39](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.38...v0.6.0-dev.39) (2026-10-15)\n\n### 🐛 Bug Fixes\n\n* **spotify:** use empty GetAdsResponse parse instead of private default ([f0f4cc3](https://github.com/dunecache/oyasumi-patches/commit/f0f4cc3ce824e047d412fbadae95158cd9fc9514))",
+  "download_url": "https://github.com/dunecache/oyasumi-patches/releases/download/v0.6.0-dev.39/patches-0.6.0-dev.39.mpp",
   "signature_download_url": "",
-  "version": "0.6.0-dev.38"
+  "version": "0.6.0-dev.39"
 }
