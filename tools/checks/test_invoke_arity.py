@@ -114,6 +114,273 @@ DOLLAR_CASES: list[tuple[str, str, bool]] = [
 ]
 
 
+
+#: A `//` comment between a literal and the `+` continuing the chain must not stop the
+#: fold. It did once: every literal after the comment was dropped, so a trailing smali
+#: label -- the operand of a branch -- went unchecked while still being emitted. These rows
+#: put a bad invoke *after* a comment, so a fold that stops early reports no problem.
+COMMENT_CASES: list[tuple[str, str, bool]] = [
+    (
+        "bad invoke after an interposed comment is caught",
+        "invoke-static {v0, v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;",
+        True,
+    ),
+    (
+        "correct invoke after an interposed comment is not flagged",
+        "invoke-static {v0}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;",
+        False,
+    ),
+]
+
+
+def comment_flagged(instruction: str) -> bool:
+    src = (
+        'val p = bytecodePatch(n = "x") {\n'
+        "    execute {\n"
+        "        addInstructions(0,\n"
+        '            "const/4 v0, 0\\n" +\n'
+        "            // a comment the compiler ignores\n"
+        f'            "{instruction}"\n'
+        "        )\n"
+        "    }\n"
+        "}\n"
+    )
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        path.write_text(src)
+        return bool(checks.check_invoke_arity(path))
+    except Exception:
+        return False
+    finally:
+        path.unlink(missing_ok=True)
+
+
+
+#: A conditional branch whose target label sits in the same fragment is a join, and Dalvik
+#: requires both paths to agree on every register's type. These rows are the shape that
+#: shipped and took the app down with a blank screen -- gating the pedometer push on the
+#: channel name put a `String` in `v0` on the skip path and an `Integer` in `v0` on the push
+#: path, and the verifier rejected the class at load:
+#:
+#:     VerifyError: Verifier rejected class i5.c: i5.c.onListen failed to verify:
+#:     [0x2C] register v0 has type Conflict but expected Reference: i5.b
+#:
+#: The second row is the shape that is fine, and it is fine for a specific reason worth
+#: keeping: the skipped block ends in `return-object`, so the fall-through path never
+#: reaches the label and there is no join to reconcile.
+BRANCH_CASES: list[tuple[str, str, bool]] = [
+    (
+        "merging branch is flagged",
+        r'const-string v0, "StepCount"' + "\n"
+        + r"invoke-virtual {v0, v3}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z" + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v0, 0x2710\n"
+        + "move-result-object v0\n"
+        + ":skip",
+        True,
+    ),
+    (
+        "merging branch is flagged past an interposed comment",
+        r'const-string v0, "StepCount"' + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v0, 0x1\n"
+        + ":skip",
+        True,
+    ),
+    (
+        "skipped block ending in a return is not a join",
+        r'const-string v0, "StepCount"' + "\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :pass\n"
+        + "const-wide/16 v0, 0x2710\n"
+        + "return-object v0\n"
+        + ":pass",
+        False,
+    ),
+    (
+        "skipped block touching only fresh registers is fine",
+        "iget-object v0, v2, Lx;->l:Ljava/lang/String;\n"
+        + "move-result v0\n"
+        + "if-eqz v0, :skip\n"
+        + "const/16 v4, 0x2710\n"
+        + ":skip",
+        False,
+    ),
+]
+
+
+def join_flagged(smali: str, comment: bool = False) -> bool:
+    """Write `smali` as the folded literal of an addInstructions call."""
+    escaped = smali.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    gap = "            // a comment the compiler ignores\n" if comment else ""
+    src = (
+        'val p = bytecodePatch(n = "x") {\n'
+        "    execute {\n"
+        "        addInstructions(0,\n"
+        '            "const/4 v0, 0\\n" +\n'
+        + gap
+        + f'            "{escaped}"\n'
+        "        )\n"
+        "    }\n"
+        "}\n"
+    )
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        path.write_text(src)
+        return bool(checks.check_branch_joins(path))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+def receiver_flagged(smali: str, triple: bool = False) -> bool:
+    """Write `smali` as the body of an addInstructions call, in either spelling."""
+    path = Path(tempfile.mkstemp(suffix=".kt")[1])
+    try:
+        if triple:
+            src = (
+                'val p = bytecodePatch(n = "x") {\n'
+                "    execute {\n"
+                "        Foo.bar.addInstructionsWithLabels(\n"
+                "            0,\n"
+                '            """\n'
+                f"{smali}\n"
+                '            """.trimIndent()\n'
+                "        )\n"
+                "    }\n"
+                "}\n"
+            )
+        else:
+            escaped = smali.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+            src = (
+                'val p = bytecodePatch(n = "x") {\n'
+                "    execute {\n"
+                "        addInstructions(0,\n"
+                '            "const/4 v0, 0\\n" +\n'
+                f'            "{escaped}"\n'
+                "        )\n"
+                "    }\n"
+                "}\n"
+            )
+        path.write_text(src)
+        return bool(checks.check_invoke_receiver_type(path))
+    finally:
+        path.unlink(missing_ok=True)
+
+
+#: `check_invoke_receiver_type` cases. The first two rows are the shipped defect and its fix,
+#: and the third row is the same defect in the triple-quoted spelling — which no check could
+#: see before, because `string_concat_in` does not fold a triple-quoted literal.
+RECEIVER_CASES: list[tuple[str, str, bool, bool]] = [
+    (
+        "shipped defect: result reused as the next receiver",
+        "move-object/from16 v0, p9\n"
+        + 'const-string v1, "MoreIdeasHeader"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "move-result v0\n"
+        + "if-nez v0, :skip\n"
+        + 'const-string v1, "MoreIdeas"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "return-void",
+        True,
+        False,
+    ),
+    (
+        "the fix: a separate register holds the flag",
+        "move-object/from16 v0, p9\n"
+        + 'const-string v1, "MoreIdeasHeader"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "move-result v2\n"
+        + "if-nez v2, :skip\n"
+        + 'const-string v1, "MoreIdeas"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z\n"
+        + "return-void",
+        False,
+        False,
+    ),
+    (
+        "same defect, triple-quoted block",
+        "move-result v0\n"
+        + 'const-string v1, "x"\n'
+        + "invoke-virtual {v0, v1}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z",
+        True,
+        True,
+    ),
+    (
+        "register re-initialised before use is fine",
+        "move-result v0\n"
+        + "move-object/from16 v0, p9\n"
+        + "invoke-virtual {v0}, Ljava/lang/String;->length()I",
+        False,
+        False,
+    ),
+    (
+        "move-result-object as a receiver is fine",
+        "move-result-object v0\n"
+        + "invoke-virtual {v0}, Ljava/lang/Object;->toString()Ljava/lang/String;",
+        False,
+        False,
+    ),
+    (
+        "move-result-wide is a primitive too",
+        "move-result-wide v0\n"
+        + "invoke-direct {v0, v1}, Lx/Y;->z(Ljava/lang/String;)V",
+        True,
+        False,
+    ),
+    (
+        "invoke-static has no receiver to get wrong",
+        "move-result v0\n"
+        + "invoke-static {v0}, Ljava/lang/Integer;->toHexString(I)Ljava/lang/String;",
+        False,
+        False,
+    ),
+    (
+        "after a label the type is a merge and cannot be proven",
+        "move-result v0\n"
+        + ":merge\n"
+        + "invoke-virtual {v0}, Ljava/lang/String;->length()I",
+        False,
+        False,
+    ),
+    (
+        "instance-of result cast without copying the reference in",
+        "instance-of v0, p1, Landroid/view/View;\n"
+        + "if-eqz v0, :end\n"
+        + "check-cast v0, Landroid/view/View;\n"
+        + "invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;",
+        True,
+        False,
+    ),
+    (
+        "the same block with the reference copied in first",
+        "instance-of v0, p1, Landroid/view/View;\n"
+        + "if-eqz v0, :end\n"
+        + "move-object/from16 v0, p1\n"
+        + "check-cast v0, Landroid/view/View;\n"
+        + "invoke-virtual {v0}, Landroid/view/View;->getContext()Landroid/content/Context;",
+        False,
+        False,
+    ),
+    (
+        "check-cast on a move-result-object is fine",
+        "move-result-object v0\n"
+        + "check-cast v0, Landroid/view/View;",
+        False,
+        False,
+    ),
+    (
+        "wide result is not reported by the end of the caller's block",
+        "move-result v0\n"
+        + "const-string v1, \"x\"\n"
+        + "invoke-virtual {v1, v0}, Ljava/lang/String;->format(Ljava/lang/String;[Ljava/lang/Object;)Ljava/lang/String;",
+        False,
+        False,
+    ),
+]
+
+
 def main() -> int:
     failures = 0
     for label, instruction, expected in CASES:
@@ -122,6 +389,24 @@ def main() -> int:
         failures += not ok
         print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     total = len(CASES)
+    for label, smali, expected, triple in RECEIVER_CASES:
+        got = receiver_flagged(smali, triple=triple)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
+    for label, smali, expected in BRANCH_CASES:
+        got = join_flagged(smali, comment="comment" in label)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
+    for label, instruction, expected in COMMENT_CASES:
+        got = comment_flagged(instruction)
+        ok = got == expected
+        failures += not ok
+        total += 1
+        print(f"  {'ok  ' if ok else 'BAD '} {label:46s} flagged={got} expected={expected}")
     for label, src, expected in DOLLAR_CASES:
         got = dollar_flagged(src)
         ok = got == expected

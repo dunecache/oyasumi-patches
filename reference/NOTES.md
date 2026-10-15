@@ -106,7 +106,7 @@ The following preference keys are loaded by `Lcom/dv/get/Pref;` and are strong c
 ## Build environment
 
 - `openjdk-21` is installed at `/data/data/com.termux/files/usr/lib/jvm/java-21-openjdk` and exported through `/data/data/com.termux/files/usr/etc/profile.d/openjdk.sh`.
-- A local Gradle build is not possible: `https://maven.pkg.github.com/MorpheApp/registry` returns `401` for the available `gh` token, which lacks the `read:packages` scope, so `app.morphe.patches` plugin `1.3.4` cannot be resolved. Compilation is delegated to CI.
+- Local `:patches:compileKotlin` now works: use Java 21, the Gradle 9.7.1 wrapper, a `GITHUB_TOKEN` with `read:packages`, and `GITHUB_ACTOR=dunecache`, then run `./gradlew --stop` before building after any credential or environment change. A stale Termux Gradle daemon can otherwise reuse the old environment and keep reporting auth failures. The Android `:extensions:extension` module still needs a real SDK through `ANDROID_HOME` or `local.properties`, so a complete local bundle build remains unavailable without one.
 
 ## Browser and remote data
 
@@ -411,6 +411,56 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 - Own services: `DownloadService`, `MediaScannerService`, `CheckAppVersion`, `IDMFirebaseMessagingService`, `TempFilesDeletionService`, `LogcatCaptureService`, and four quick-settings tile services.
 - Bundled mediation stack: AdMob, AppLovin MAX, Unity Ads, IronSource, Chartboost, Vungle, Pangle, BidMachine, Moloco, MobileFuse, Smaato, InMobi, Bigo, MyTarget, PubMatic, Fyber, Verve, Mintegral, plus the Amazon APS banner (`com.amazon.device.ads`).
 - The reference is user-supplied and has not been independently verified as the original publisher build.
+- **A second, complete 18.2 artifact exists, and it is what everything below was re-derived
+  from**: the installed app's own `base.apk`, at
+  `/data/app/~~WHrUNUEWf-QcrR98fn1o6g==/idm.internet.download.manager-LYZjVSMnmWC9nmwe13xo4Q==/base.apk`.
+  65,504,886 bytes, mode 0644, a single unsplit APK carrying all eleven DEX files
+  (`classes.dex` through `classes11.dex`) and the whole of `res/`. Its manifest metadata is
+  identical to the APKM's: `idm.internet.download.manager`, `18.2`, `30249`, minSdk `24`,
+  targetSdk `34`, application class `acr.browser.lightning.app.BrowserApp`. This closes the
+  "a complete `base.apk` is needed" gap recorded under unverified risks.
+- **It is a different build of 18.2, not the same artifact.** Re-inflating the APKM's damaged
+  `base.apk` up to the failure point and walking its local file headers shows most of its DEX
+  files are byte-identical to this APK's under a renumbering, verified by SHA-256:
+
+  | APKM entry | this APK | note |
+  | --- | --- | --- |
+  | `classes10.dex` | `classes3.dex` | identical |
+  | `classes2.dex` | `classes4.dex` | identical |
+  | `classes3.dex` | `classes5.dex` | identical |
+  | `classes4.dex` | `classes6.dex` | identical |
+  | `classes5.dex` | `classes7.dex` | identical |
+  | `classes6.dex` | `classes8.dex` | identical |
+  | `classes7.dex` | `classes9.dex` | identical |
+  | `classes8.dex` | `classes10.dex` | same 8,706,412 bytes; the APKM copy is truncated by the damage |
+  | `classes9.dex` | `classes11.dex` | never reached by the recovery; sizes agree |
+  | `classes.dex` | `classes2.dex` | **same 10,713,976 bytes, different content** |
+
+  Only the Lightning core differs: `BannerManager.load(Z)V` has 37 instructions in the APKM
+  build and 39 in this one, and `BannerView.setAd` has 210 against 213. So these are two
+  releases of 18.2 from the same publisher, not one release in two containers.
+- Consequence for this patch: the three fingerprints that already existed were derived from
+  the APKM build and were re-resolved against the on-device build. All four match, which is
+  the evidence that they are not over-fitted to one build's instruction layout. Anything
+  under `Lidm/`, and every layout, can only ever be checked against the on-device build,
+  because the APKM's copies are exactly the DEX files its damaged download lost.
+
+## Where the app's own code lives (on-device build)
+
+The damaged-download inventory below is superseded for anything under `Lidm/`. On the
+on-device build the split is:
+
+| DEX | bytes | classes | contents |
+| --- | --- | --- | --- |
+| `classes.dex` | 142,764 | 3 | `R` and `BuildConfig` |
+| `classes2.dex` | 10,713,976 | 9,198 | `Lacr/browser/**` (914), `androidx.compose/**` (5,195) |
+| `classes11.dex` | 7,557,860 | 6,732 | `Lidm/internet/**` (669), `io.bidmachine/**` (3,357) |
+
+So `Lidm/internet/download/manager/BannerView` and `manager/NewBannerView` are in
+`classes11.dex`, `Lacr/browser/lightning/view/BannerManager` and `BannerView` are in
+`classes2.dex`, and the Appodeal SDK itself is `classes5.dex` and `classes6.dex`. A scan of
+app-owned classes in `classes.dex`, `classes2.dex` and `classes11.dex` is enough to cover all
+of the app's own code.
 
 ## The reference file is damaged, and what that allowed
 
@@ -464,19 +514,158 @@ as a width-matched block of `nop`s handed to a helper that deletes by list lengt
 
 - `GONE` is `8`, which `const/4` cannot encode, so the app itself loads it with `const/16 v2, 8` (index 22). A patch that writes the constant must use `const/16` too.
 
+## The banner on the home screen is Appodeal's, and 1DM starts it twice (v0.6.0-dev.8, corrected v0.6.0-dev.10)
+
+This is the finding behind two failed attempts, and both failures had the same cause: the
+banner is a different ad system, and 1DM brings it up from two unrelated methods.
+
+Evidence, in the order it was obtained:
+
+1. A uiautomator dump of the installed build (`/storage/emulated/0/1dm_main_hierarchy.xml`)
+   shows the footer of the download list as
+   `LinearLayout id=footer` -> `FrameLayout id=appodealBannerView` -> `RelativeLayout` ->
+   `RelativeLayout` -> `WebView`, sized `[0,2170][1080,2308]`. The leaf is a `WebView`, which is
+   how the Appodeal SDK renders a banner. Nothing in the dump is a `BannerView`, an `ImageView`
+   icon, a `Button` or an `AmazonService` view, so none of the four app-owned banner classes is
+   on screen.
+2. `res/layout/activity_main_bottom.xml` decodes to a `com.appodeal.ads.BannerView` as the last
+   child of the drawer's content column: `android:id="@+id/appodealBannerView"`,
+   `android:visibility="gone"`, `android:layout_width="match_parent"`,
+   `android:layout_height="wrap_content"`, `android:layout_gravity="top|left"`. Because it is
+   `wrap_content` and `gone` in the layout, never loading it removes the strip rather than
+   leaving a gap, which is why the fix does not have to resize anything.
+3. `Appodeal`'s own constants, read out of `classes5.dex`: `BANNER = 4`, `BANNER_VIEW = 64`,
+   `INTERSTITIAL = 3`, `REWARDED_VIDEO = 128`, `ALL = 4095`. The SDK is therefore asked for
+   `BANNER` through `Appodeal.cache(Activity, 4)`, and `2131362191` (`0x7f0a018f`) is the
+   `appodealBannerView` entry in `resources.arsc`.
+4. A scan of every method outside `com/appodeal/**`, in all eleven DEX files, for
+   `Appodeal.initialize`, `setBannerViewId`, `setAutoCache`, `setBannerCallbacks`, `cache`,
+   `show` and `destroy` returns exactly eight methods. Three of them write SDK state:
+
+   | method | Appodeal calls | reached from |
+   | --- | --- | --- |
+   | `Li/rm;->ۦۖۢ(MyAppCompatActivity, Li/m15;)V` | `setAutoCache`, `setBannerViewId`, `initialize`, `setBannerCallbacks`, `setInterstitialCallbacks` | start-up, through `Li/rm;->ۦۖۗ()` |
+   | `Lidm/internet/download/manager/e;-><init>()V` | `setBannerViewId`, `initialize`, `setBannerCallbacks`, `cache` | only from `MyAppCompatActivity$2`, the `ConsentManagerError` callback, via `d;->ۦۜ۟(...)` |
+   | `Li/rm;->fetch()V` | `cache` x4, with `4`, `3` or `7` | `Li/rm;` itself |
+
+   The other five are read-only or interstitial-only: `Lidm/internet/download/manager/d;->ۦۡۗ`
+   and `ۦۡۚ` call `isLoaded(4)` then `show(Activity, 64)`, where `64` is `BANNER_VIEW`, purely to
+   tell 1DM's own `BannerManager` through `setNetworkAdShowingAndNotify` that a network ad is
+   on screen; `d;->ۦۤۥ(...)V` and `Li/rm;->ۦۗۤ`/`ۦۗۡ` do the same for the interstitial. None of
+   them can bring the SDK up or register the view.
+
+`Li/rm;` is 1DM's Appodeal ad manager: a singleton (`public static ۦۖۡ Li/rm;`) that implements
+both `BannerCallbacks` and `InterstitialCallbacks`, with `onBannerLoaded(IZ)`, `onBannerShown`,
+`onBannerClicked`, `onInterstitialLoaded(Z)` and the rest. Its `ۦۖۢ` is the real bootstrap:
+`setAutoCache(false, 7)`, `muteVideosIfCallsMuted(true)`, `setBannerViewId(2131362191)`,
+`initialize(context, "b1eafec41c5ab762a5acc356f9526305d05536819d4d0184", 4 or 7, Li/qm)`,
+`setBannerCallbacks(this)`, `setInterstitialCallbacks(this)`. `fetch()` then picks its cache mask
+from three gates -- `ۦۖۤ()Z` for a loaded, showable banner, the premium check from
+`d;->ۦۤ۠(...)`, and the persisted `AppodealNetwork` network preference.
+
+Also settled here: the four app-owned banner classes are `Lacr/browser/lightning/view/BannerView`
+(Lightning's, `classes2.dex`), `Lidm/internet/download/manager/BannerView` and
+`Lidm/internet/download/manager/manager/NewBannerView` (both `classes11.dex`), plus the Lightning
+`default_banner` layout pair. None of them appears in `activity_main_bottom.xml`, which is the
+layout the footer is inflated from.
+
+### What the device test proved, and the mistake behind it
+
+v0.6.0-dev.8 suppressed `Lidm/internet/download/manager/e;-><init>()V` on the reasoning that it
+was the app's only ad bootstrap. It applied cleanly, CI was green, and the banner was still on
+screen in the next dump. Pulling the installed APK and reading its DEX settled it:
+
+- The patched build's `classes.dex` is 144,148 bytes and holds exactly the four classes the
+  patch rewrites -- `BannerManager`, `BannerView`, `Lidm/…/d;` and `Lidm/…/e;` -- which is how
+  the patcher emits patched classes. So the patch really had been applied.
+- `Lidm/…/e;-><init>()V` begins `return-void`; `BannerManager.load` begins
+  `invoke-virtual {v1}, …->disable()V`; `BannerView.setAd` begins the `setVisibility(GONE)`
+  block; `d;->ۦۜۡ()` begins `const/4 v0, 0 / return-object v0`. All four edits were present.
+
+So the edits were right and the *choice of class* was wrong. The cause is a filter in the
+scratch tooling, not in the fingerprint: `idmscan.py` scanned only classes whose name starts
+with `Lidm/` or `Lacr/`, on the assumption that the app's own code lives under those two
+prefixes. `Li/rm;` is in the obfuscated `Li/` package, so the one class that registers the banner
+was invisible to every scan that produced the first two attempts. Both of those attempts are
+recorded here as failures, and the lesson generalises: **for a fingerprint, "no caller in the
+app's own packages" is not evidence of absence.** Scan the whole APK and exclude the SDK by its
+own package, not by a guess about where the app's code lives.
+
 ## Disable home screen ads (1DM 18.2)
 
 - Compatibility: `idm.internet.download.manager`, version `18.2`, `ApkFileType.APKM` (non-required, so the plain APK is accepted too).
+- **Three edits suppress Appodeal, because 1DM starts it twice**, and all three are needed:
+  `Li/rm;->ۦۖۢ(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/m15;)V` gets `return-void`
+  at index **1**, `Li/rm;->fetch()V` gets it at index 0, and
+  `Lidm/internet/download/manager/e;-><init>()V` gets it at index 0. Nothing is resized or
+  hidden: the `BannerView` stays `visibility="gone"` from `activity_main_bottom.xml` and the
+  footer collapses, because the view is `wrap_content`.
+- The index-1 return is deliberate. Index 0 of `ۦۖۢ` stores the callback argument into
+  `Li/rm;->ۦۖ۠Li/m15;`, and every one of `onBannerLoaded`, `onBannerShown`, `onBannerClicked`,
+  `onBannerFailedToLoad`, `onInterstitialLoaded`, `onInterstitialShown` and
+  `onInterstitialFailedToLoad` reads that field and calls through it, so the store is kept and
+  only the SDK bring-up is skipped. `.registers 5`, so `p0` is `v4` and the two declared
+  parameters are `v3` and `v2`.
+- Suppressing `e;` at index 0 is safe because that singleton's only caller,
+  `Lidm/internet/download/manager/d;->ۦۜ۟(Lacr/browser/lightning/activity/MyAppCompatActivity;Li/q15;)V`,
+  constructs it solely on the ads-enabled branch and otherwise calls `Li/a6;->ۦۖ۟(...)`, and
+  the class's two other instance methods are empty list callbacks (`ۦۖۨ(List)V` is a bare
+  `return-void`, `ۦۖ۫(List)V` calls it and returns), so the `Random` field left unwritten is
+  never read. The consumers that outlive it are guarded: `d;->ۦۤۥ(...)V` tests
+  `Appodeal.isLoaded(3)`, and `ActivityLifecycleListener.onStateChanged(...)` tests
+  `AmazonService.isInitialized()` before calling `AmazonService.start`/`stop`. Suppressing `e;`
+  also stops `AmazonService.start(true)` and `SmaatoSdk.init`, which is deliberate and in
+  scope: `AmazonService`'s only two readers are `BannerView.setAd` and `d;->ۦۤۥ`, both already
+  suppressed or guarded here.
+- None of the three fingerprints declares a `definingClass`, because `Li/rm;` and
+  `Lidm/internet/download/manager/e;` are both obfuscated and change between releases. Each
+  pins only `returnType = "V"` plus an ordered chain of anchors that are not obfuscated --
+  Appodeal member names, the publisher key, the `AppodealNetwork` preference key, and the
+  banner view id literal. Offline resolution against all eleven DEX files of the installed
+  build returns exactly one method for each:
+  - `AppodealStartupInitFingerprint` -> `Li/rm;->ۦۖۢ(...)V`, 43 instructions, `.registers 5`,
+    `public`, filter indices `[20, 23, 24, 33, 39, 40, 41]`: `setAutoCache` -> the view id
+    `2131362191` -> `setBannerViewId` -> the key -> `initialize` -> `setBannerCallbacks` ->
+    `setInterstitialCallbacks`.
+  - `AppodealFetchFingerprint` -> `Li/rm;->fetch()V`, 38 instructions, `.registers 5`, `public`,
+    filter indices `[13, 23, 28]`: the `AppodealNetwork` string -> `cache` -> `cache`. The two
+    consecutive `cache` filters force two distinct call sites, which is what makes the chain
+    specific rather than merely plausible.
+  - `AppodealAdInitFingerprint` -> `Lidm/internet/download/manager/e;-><init>()V`,
+    69 instructions, `.registers 8`, `public constructor`, filter indices
+    `[34, 45, 54, 57, 67]`: `setBannerViewId` -> the key -> `initialize` -> `setBannerCallbacks`
+    -> `cache`.
+
+  One caveat about those indices: `idm_fp_check.py` currently reads the *installed* build,
+  which already has the `return-void` this patch inserts, so the Appodeal chain resolves one
+  index later there -- `[35, 46, 55, 58, 68]` in 70 instructions rather than `[34, 45, 54, 57,
+  67]` in 69. The unpatched numbers are the ones above, because a patch run resolves against
+  unpatched input. The `Li/rm;` chains are unaffected, as nothing in this patch touches that
+  class.
+
+  The first chain ends at `setInterstitialCallbacks` and the third at `cache`, which is what
+  keeps the two bring-ups apart. The shape is the same "pin the contract, not the obfuscated
+  name" one the removed `AdvertisingIdInfoFingerprint` used.
 - `BannerManager.load(Z)V` is redirected to `BannerManager.disable()V`, which is the exact state 1DM enters when its ad configuration reports the banner as disabled. Consequences: `bannerInfoList` is never populated, `currentBannerInfo` stays null, and `resume()` returns at its `mDisabled` check, so the 500 ms rotation timer never starts and nothing is ever published to the banner view. Nothing else in the ad path is changed.
 - The inserted call runs before the method's own `monitor-enter`, so `disable()` is not executed under the method's monitor. That is safe because after the patch every entry into the list and the current ad goes through `disable()`, and the two fields it writes with `AtomicBoolean.set` are the ones `resume()` reads. `disable()` has its own try/catch around the `Timer` access.
 - `BannerView.setAd(Ljava/lang/Integer;Li/ru;)V` is replaced with `const/16 v0, 0x8`, `invoke-virtual {v5, v0}, Landroid/view/View;->setVisibility(I)V`, `return-void`. This is the app's own hide path (the branch at index 205), applied unconditionally, so a banner that arrives from any other publisher of `DefaultBannerCallback` is also hidden. `v0` is a scratch local in this method and is only read after the early return, and `v5` is read from the original `iget-object` rather than hardcoded.
-- Fingerprints, both resolved against the recovered `classes.dex` with a re-implementation of Morphe's matcher:
-  - `BannerManagerLoadFingerprint` → `load(Z)V`, 37 instructions, `public synchronized`, filter indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
-  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 210 instructions, `private`, filter indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
-  - Both fingerprints declare the defining class with a trailing `;`, which Morphe's type comparison resolves to an exact class match, so each is pinned to a single method by construction.
+- Fingerprints, all six resolved with `.scratch/idm_fp_check.py`, a re-implementation of
+  Morphe's matcher. The indices below are the installed build's; the APKM build's, recorded
+  before that artifact was available, are in the commit that introduced each fingerprint. The
+  three Appodeal fingerprints are listed above rather than repeated here.
+  - `BannerManagerLoadFingerprint` → `load(Z)V`, 39 instructions, `public synchronized`, filter indices `[2, 5, 6, 10, 12, 14, 16, 17, 18, 22, 31]`. On the APKM build: 37 instructions, indices `[0, 3, 4, 8, 10, 12, 14, 15, 16, 20, 29]`. The chain is `monitor-enter` (first instruction) → `mDisabled` read → `AtomicBoolean.set` → `mLoaded` read → `mTimer` read → `Timer.cancel` → `currentBannerInfo` write → `bannerInfoList` read → `List.clear` → `List.addAll` → `List.add`. The obfuscated `Li/ru;` type of `currentBannerInfo` is deliberately not declared, because it changes between releases.
+  - `BannerViewSetAdFingerprint` → `setAd(Ljava/lang/Integer;Li/ru;)V`, 213 instructions, `private`, filter indices `[3, 5, 7, 9, 23, 48, 49, 55, 205]`. On the APKM build: 210 instructions, indices `[0, 2, 4, 6, 20, 45, 46, 52, 202]`. The chain is the three child-view reads → `View.getContext` → `BannerManager.isNetworkAdShowing` → the `any` slot string → `AmazonService.getBannerBackfillAd` → `aps_banner` read → `View.setOnClickListener`. `any` is the only `const-string` in the method, and both the string and the `AmazonService` call sit in the Amazon branch, which no other method in this class has.
+  - `IdmPlusBannerFingerprint` → `Lidm/internet/download/manager/d;->ۦۜۡ()Li/ru;`, 37
+    instructions, `.registers 3`, `public static`, filter indices
+    `[2, 13, 16, 19, 22, 25]`. This is the one fingerprint that had to be written blind,
+    because its target class was in one of the DEX files the damaged download lost; it is now
+    verified against the on-device build.
+  - The three fingerprints that declare a defining class do so with a trailing `;`, which
+    Morphe's type comparison resolves to an exact class match, so each is pinned to a single
+    method by construction.
 - The `Li/ru;` parameter in `setAd`'s signature and the `Lidm/internet/download/manager/amazon/AmazonService;` call are release-specific, as documented for every obfuscated name in this file. Both are acceptable only because the compatibility declaration is pinned to 18.2/30249.
-- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, the `Lidm/` ad configuration, billing, or the download service.
-- The inserted smali was assembled against the same smali build Morphe uses, so both blocks are known to parse. See the pitfalls section below for the method and for the brace requirement that 0.3.0 violated.
+- The patch does not touch `setNetworkAdShowingAndNotify`, `AmazonService`, billing, or the download service. Suppressing the bootstrap does mean the Appodeal and Smaato SDKs are never initialized and `AmazonService` is never started, which is a deliberate widening: those three exist only to serve the banner, the interstitials and the Amazon backfill.
+- The three blocks that existed before v0.6.0-dev.8 were assembled against the same smali build Morphe uses, so they are known to parse. The three Appodeal blocks are one-line `return-void`s with no interpolation, no 35c register list and no arity, so none of the three failure modes recorded below can apply to them. See the pitfalls section for the method and for the brace requirement that 0.3.0 violated.
 
 ## 1DM launch crash: `setAd` invoke arity (v0.3.4)
 
@@ -672,19 +861,148 @@ chain against the DEX rather than by reading it.
 
 - **Layout, 1DM.** Resolved once a sound copy of the APKM turned up: `res/layout/banner_view.xml` is readable, and `Lidm/internet/download/manager/BannerView` has a fixed `layout_height` of 55dp. That is why the upsell strip is hidden rather than merely emptied. `Lacr/browser/lightning/view/BannerView` is a different class in a different dex, and its own layout is `res/layout/banner_view.xml`'s sibling set (`default_banner.xml`, `default_banner_new.xml`).
 - **Layout, ADM.** Still unconfirmed. The ADM reference DEX was read from a sound APKM, but its `res/` was never walked for the AppBrain container, so whether that strip leaves an empty gap behind is untested.
-- **Other ad surfaces are out of scope and unexamined.** The interstitial, rewarded, and "network ad" show paths are driven from `Lidm/internet/download/manager/` classes that live in `classes8.dex`/`classes9.dex`, which were not recovered. `BannerManager.setNetworkAdShowingAndNotify(Activity, boolean)` is the visible trace of that path; callers of it could not be read. This patch claims the banner only.
+- **Other ad surfaces are now readable but still out of scope.** The on-device build has the `Lidm/` DEX, so the interstitial path can be read for the first time: it is `Lidm/internet/download/manager/d;->ۦۤۥ(MyAppCompatActivity, c$a, Runnable)V`, which asks `Appodeal.isLoaded(3)`, installs `d$z` as the interstitial callback and shows, with an `AmazonService.getInterstitialAd("any")` fallback. Suppressing the bootstrap disables it in practice, but the patch does not target that method, so any future interstitial entered from outside Appodeal would still show. The rewarded path is still unexamined.
+- **The APKM build's `Lidm/` code can never be verified.** Both 18.2 builds are declared compatible, but the APKM's `Lidm/` classes are in the two DEX files its damaged download lost, so `AppodealAdInitFingerprint` and `IdmPlusBannerFingerprint` are verified against the on-device build only. If the APKM build turns out to register its banner differently, those two fingerprints will fail to resolve there rather than misfire: neither declares a `definingClass`, and both are pinned to SDK member names that have to be present for the ad path to work at all.
 - **No compile.** `app.morphe.patches` 1.3.4 cannot be resolved locally: `maven.pkg.github.com` returns `401` for the configured `gh` token, whose scopes are `gist`, `read:org`, `repo` and do not include `read:packages`. Compilation and bundle application are delegated to CI, as with the ADM patches.
-- **No device test.** Nothing has been applied to 18.2. The fingerprints resolve and the inserted smali is width-correct and register-safe by inspection, but the runtime effect is unconfirmed.
-- **A complete `base.apk` is needed** before adding any further 1DM patch that touches the app's own classes.
+- **One device test has been done and it failed; its replacement has not.** The v0.6.0-dev.8 bundle was applied to 18.2 on a device and the banner survived it. Pulling the installed APK showed all four edits present in its DEX, which moved the failure from "did it apply" to "was the right method patched", and that in turn produced the `Li/rm;` findings above. The three-fingerprint replacement resolves offline and passes `tools/checks/patch_smali_checks.py`, but **it has not been applied to a device and the banner has not been seen to disappear.** That is the one claim in this file that still needs a device.
+- **Do not trust a scan that filtered by app package prefix.** See "What the device test proved" above. `idmscan.py`'s `Lidm/`/`Lacr/` allowlist is what hid `Li/rm;`; it survives only as a convenience for quick lookups, and its results must not be used to argue that something does not exist. `idm_appodeal_scan.py` is the whole-APK replacement.
+- **The offline smali harness has to be rebuilt before it means anything.** `.scratch/check_smali.py` compiles its helper into `/usr/tmp/opencode/jars/out`, and that directory did not survive; the script now fails with an explicit message instead of quietly skipping. Its `CALLS` table also listed two `addInstructions` sites when the patch had four, so it had been exiting on the count check rather than assembling anything. Both are fixed. Rebuild `SmaliTest` per the recipe below before relying on it.
 
 ## Patcher pitfalls (1DM 18.2)
 
 - **`addInstructions` smali must be parsed, and 35c invokes need braces.** `addInstructions` routes the string through `InlineSmaliCompiler`, which wraps it in a dummy `.method` built from the matched method's own parameters, register count, and static flag, and then parses it with smali's ANTLR grammar. The 0.3.0 bundle shipped `invoke-virtual v1, L...;->disable()V` and died on-device with `Encountered 2 parser syntax errors and 0 lexer syntax errors!`. The grammar rule is `instruction_format35c_method : INSTRUCTION_FORMAT35c_METHOD OPEN_BRACE register_list CLOSE_BRACE COMMA method_reference` (`smaliParser.g`, line 1088), so the register list is mandatory and must be braced: `invoke-virtual {v1}, ...`. Only 35c/3rc/45cc invoke forms take braces; 22c forms such as `iput v5, v0, L...;->a:I` take a bare register pair, which is why the ADM patches parse.
 - **A register list holds register names, not numbers, and the `v` prefix does not come from the interpolation.** `getRegisterA()` and `getRegisterB()` return integers, so writing `invoke-virtual {$receiver}` renders `invoke-virtual {1}` and 0.3.1 died on-device with `Encountered 1 parser syntax errors` (`no viable alternative at input '1'`). The rendered text has to be `{v$receiver}`. The two failures are distinguishable by the reported count: two errors is a missing brace, one error is a bare number inside braces.
-- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake.
+- **Verify the rendered string, not the literal.** Both of the failures above were missed by reading the source and by pasting a hand-written copy of the smali into a local test, because the defect only exists in what the string template produces. `.scratch/check_smali.py` closes that gap: it pulls each `addInstructions(...)` argument out of the patch source, applies the Kotlin templates the way the compiler would, and assembles the result through the same method template `InlineSmaliCompiler` uses. Run it after editing any smali string here; it is offline, takes a few seconds, and it is the only check in this repository that has not needed a release to catch a mistake. Two things about it are load-bearing and were both got wrong at least once: the `CALLS` table must list **every** `addInstructions` site in the patch, in source order, with that method's `.registers` and declared parameters, or it exits on the count check without assembling anything; and the helper class has to be compiled into the `out` directory it names on the classpath, or every result is a failure to exec rather than a parse result. It guards the second case explicitly now.
 - **The dummy method means the register numbers are the real ones.** Because the template uses the matched method's `.registers` and parameter list, `p0` resolves to the receiver: in `load(Z)V` (`.registers 3`, one declared parameter) `p0` and `v1` are the same register, and in `setAd` (`.registers 8`, two declared parameters) `p0` and `v5` are the same. Verified by assembling both forms, so the explicit `v`-register form used by the patch is equivalent and does not depend on the template's parameter list being passed correctly.
 - **How to verify smali offline without the Morphe plugin.** The forks' smali is published on JitPack at `com.github.MorpheApp.smali:<module>/<commit>/<module>-<commit>.jar` (not the flat Maven path, which 404s), and Morphe tracks `com.github.MorpheApp.smali:smali` at commit `d856bad65f`. With `smali`, `smali-dexlib2`, `smali-util`, `antlr-runtime:3.5.2`, `stringtemplate:3.2.1`, `guava:31.1-android`, and `jsr305:1.3.9` on the classpath, a ~60-line Java program that copies `METHOD_TEMPLATE` from `InlineSmaliCompiler.kt` reproduces the exact parse, the exact error count, and the assembled instruction registers. That is how the brace fix was proven without a Gradle build, and it should be the first step for any new smali here. The same tool reproduces the numbers in the table above.
 
+## The fallback banner is 1DM's own view, and the patch never touched it
+
+A uiautomator dump of the patched build (`/storage/emulated/0/1dm_main_hierarchy.xml`)
+shows the footer as `footer` -> `defaultBannerViewNew` (`LinearLayout`,
+`[0,2129][1080,2322]`) -> `default_banner` (`[0,2143][1080,2308]`) -> `icon`
+(`ImageView`), `title` (`TextView` "Play fun Quizzes and Get Rewards"), `action`
+(`Button` "PLAY"). That is 1DM's own fallback banner, and none of the six existing
+edits touches the view that draws it:
+
+- It is not Appodeal's. Appodeal's banner would hold a `WebView`, and it is the one
+  the fingerprint file says is on screen. Appodeal is suppressed, and the app falls
+  back to its own banner. (`gone` views do not appear in uiautomator dumps, so a
+  hidden Appodeal view proves nothing either way.)
+- It is not the "Install 1DM+" promo. `IdmPlusBannerFingerprint` nulls the
+  `d;->ۦۜۡ()Li/ru;` factory, but this ad's copy comes from the server-side ad config,
+  not from that factory.
+- `BannerManager.load()` -> `disable()` does not stop it. `Li/s82;->ۦۖۢ` and `ۦۖۦ`
+  drive `manager.NewBannerView` directly, bypassing `BannerManager`.
+  `BannerViewSetAdFingerprint` patches `acr.browser...BannerView`, a different class.
+
+Resource ids, read out of the on-device `resources.arsc` (`ARSCParser.get_res_id_by_key`):
+`defaultBannerViewNew` 2131362504 (`0x7f0a02c8`), `default_banner` 2131362506,
+`icon` 2131362838, `title` 2131364059, `action` 2131361850, `offer_vpnLL` 2131363548.
+The `icon`/`title`/`action`/`aps_banner` numbers agree with the `BannerView.setAd`
+notes, which is expected: both banner layouts bind the same ids.
+
+Organized cache (per `AGENTS.md`, created once from the available artifact, not
+re-extracted): `~/apks/idm.internet.download.manager/18.2/` holds
+`idm.internet.download.manager-18.2-30249_apkv-base.apk` (65,504,886 bytes, SHA-256
+`5784871b01259be7f7ca4694e8c33bb892c50ed9b5fb0f9f56063f1515cbef5a`, byte-identical
+to the installed `base.apk` and to the `base.apk` inside
+`~/apks/idm.internet.download.manager_18.2.apkv`), `apk.sha256`, `dex/` with
+`classes.dex`/`classes2.dex`/`classes11.dex`, and the decoded `resources.arsc` plus
+`res/layout/default_banner.xml`, `default_banner_new.xml`, `banner_view.xml`. The
+flat `~/apks/idm.internet.download.manager_18.2.apkv` (manifest SHA
+`5784871b...`) is the source artifact and is left in place.
+
+The renderer is `Lidm/internet/download/manager/manager/NewBannerView;->ۦۖۦ(Li/ru;)V`
+(`classes11.dex`): 122 instructions, `.registers 6`, `this` in `v4`, the ad in `v5`.
+Indices 0/2/4 read the three child-view fields, `ۦۖۡ()V` binds them with `findViewById`
+on exactly the three ids above (indices 5/10/15: `2131362838`/`2131364059`/`2131361850`),
+and the method then paints the bitmap (29 `setImageBitmap`), the text (54 `setText`),
+the button (111 `setText`), installs the click target (116 `setOnClickListener`) and
+reveals itself (117). `NewBannerView` extends `LinearLayout`, so `setVisibility` on
+`this` hides the whole `defaultBannerViewNew` strip.
+
+The driver is `Li/s82;->ۦۖۦ(Lacr/browser/lightning/activity/MyAppCompatActivity;)Z`
+(`classes11.dex`): 116 instructions, `.registers 11` (`this` in `v9`, the activity in
+`v10`). Indices 78-81 load `const v3, 2131362504` and call
+`AppCompatActivity.findViewById`, casting to `NewBannerView`; 83-85 run the `ۦۖ۬`
+guard, 88-90 post the banner through `Li/q82`. The `IdmPlus` factory is null-checked
+at 73-77 (`if-nez v2` returns `false`), but the on-screen copy never passes through
+that factory, so nulling it cannot stop this path. The caller (`ۦۗۡ`) ignores the
+boolean return. Two sibling helpers (`ۦۖ¨`, 11 insns; `ۦۖ¬`, 12 insns) read the same
+container id; the literal's little-endian bytes (`c8020a7f`) occur exactly three times
+in the whole `base.apk`, all in `classes11.dex`, which is those three methods and
+nothing else.
+
+Fix, same trick as the `setAd` patch:
+
+- `FallbackBannerRendererFingerprint` (`NewBannerView`, `V`, `(Li/ru;)`) pins no
+  obfuscated method or field name. Its chain is four unobfuscated SDK calls in
+  increasing order: `ImageView.setImageBitmap` (29), `TextUtils.isEmpty` (34),
+  `TextView.setText` (54, not the `setTextColor` at 45 -- the exact
+  `(CharSequence;)V` signature selects it), `View.setOnClickListener` (116). Offline
+  resolution against `classes11.dex` returns exactly this method at `[29, 34, 54, 116]`.
+  The patch inserts at index 0 `const/16 v0, 0x8`, `invoke-virtual {v4, v0},
+  View;->setVisibility(I)V`, `return-void`. `v0` is safe because the original index 0
+  overwrites it; `v4` is `this`, measured not guessed; `const/16` because `const/4`
+  cannot encode 8; two registers because `setVisibility(I)V` declares one argument
+  plus the receiver (the v0.3.4 arity crash named only the receiver).
+- `FallbackBannerDriverFingerprint` (`Z`,
+  `(Lacr/browser/lightning/activity/MyAppCompatActivity;)`) pins no obfuscated class
+  or method name. Its chain is the container literal, `findViewById`, `Class.getName`
+  (111). Offline resolution returns exactly `Li/s82;->ۦۖۦ` at `[78, 79, 111]`; the
+  other two literal holders never reach `getName`. The patch inserts at index 0
+  `const/4 v0, 0`, `return v0` (`return`, not `return-void`, for a `Z` method). Index 0
+  already writes `v0`, so no live register is clobbered, and no mid-method scratch
+  liveness has to be proven, unlike a `setVisibility` after the `findViewById`.
+  Returning `false` is a state the caller already handles (it ignores the value).
+
+Deliberately out of scope: the `offer_vpnLL` bar ("VPN not connected, click here to
+Install...") is a separate ad-like promo with its own container; `hide_vpn_message` is
+only its dismiss button, so it needs its own hide if wanted.
+
+Verification: `tools/checks/patch_smali_checks.py` 30 files, 0 problems;
+`tools/checks/test_invoke_arity.py` 25/25; both new fingerprints replayed against the
+on-device DEX with Morphe's own comparison rules. `:patches:compileKotlin` still cannot
+run locally (`app.morphe.patches` 1.3.4 needs `read:packages`, same 401 as recorded
+above), so compilation is delegated to CI. Not verified on device: that the strip
+disappears and the footer collapses, and (as before) anything about the APKM build's
+`Lidm/` code, which was never readable.
+
+## The banner is gone but its slot is not (minHeight column, v0.6.0-dev.22)
+
+v0.6.0-dev.21 removed the ad content but left an empty ~60dp strip. The cause is not a
+view the patch missed but a `minHeight` on its parent. Decoded with androguard's
+`AXMLPrinter`, `res/layout/activity_main_bottom.xml` wraps the footer in a vertical
+`LinearLayout` (`match/wrap`, `minHeight="60dip"`) containing the two banner
+`<include>`s, two already-`GONE` promo slots and the `GONE` Appodeal view; the identical
+column appears in `activity_main.xml` and `activity_torrent_details.xml`. All three
+were verified. `default_banner_new.xml` itself starts `GONE` (`visibility="2"`) and is
+`wrap_content`, so hiding the banner is not what leaves the gap -- the column's
+`minHeight` keeps a 60dp strip even with every child `GONE`. The v0.6.0-dev.21 driver
+early-return made this certain: with the renderer never running, nothing ever hid the
+column.
+
+The fix hides the column from the renderer rather than touching the driver. The driver
+edit is deleted; the driver now runs its bookkeeping (maps, `Li/q82` post,
+impression counters, `Li/r82` timers) and every paint path still ends in the patched
+renderer, which at index 0 calls `getParent()` on `this`, hides the parent with
+`setVisibility(8)`, hides itself the same way, and returns. The column holds nothing
+but ad views in all three layouts, so no legitimate view is affected.
+
+Register safety, measured not guessed (`ۦۖ¦`, 122 insns, `.registers 6`, `this` in
+`v4`): index 0 overwrites `v0` and `v1` is unassigned there, so both are free scratch.
+`getParent()` declares no argument, so `{v4}` is the complete list; each
+`setVisibility(I)V` names receiver plus int. `this` is never null and an inflated
+layout child always has a parent that is a `ViewGroup`, hence a `View`, so neither the
+call nor the `check-cast` can fail. No new fingerprint was needed and none of the
+removed driver's index arithmetic survives: the edit stays at index 0.
+
+Verification: renderer fingerprint unchanged (`[29, 34, 54, 116]`);
+`tools/checks/patch_smali_checks.py` 30 files, 0 problems (covers the one-register
+`getParent` and both two-register `setVisibility` calls);
+`tools/checks/test_invoke_arity.py` 25/25; `:patches:compileKotlin` delegated to CI as
+before. Not verified on device: that the footer collapses to the download list.
 
 
 
@@ -1340,3 +1658,1151 @@ surfaced this. The arity fix had passed the local suite and still did not build.
   *still* holds at a given index. The raw Dalvik does, and it is the only way to catch the
   `v4` sink/SensorManager reuse described above. The decoder used is
   `.scratch/dexdump.py`, which is throwaway but is the thing that found the bug.
+# Djezzy HTTP interceptor investigation (no patch — negative result)
+
+Request: a generic Morphe HTTP interceptor for Djezzy 3.0.9 logging
+requests/responses with method, headers and URL. Investigated via
+morphe-helpers against `base.apk` extracted from
+`~/storage/0/Documents/VInstall/Backups/com.djezzy.internet_3.0.9.apkv`
+(`com.djezzy.internet`, 3.0.9/40076; helpers cache
+`~/.cache/com.djezzy.internet/3.0.9`, 12,214 classes). Verdict: **not
+implementable as a Dalvik `bytecodePatch` on this target**, so no patch
+was written and no target was declared. What follows is the evidence and
+the capture recipe that replaces the patch.
+
+## The app has no Java HTTP stack
+
+- `find-class --package okhttp3`: no results. `find-string` for
+  `cronet`/`Cronet`, `volley`/`Volley`, `retrofit`/`Retrofit`,
+  `HttpClient`/`httpClient`: no results. The only `okhttp` strings are
+  two `com.android.okhttp.internal.http.HttpTransport$...` references in
+  `q1/o.smali` (framework-internal transport names, not an app client).
+- `find-string HttpURLConnection`: no `const-string` results — nothing in
+  app code names it as a string. Type references to `HttpURLConnection`
+  exist in exactly five smali files: `FirebaseInstallationServiceClient`
+  (Firebase Installations API client), `zzlm`/`zzgx`/`zbb`/`zzc` (GMS
+  measurement/auth/ads internals), `Util`/`ContentBlockerHandler`
+  (flutter_inappwebview plugin), and obfuscated `l5/b`, `q1/o`, `t5/h`
+  (transport/data-store internals, not app API code).
+- `find-string apim.djezzy` and `walk/campaign`: no results in DEX. No
+  API URL, no endpoint path, no auth header name lives in Dalvik code.
+
+## All API traffic is Dart dio in libapp.so
+
+- `split_config.arm64_v8a.apk` → `lib/arm64-v8a/libapp.so`
+  (14,681,008 bytes) contains: `package:dio` x24, `DioMixin` x3,
+  `InterceptorsWrapper` x1, `pretty_dio_logger` x2, `PrettyDioLogger`
+  x2, `apim.djezzy.dz` x11, `/services/walk/campaign/` x1.
+- Dio's default `IOHttpClientAdapter` runs on `dart:io`'s VM-native
+  sockets (BoringSSL/POSIX), never passing through `java.net`. There is
+  therefore no Dalvik instruction to fingerprint: no call site, no
+  choke point, nothing `matchFilters` could resolve. A "generic"
+  Dalvik interceptor here would at best log Firebase/GMS/WebView
+  internals and silently miss every Djezzy API call — the exact
+  confident-but-wrong outcome this repo's ground rules exist to prevent.
+- The closest readable generic helper,
+  `Util;->makeHttpRequest(String, String, Map)HttpURLConnection`
+  (unobfuscated, method+headers-map+URL signature), serves only the
+  content-blocker list download: its only two callers (per `xrefs
+  --callers`) are in `ContentBlockerHandler`. Hooking it would log
+  ad-block-list fetches, not app traffic. Deliberately not patched.
+
+## The requested logging already exists: PrettyDioLogger
+
+The app bundles `package:pretty_dio_logger`, and its box-drawing output
+is already visible in device logcat from the earlier Walk & Win run:
+
+```
+I flutter : GET https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I flutter : ╔╣ Response ║ GET ║ Status: 200 OK  ║ Time: 612 ms
+I flutter : ║  https://apim.djezzy.dz/mobile-api/api/v1/services/walk/campaign/213772737646
+I flutter : ║ Body
+I flutter : ║    { "message": "Waw campaign", ... }
+```
+
+That is method + URL + status + body, emitted per request/response by
+the app's own Dart interceptor. No patch is needed to obtain it.
+
+## Capture recipe (replaces the patch)
+
+```sh
+adb logcat -c
+# exercise the Djezzy flow on device, then:
+adb logcat -d -v brief | rg 'flutter|PrettyDio|apim\.djezzy' > djezzy-http.log
+```
+
+`scripts/logcat-filter` in morphe-helpers is crash-oriented (filters by
+package PID plus FATAL/VerifyError); for HTTP capture the `rg` line
+above is the right filter because PrettyDioLogger writes through
+Flutter's `print`, tagged `flutter`, not through the app PID pattern.
+Request lines start with the method (`GET`/`POST`), response blocks
+with `╔╣ Response`, each carrying the full URL; headers print inside
+the `║ Headers` block when the logger's `requestHeader` flag is on. If
+a future build stops emitting these lines, that means the logger was
+compiled out or gated — which is a Dart-build change no Dalvik patch
+can reverse, and the correct response is a proxy/VPN capture, not
+another fingerprint.
+
+## Cache note
+
+`~/apks/` holds no `com.djezzy.internet/` cache (only 1DM and Substack
+artifacts). The helpers decompile cache above is the working
+copy; per `AGENTS.md` nothing derived was committed to this repo beyond
+this note, and no `~/apks` extraction was created or overwritten.
+# Truecaller 26.31.6 reference notes
+
+Target of record for the `agent/truecaller` worktree. Supersedes the 26.10.6 notes that used to sit
+here; those are gone because that cache was deleted, and the section is rewritten rather than left
+pointing at a directory that no longer exists.
+
+## Source and target record
+
+- Cache: `~/apks/com.truecaller/26.31.6/`. It is the source of truth for every fingerprint below and
+  is the **only** Truecaller cache. Full detail in that directory's `README.md`.
+- Source artifact:
+  `/storage/emulated/0/Download/1DM/Programs/com.truecaller_26.31.6-2631006_2arch_7dpi_1feat_cea0d663120004a05052fe2d694d8486_apkmirror.com.apkm`,
+  SHA-256 `9ff323ce660aaaaaea327c42843eaf3fccb513abedc0556954df2f308e14c2c5`, 99,378,998 bytes.
+  Complete and undamaged: 17 entries, full CRC check clean.
+- `info.json` in the bundle records `pname com.truecaller`, `release_version 26.31.6`,
+  `versioncode 2631006`, `post_date 2026-08-09 09:24:52`.
+- `base.apk` was extracted to `~/apks/com.truecaller/26.31.6/base.apk`, SHA-256
+  `f6454d90b56469a00ac7b2608f43ab2410d7d89c94df05bd55c599283583a89d`, recorded in
+  `apk.sha256`. 125,787,622 bytes, itself a valid zip of 8,336 entries with clean CRCs.
+- **The bundle is signed `META-INF/APKMIRRO.RSA`, apkmirror's key, not the publisher's**, and carries
+  the `APKM_installer.url` marker. It is a redistribution and is *not* a verified original build.
+  Same caveat the 1DM notes record for their apkmirror reference.
+
+### Version scheme — do not read it as YY.MM
+
+Truecaller's `versionName` is `YY.N.build` with `N` a release/week counter, **not** a month, and
+`versionCode` is `YY` + `N` + a three-digit build:
+
+```text
+26.31.6 -> 2631006   (26 | 31 | 006)
+26.10.6 -> 2610006   (26 | 10 | 006)
+15.7.6  -> 1507006   (15 | 07 | 006)
+```
+
+`post_date 2026-08-09` on 26.31.6 proves `31` is a counter, not October. **Order versions by
+versionCode alone.** An earlier reading of `26.10.6` as October 2026 was wrong and briefly produced
+an incorrect "the newest file is older" conclusion.
+
+### Installability, unresolved
+
+versionCode 2631006 exceeds the 2610006 installed from the Play Store, so this is an upgrade *by
+versionCode*. But the signing key differs (apkmirror vs Google Play), so Android will refuse to
+install it over the existing app: uninstalling `com.truecaller` first is required, which discards app
+data and loses the Play Store copy of 26.10.6. Not yet decided whether to test on 26.31.6 by
+sideloading, or to keep the Play Store build.
+
+## Target declaration
+
+```text
+package      com.truecaller
+versionName  26.31.6
+versionCode  2631006
+fileType     base.apk, from an apkm bundle; base content only, ABI/density in splits
+compileSdk   36
+minSdk       26
+targetSdk    36
+```
+
+No other Truecaller version has been verified. Do not claim support for any.
+
+## DEX inventory
+
+86,463 classes total, **6,342** app-owned under `Lcom/truecaller/`.
+
+| dex | classes | app classes |
+| --- | --- | --- |
+| `classes.dex` | 9,466 | 48 |
+| `classes2.dex` | 9,661 | 0 |
+| `classes3.dex` | 13,460 | 159 |
+| `classes4.dex` | 9,820 | 1 |
+| `classes5.dex` | 11,356 | 2,193 |
+| `classes6.dex` | 12,010 | 2,017 |
+| `classes7.dex` | 11,675 | 1,924 |
+| `classes8.dex` | 8,208 | 0 |
+| `classes9.dex` | 807 | 0 |
+
+App code sits in five DEX files, concentrated in `classes5/6/7`; `classes2/8/9` hold none. A
+fingerprint must never assume a single DEX or a fixed class-to-DEX mapping.
+
+This is less than half the 13,601 app classes the 26.10.6 build had. That is a real property of the
+build, not a packaging artefact: histogramming every two-level package root shows `com/truecaller` is
+the only app-owned prefix at 6,342, so no app code moved to another namespace.
+
+`base.apk` also carries `assets/audience_network.dex` (3,288,116 bytes, Audience SDK). Not extracted.
+
+Largest app packages: `settings/impl/ui` 341, `ui` 125, `deeplink/handlers` 108,
+`surveys/data/dto` 99, `ads/api/model` 96, `ads/api/internal` 86, `wizard/verification` 82,
+`account/domain/auth` 82, `ads/util` 78, `search/global` 68, `details_view/ui` 62,
+`call_assistant/core/data` 61, `blockinglevel/presentation` 51, `android/sdk/oAuth` 49,
+`insights/core/llm` 46.
+
+## Feature split with its own DEX
+
+`requiredSplitTypes = base__abi,base__density`, eleven splits. Every ABI and density split was checked
+and holds no DEX. One does not:
+
+- `split_insights_category_model.apk` contains a `classes.dex`. 852,464 bytes, 7 entries: the DEX,
+  `resources.arsc`, `stamp-cert-sha256`, and an offline ML model — `assets/category_model_1_0.tflite`,
+  `assets/category_labels_1_0.txt`, `assets/category_vocab_1_0.txt`.
+- It is kept beside `base.apk` in the cache but was **not** folded into `dexindex.pickle`. So
+  `com/truecaller/**` classes are not guaranteed to be in `base.apk`'s DEX files; a fingerprint must
+  not assume that. Related code `com/truecaller/insights/core/llm` does live in `base.apk`.
+
+## Naming: readable packages, minified simple names
+
+Unchanged in character from 26.10.6.
+
+- App **package** paths are readable: `com/truecaller/settings/impl/ui`, `com/truecaller/ads/api/model`,
+  `com/truecaller/insights/core/llm`.
+- 1,485 of 6,342 app classes (23.4%) have R8-minified *simple* names:
+  `Lcom/truecaller/common/ui/d;`, `Lcom/truecaller/common/network/optout/a;`,
+  `Lcom/truecaller/common/network/lastactivity/bar;`.
+- Bundled third-party code is minified at package level: `com/google` 13,095, `com/mbridge` 3,494,
+  `com/ironsource` 3,158, `com/unity3d` 2,135, `com/fyber` 1,653, `com/inmobi` 1,542,
+  `com/moloco` 1,152.
+- Safe anchors: `com/truecaller/…` package path, field names, method names and descriptors, string
+  constants, access flags, distinctive instruction sequences. Unsafe: any minified simple class name or
+  any method name inside a minified class.
+- `mappings/` stays empty. Nothing to deobfuscate, so no mapping exists for this target.
+
+## Manifest surface
+
+- Launcher activity `com.truecaller.ui.TruecallerInit`, exported, `MAIN` + `LAUNCHER`.
+- 323 activities, 51 services, 72 receivers, 21 providers, 93 permissions.
+
+## Query tooling
+
+Helpers copied from the now-deleted 26.10.6 cache, which had copied them from the Substack 3.7.2
+cache. They already carry `logger.remove()` in `manifest.py` and `com/truecaller` defaults. Run them
+from inside `~/apks/com.truecaller/26.31.6/tools/`, where `dex` is a symlink to `../dex`.
+
+`dexindex.pickle` is built. `struse.json.gz` and `refs.json.gz` are built on first use and are not in
+the cache yet.
+
+`androguard` 4.1.4 and `loguru` 0.7.3 are installed. `apktool`, `baksmali`, `jadx` and the Android
+build tools are not available in Termux, so `disassembly/` is empty and instruction-level work goes
+through androguard rather than smali.
+
+## Superseded versions
+
+### 26.10.6 — cache deleted 2026-10-08, unrecoverable
+
+- Its `base.apk` came from the installed app at
+  `/data/app/~~1yBMxg5scYYtXj5zlEj5IA==/com.truecaller--ObsxnhvT3AhA3HBEA2TLA==/base.apk`,
+  SHA-256 `e4448a08a769910ad1fa0e543bb4c6390bb30a61177431a47bdc679d552b0a73`, versionCode 2610006.
+- **The VInstall backup is corrupt and must not be retried.** It is a streaming zip whose central
+  directory is untrustworthy — entry offsets off by up to 3 bytes and wrong CRC-32 values
+  (`manifest.json` declared `fffddb46`, actually `abc73920`) — while the per-entry data descriptors are
+  correct. It was caught mid-write twice: once at 37,747,640 bytes with no central directory and no
+  EOCD, then settled at 77,029,284 bytes with an intact EOCD but a **19,737,989-byte run of zeros** at
+  offset 45,877,562–65,615,551, entirely inside `base.apk`'s compressed span. ~25.6% of the stream is
+  gone. Inflating yields 119,537,664 bytes, *more* than the real 112,746,655, because the zero run
+  decodes as spurious stored blocks; output that is too large means a hole, whereas real truncation
+  yields too little. Its intact `manifest.json` did declare `base.apk` as `e4448a08…b0a73`, which is how
+  the installed copy was proven to be the intended build.
+- Reader trap worth keeping: passing fixed-size input chunks with a smaller `max_length` to
+  `decompress` while advancing the read cursor by the chunk size silently discards
+  `unconsumed_tail` and truncates recovery at exactly 1 MiB. Feed from `unconsumed_tail`.
+- That cache held 12 DEX files and 13,601 app classes, spread over eight DEX files, with 315
+  activities. All deleted. Its own `README.md` and these notes were the only record.
+- Consequence: because 26.10.6's only good source was the installed app, installing 26.31.6 makes that
+  build permanently unobtainable without a fresh download of exactly 26.10.6.
+
+### 15.7.6 — never cached
+
+- `/storage/0/Download/1DM/Programs/com.truecaller_15.7.6-1507006_minAPI26(arm64-v8a,armeabi-v7a)(nodpi)_apkmirror.com.apk`,
+  versionCode 1507006, SHA-256 `7376826031370070828d3da5f71f09e115f51b17c7f23a89a116c590c944fb7a`,
+  135,300,250 bytes. Complete and valid: 9,565 entries, CRC clean, 8 `classes*.dex`.
+- Much smaller, built against SDK 35, 286 activities, and Premium-free, so it stays a candidate if a
+  simpler older target is ever wanted. Not extracted.
+
+## Phase 1 investigation — return the contact list as an empty one
+
+**Behaviour, in one sentence:** when the app reads its contact list, it gets an empty list.
+
+**Status: awaiting review. No patch code written yet.**
+
+### What was ruled out first
+
+- Only 3 app methods reference `Landroid/provider/ContactsContract` at all, and none of them is a
+  contacts reader: `com/truecaller/account/domain/auth/i;.invokeSuspend` calls
+  `Lda/baz;->e(ContentResolver)` for `ContactsContract$RawContacts$DefaultAccount` (dual-SIM default
+  account detection), and `com/truecaller/service/MissedCallsNotificationWorker;.c` and `.d` call
+  `Contacts.getLookupUri` to build a notification deep link. So the phonebook read is **not** reached
+  through an obvious app-owned `ContactsContract` call site.
+- No `content://com.android.contacts/...` string literal exists anywhere in the APK, so a URI constant
+  is not a usable anchor either.
+- The obvious-sounding classes are **not in the DEX**. `com/truecaller/contacts_list/ContactsHolder;`,
+  `com/truecaller/contacts_list/data/SortedContactsRepository;` and
+  `com/truecaller/contacts_list/data/SortedContactsDao;` are all absent from `class_defs`; only their
+  nested enums survive (`ContactsHolder$FavoritesFilter`, `ContactsHolder$PhonebookFilter`,
+  `ContactsHolder$SortingMode`, `SortedContactsDao$ContactFullness`,
+  `SortedContactsRepository$ContactsLoadingMode`). Confirmed real and not a tooling artefact: the
+  type descriptor for each outer class appears in no dex string table, only the `$Nested` forms do.
+  R8 has dropped these Kotlin holders and kept the nested types that are still referenced. **They are
+  therefore not hookable**, and their nested enums remain perfectly good fingerprint material.
+
+### What the subsystem actually is
+
+Two obfuscated classes own the contact list:
+
+- `La52/g0;` (`classes6.dex`, `public`, 53 methods) holds the data. Field `b : Ljava/lang/Object;` is
+  in practice a `List[][]`, partitioned by favourites filter and phonebook filter.
+- `Le81/x;` (`classes6.dex`, `public final`, extends `Lyf0/baz;`, 24 methods) drives loading and
+  exposes the read accessor. Relevant fields: `G : La52/g0;`, `H : Z`, `J : Ljava/util/ArrayList;`.
+
+The accessors, both keyed on the two readable enum types:
+
+```text
+La52/g0;->u(FavoritesFilter, PhonebookFilter;)Ljava/util/List;   35 ins, 7 regs
+Le81/x;->D(FavoritesFilter, PhonebookFilter;)Ljava/util/List;    12 ins, 4 regs
+```
+
+`a52/g0.u` is a pure 2-D lookup: `iget-object b`, `check-cast [[Ljava/util/List;`, index by
+`favoritesFilter.ordinal()` through the `Le81/c0.a` switch, then by `phonebookFilter.ordinal()`
+through `Le81/c0.b`, then return. `e81/x.D` is a thin wrapper over it:
+
+```text
+  0 const-string        v0, "favoritesFilter"
+  4 invoke-static       Intrinsics.checkNotNullParameter
+ 10 const-string        v0, "phonebookFilter"
+ 14 invoke-static       Intrinsics.checkNotNullParameter
+ 20 iget-boolean        v0, v1, Le81/x;->H Z
+ 24 if-eqz              v0, +005h
+ 28 iget-object         v2, v1, Le81/x;->J Ljava/util/ArrayList;
+ 32 return-object       v2
+ 34 iget-object         v0, v1, Le81/x;->G La52/g0;
+ 38 invoke-virtual      a52/g0.u(v2, v3)
+ 44 move-result-object  v2
+ 46 return-object       v2
+```
+
+`K(FavoritesFilter, PhonebookFilter, List)V` on `a52/g0` is the matching writer.
+
+### Complete caller map
+
+A full scan of all 9 dex files and all 86,463 classes found every call site of `a52/g0.u` and `a52/g0.K`:
+
+| caller | dex | what it does |
+| --- | --- | --- |
+| `La52/g0;.<init>(Ljava/util/List;Z)V` | classes6 | builds the `List[][]`, calls `K` 3x, `u` once |
+| `Le81/x;.c2(x, ContactsLoadingMode, SortingMode, qux)` | classes6 | the loader; `u` at 832/946/996, `K` at 840 |
+| `Le81/x;.D(FavoritesFilter, PhonebookFilter)List` | classes6 | the read accessor |
+| `Le81/x;.z(String)V` | classes6 | `u` at 72 |
+| `Lcom/truecaller/account/domain/auth/i;.invokeSuspend` | classes5 | `u` at 1804 |
+| `Ldj2/o;.invokeSuspend` | classes7 | `u` at 3630 |
+
+Only 5 distinct methods outside the class itself read the list, and every read goes through `u`. So
+neutering `u` — or the `e81/x.D` wrapper — makes the contact list empty everywhere with no other
+read path to cover.
+
+### Candidate hook, and why the fingerprint is stable
+
+Preferred target is **`Le81/x;->D(FavoritesFilter, PhonebookFilter;)Ljava/util/List;`**: smallest body
+in the subsystem (12 instructions, 4 registers) and the natural accessor, so a patch is a single
+early return of an empty `List` rather than an edit to a 35-instruction method.
+
+The obfuscated class and method names alone would be a bad fingerprint, per AGENTS.md. What makes it
+specific is that the signature and body are pinned by **readable, app-owned types and literals**:
+
+- parameter types `Lcom/truecaller/contacts_list/ContactsHolder$FavoritesFilter;` and
+  `Lcom/truecaller/contacts_list/ContactsHolder$PhonebookFilter;` — app enum names
+- return type `Ljava/util/List;`
+- const-strings `"favoritesFilter"` and `"phonebookFilter"` — Kotlin parameter names emitted by
+  `Intrinsics.checkNotNullParameter`, stable and human-readable
+- two `Intrinsics.checkNotNullParameter` calls, and the `iget-boolean …->H Z` branch
+- 12 instructions, 4 registers
+
+### Open questions, stated plainly
+
+- **The behaviour is ambiguous and the user has not yet disambiguated it.** Two app-level callers of
+  `u` are not UI: `com/truecaller/account/domain/auth/i` sits in the account/auth domain, which is
+  where an onboarding phonebook upload would live, and `dj2/o` is unidentified. So hooking this
+  accessor would empty the contacts list *and* starve anything that uploads or matches against it. That
+  may be exactly what is wanted, or it may break a flow that merely reads contacts for a legitimate
+  reason. Needs a decision before implementing.
+- The callers of `e81/x.D` itself were **not** enumerated. Only callers of `a52/g0.u` and `.K` were,
+  because the scan was aimed at the data holder. `e81/x.D` may have callers beyond those five.
+- What boolean field `H` and ArrayList field `J` mean is unknown. `D` returns `J` when `H` is set,
+  bypassing `a52/g0` entirely, so a patch that only rewrites the `a52/g0` branch would miss that case.
+  A patch on `D` itself covers both.
+- Whether the app still needs `READ_CONTACTS` to function, and what the UI does with an empty list
+  (empty state vs blank screen vs error), is untested.
+- Nothing here has been device-tested.
+
+## Patch 1 — Return an empty contact list
+
+Three methods, each made to return `Collections.emptyList()`. Scope was widened from the single
+method originally put to the user, because two further read paths were found afterwards and a
+one-method patch would have been a **silent no-op** for two of the three.
+
+### Why one method was not enough
+
+`Le81/x;->D` was the confirmed target, but after it was confirmed the full call graph showed:
+
+- `Le81/x;->D` has **zero direct callers**. It is reached only through `invoke-interface` on
+  `Le81/g;`. A grep for its name suggests it is unused when it is in fact the main path, which is
+  exactly the trap AGENTS.md warns about.
+- `Le81/g;` is an **interface** and its `D` is `public abstract`, so there is no body to patch.
+- `Le81/g;` has exactly **two** implementors, both `public final`: `Le81/x;` and `Lj71/d;`. Patching
+  one leaves the other live.
+- `Lj71/d;->D` does **not** go through `La52/g0`. It reads a cached `List` from field `d : Leh3/c2;`
+  → `Lj71/b;->c`. Its one caller, `Ldz1/i;.x()`, asks for
+  `INCLUDE_NON_FAVORITES` + `PHONEBOOK_ONLY` — the whole phonebook.
+- Two app classes call `La52/g0;->u` **directly**, bypassing the interface:
+  `com/truecaller/account/domain/auth/i;.invokeSuspend` and `Ldj2/o;.invokeSuspend`.
+
+Exhaustiveness argument: a scan of all 9 dex files and all 86,463 classes found exactly 4 methods
+carrying that descriptor — `La52/g0;->u`, the abstract `Le81/g;->D`, and the two implementors — and
+exactly 2 classes listing `Le81/g;` as an interface. So patching the three concrete ones covers
+every route found. `La52/g0;->K`, the matching writer, is left alone: it only populates the holder
+and nothing reads the result once the readers return empty.
+
+Callers of the patched accessors, for the record:
+
+| caller | what it wants |
+| --- | --- |
+| `com/moloco/sdk/xenoss/sdkdevkit/android/adrenderer/internal/media/b;.x()` | `invoke-interface` on `Le81/g;` — the **Moloco ad SDK** asking for the contact list |
+| `Ldz1/i;.x()` | `Lj71/d.D(INCLUDE_NON_FAVORITES, PHONEBOOK_ONLY)` — the whole phonebook |
+| `Le81/x;.z(String)`, `Le81/x;.c2(...)`, `La52/g0;.<init>` | internal loader paths |
+| `com/truecaller/account/domain/auth/i;.invokeSuspend`, `Ldj2/o;.invokeSuspend` | direct holder reads |
+
+### Files
+
+```text
+patches/src/main/kotlin/app/truecaller/patches/shared/Constants.kt
+patches/src/main/kotlin/app/truecaller/patches/contacts/ContactListFingerprints.kt
+patches/src/main/kotlin/app/truecaller/patches/contacts/EmptyContactListPatch.kt
+```
+
+Declared target: `com.truecaller` 26.31.6, versionCode 2631006, `ApkFileType.APK`.
+Patch default is `true`.
+
+### Register budget, checked against the dex
+
+| method | `.registers` | parameters | free local |
+| --- | --- | --- | --- |
+| `Le81/x;->D` | 4 | 3 (`this` + 2 filters) | `v0` |
+| `Lj71/d;->D` | 4 | 3 | `v0` |
+| `La52/g0;->u` | 7 | 3 (`this`=`v4`, filters `v5`/`v6`) | `v0`–`v3` |
+
+Payload touches `v0` only:
+
+```smali
+invoke-static {}, Ljava/util/Collections;->emptyList()Ljava/util/List;
+move-result-object v0
+return-object v0
+```
+
+`Collections.emptyList()` erases to `()Ljava/util/List;`, so the `move-result-object` and the
+`return-object` agree with the declared return type. An empty list is returned rather than `null`
+because every original path returns a real `List` and callers are not obliged to null-check.
+
+### Verification status
+
+**Smali: verified. Kotlin: still not compiled.**
+
+`python3 tools/checks/check_inline_smali.py` parses every injected smali block through the patcher's
+own `SmaliTestUtils.compileSmali`, which is the same entry point `addInstructions` uses at patch time.
+It needs no APK, no device and no network, and it works in Termux because the jars in
+`~/apks/_tools/smali` are auto-discovered. All three Truecaller blocks return `PARSE OK`:
+
+```text
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> ContactsHolderAccessor.D
+        v1=this v2,v3=filters; v0 free
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> CachedContactsAccessor.D
+        v1=this v2,v3=filters; v0 free
+ok  truecaller/patches/contacts/EmptyContactListPatch.kt -> PartitionedContactsLookup.u
+        v4=this v5,v6=filters; v0..v3 free
+checked 5 file(s), 6 block(s): 1 failure(s)
+```
+
+The single failure was **pre-existing and unrelated** to this work: a comments patch in another app's
+tree had two triple-quoted blocks against one declared layout, and that file was untouched by this
+change. `release.yml` only runs `patch_smali_checks.py`, never `check_inline_smali.py`, so CI does
+not surface it. Left alone deliberately: AGENTS.md says not to refactor unrelated patches in the
+same change. That patch has since been removed from the repository along with the rest of its app.
+
+`python3 tools/checks/patch_smali_checks.py`, the check CI does run, passes: `checked 41 file(s):
+0 problem(s)`. That covers the `->member:Type` field-reference form, invoke arity, imports, and the
+`$Nested`-in-a-Kotlin-template trap — the last of which matters here, because all three fingerprints
+name `ContactsHolder$FavoritesFilter` and are escaped as `\$` in Kotlin.
+
+`./gradlew :patches:compileKotlin` **still cannot be run here**:
+
+```text
+* Where: settings.gradle.kts line: 19
+> Failed to apply plugin 'app.morphe.patches'.
+   > java.lang.IllegalArgumentException (no error message)
+```
+
+Environmental, not the patch. `settings.gradle.kts` resolves the plugin from GitHub Packages with
+`username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")` and the
+matching `GITHUB_TOKEN`; both are unset, so the provider yields `null` and Gradle's `ValueSupplier.of`
+rejects it. Needs `GITHUB_TOKEN` + `GITHUB_ACTOR` exported, then `./gradlew --stop` per AGENTS.md so a
+stale daemon does not reuse the old environment. On CI both are supplied automatically by
+`secrets.GITHUB_TOKEN`, and `release.yml` runs `./gradlew :patches:buildAndroid clean` on any push to a
+branch that is not `dev` or `main`, so pushing `agent/truecaller` verifies compilation without
+publishing a release.
+
+Note that neither local check can substitute for the real build: `patch_smali_checks.py` and
+`check_inline_smali.py` both work by reading patch sources, and `tools/checks/README.md` is explicit
+that **fingerprint resolution is not covered** — whether a filter chain still matches a given APK needs
+the pinned APK, which CI cannot fetch. That gap is the one that bit v0.4.0, where a wrong
+`returnType` made a fingerprint match nothing, silently.
+
+### Change to the shared checker
+
+`tools/checks/check_inline_smali.py` hardcoded `PATCHES` to a single app's patch directory and keyed
+`LAYOUTS` by path within it, so no other app's injected smali could ever be checked. `PATCHES` now
+points at `.../app` and the existing keys carry a per-app prefix. That is a mechanical path change —
+no layout values were altered — and it is what lets the Truecaller blocks be verified by the same
+mechanism that caught five bad releases.
+
+The payload is inlined at each `addInstructionsWithLabels` call site rather than shared through a
+`private const val`, because the checker collects blocks by matching a literal triple-quoted string at
+the call. A bare identifier compiles identically but would sit outside the only check that can catch
+malformed smali without a device.
+
+### A bug in the query tooling, found the hard way
+
+`apprefs.py` matched field accessors with `name in FIELD` instead of `name.startswith(FIELD)`, and the
+opcodes are `iget-object`, `iput-object`, `sget-object` — never the bare `iget`. Every field access
+was therefore invisible, which is why an early scan for direct readers of the holder's fields
+reported `0` hits, and why the first `ContactsContract` scan was invoke-only. Fixed to `startswith`;
+re-run reported 73 field accessors. That count is *not* 73 contact readers: `La52/g0` is a
+general-purpose collection wrapper the rest of the app also uses, which is why
+`PartitionedContactsLookupFingerprint` is pinned on the two contacts-filter parameter types and the
+`check-cast` to `[[Ljava/util/List;` rather than on the class alone.
+
+`refs.py`, the older whole-APK indexer, gets this right — it uses `name.startswith(FIELD)` — so the
+two tools disagreed and the newer one was wrong.
+
+### Still not verified
+
+- **Nothing compiled, nothing assembled, nothing run on device.**
+- Whether an empty list breaks a caller that assumed a non-empty result. `Le81/x;.c2` is the loader
+  and still populates the holder, so the data is built in memory and simply never handed out; if any
+  caller uses the list to drive a precondition rather than to display, it may misbehave.
+- The **Moloco ad SDK** calls the accessor through the interface. Emptying it changes what the ad
+  SDK sees for contact-based targeting. Intended, but untested, and it is the most likely source of a
+  surprising side effect.
+- `com/truecaller/account/domain/auth/i` was never traced to confirm it is the phonebook upload. It
+  is covered because it reads the holder directly, not because it was identified.
+- Whether the app still requests `READ_CONTACTS` at runtime and what its UI shows when the list is
+  empty.
+
+## Defect — `instanceOf` does not match `check-cast` (found on device, v0.6.0-dev.31)
+
+`v0.6.0-dev.31` shipped the patch with a filter that could never match, so it died on device with
+`PatchException: Failed to match the fingerprint` — the same failure
+`app.paresh.patches.truecaller.misc.ShouldTriggerUpdateFingerprint` produced in the same run, which
+made it easy to misattribute this one to the third-party bundle.
+
+`PartitionedContactsLookupFingerprint` filtered on `instanceOf("[[Ljava/util/List;")`.
+`InstanceOfFilter` matches **`Opcode.INSTANCE_OF` and nothing else**, verified with `javap -c` against
+`morphe-patcher-1.13.0`:
+
+```text
+$ javap -c -p app.morphe.patcher.InstanceOfFilter | rg -o 'Opcode\.[A-Z_]+'
+com/android/tools/smali/dexlib2/Opcode.INSTANCE_OF
+```
+
+But `La52/g0;->u` contains a **`check-cast` and no `instance-of` at all**:
+
+```text
+20 iget-object   v0, v4, La52/g0;->b Ljava/lang/Object;
+24 check-cast    v0, [[Ljava/util/List;
+```
+
+`checkCastFilter` is a separate class matching `Opcode.CHECK_CAST`, reached through the
+`checkCast(String, InstructionLocation)` entry point. The filter is now `checkCast`.
+
+Why nothing caught it: `tools/checks/README.md` states outright that **fingerprint resolution is not
+covered** by the static checks, because it needs the pinned APK. Both local checks passed, CI
+compiled it, and it still could not resolve. This is that gap, and the first time it has bitten a
+patch in this repository.
+
+The audit that would have caught it is cheap and is now recorded here: for every filter, confirm the
+opcode the filter class matches against the opcodes actually present in the target method. Done for
+all three fingerprints:
+
+| filter | matches | present in target |
+| --- | --- | --- |
+| `string("favoritesFilter")` | `CONST_STRING`, `CONST_STRING_JUMBO` | yes, all three methods |
+| `string("phonebookFilter")` | same | yes, all three methods |
+| `checkCast("[[Ljava/util/List;")` | `CHECK_CAST` | yes, `La52/g0;->u` |
+
+Both literals were confirmed present in all three target methods directly from the dex:
+
+```text
+Le81/x;.D   const-strings = ["favoritesFilter", "phonebookFilter"]
+Lj71/d;.D   const-strings = ["favoritesFilter", "phonebookFilter"]
+La52/g0;.u const-strings = ["favoritesFilter", "phonebookFilter"]
+```
+
+### Not yet verified
+
+- **The fix has not been applied to a bundle or run on device.** It compiles, its smali parses, and
+  its filters are now audited against the dex, but no patcher run has exercised these three
+  fingerprints end to end.
+- The other two fingerprints were never exercised either, for the same reason: the session aborted on
+  the Paresh failure before reaching them.
+
+## Defect — the type filter never matched; dropped (found on device, v0.6.0-dev.32)
+
+v0.6.0-dev.32 still failed on device, on the same fingerprint and the same line:
+
+```text
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+  app.truecaller.patches.contacts.PartitionedContactsLookupFingerprint
+  at app.truecaller.patches.contacts.EmptyContactListPatchKt...(EmptyContactListPatch.kt:79)
+```
+
+### What the line number proved
+
+`EmptyContactListPatch.kt:79` is the **third** of the three `addInstructionsWithLabels` calls:
+
+```text
+58  ContactsHolderAccessorFingerprint.method.addInstructionsWithLabels(
+68  CachedContactsAccessorFingerprint.method.addInstructionsWithLabels(
+79  PartitionedContactsLookupFingerprint.method.addInstructionsWithLabels(
+```
+
+Patches execute in source order, so lines 58 and 68 did **not** throw. Therefore, on the real
+device artifact:
+
+- `Le81/x;->D` **matched** — the descriptor declaration and the two `string` filters are correct.
+- `Lj71/d;->D` **matched** — likewise.
+- `La52/g0;->u` **failed**, and its only difference from the two that worked is the type filter.
+
+So the artifact was right all along, the parameter-name literals are right, and the array-typed
+filter was the entire problem. Both spellings were tried and both fail: `instanceOf` in dev.31,
+`checkCast` in dev.32. The method genuinely contains `check-cast v0, [[Ljava/util/List;`, so this is
+the filter comparing an array-typed operand, not a wrong target. There is no third spelling to
+guess at, so the filter is dropped rather than retried.
+
+The two `string` filters are kept because they are now **proven on this exact build**: the other two
+fingerprints resolve with nothing but those literals, against these same methods.
+
+Uniqueness does not depend on the dropped filter. Across all 9 dex files only four methods carry
+that descriptor — `La52/g0;->u`, the abstract `Le81/g;->D`, and the two implementors — and
+`La52/g0;->u` is the only one named `u`, so class plus name plus descriptor already pins it.
+
+Lesson, recorded because it cost two releases: a filter is only trustworthy once it has matched a
+real artifact. `javap` says which opcode a filter class matches, which caught the `instance-of` vs
+`check-cast` confusion, but it says nothing about how the filter compares its operand, and nothing
+here can be validated without running the patcher. When two of three sibling fingerprints resolve
+and one does not, the difference between them is the diagnosis.
+
+## Phase 1 investigation — call log: hide, and stop reading the system call log
+
+Behaviour, in one sentence: the app shows no call history, and reads nothing from the system call log
+regardless of whether `READ_CALL_LOG` is granted.
+
+Chosen design: **Option 3, two patches** — one that makes the permission read as never granted, one
+that empties every query at the `ContentResolver` boundary.
+
+### The finding that changed the plan
+
+I expected to find one query chokepoint. There is not one, but there is something better: **only four
+of the eight call-log sites read the provider, and three of those four are not reads at all.**
+
+Every reference to `Landroid/provider/CallLog` in the whole APK, from a scan of all 9 dex files and
+all 86,463 classes:
+
+| site | dex | what it actually does |
+| --- | --- | --- |
+| `cv0/bar` | classes5 | holds `Calls.CONTENT_URI` in static field `b`, exposes it via `b()` |
+| `cv0/n;.invokeSuspend` | classes5 | **`ContentResolver.delete`** on `Calls.CONTENT_URI`, then delete on `k81/c.b()` with `"type IN (1,2,3) "` |
+| `u63/k;.invokeSuspend` | classes5 | the real read — 1259 instructions, `checkNotNullExpressionValue("CONTENT_URI")`, then a **5000 ms window** (`const-wide/16 v4, 5000`) |
+| `vn0/c;.a` | classes5 | **`registerContentObserver`** on `Calls.CONTENT_URI`, then constructs `u63/k` with mask 27 |
+| `jb0/a;.invokeSuspend` | classes7 | **`registerContentObserver`**, flag 1, in a `com/truecaller/qa/user_growth/CallLogExporter` context |
+| `ll0/a;.b`, `rewardprogram/impl/ui/qa/e`, `acs/qa/AcsQaActivity` | classes5–7 | QA/debug screens |
+
+So of the four non-observer sites, only **`u63/k;.invokeSuspend` genuinely reads the call log.**
+`cv0/n` *deletes* from it, and `vn0/c` + `jb0/a` only register change observers.
+
+That collapses the target set enormously. The earlier estimate of "8 targets including a 1259-instruction
+coroutine" was wrong on both counts: there is one reader, and the observers do not read.
+
+### Where the permission is actually checked
+
+**It is not.** A scan for `PackageManager.checkSelfPermission`, `ContextCompat.checkSelfPermission`,
+`PackageManager.checkPermission`, `PackageManager.checkOp`, `isPermissionGranted`, and `hasPermission`
+returns **only third-party SDK code** — Huawei HMS, Google GMS ads, IronSource, mBridge, Moloco,
+Unity. No `com/truecaller/**` class calls any of them.
+
+`com/truecaller/familyprotect/api/protectionconfig/model/PermissionName` does **not** model
+`READ_CALL_LOG` at all. Its constants are `ACTIVITY`, `AVAILABILITY`, `BATTERY_OPTIMIZATION`,
+`CALLER_ID_ROLE`, `DRAW_OVER_OTHER_APPS`, `NOTIFICATIONS_ENABLED`, `UNRECOGNIZED` — a family-protection
+feature list, unrelated to call log access.
+
+Conclusion: **the app never asks "am I allowed to read the call log".** It queries and lets the
+framework throw. So there is no app-owned permission check to hook, and the Option 1 hook I
+speculated about does not exist. This is exactly the uncertainty I flagged before promising Option 1,
+and it resolves against it.
+
+The manifest still declares `READ_CALL_LOG`, and the string `android.permission.READ_CALL_LOG` appears
+in four dex files, so the app requests it somewhere in onboarding — but the request path and the
+read path are independent.
+
+### Revised plan
+
+Option 1 as originally conceived is not implementable. What replaces it, keeping the spirit of
+"enforce it at the source":
+
+- **Patch A — stop the observer registrations.** `vn0/c;.a` and `jb0/a;.invokeSuspend` each
+  `registerContentObserver` on the call-log URI. Suppressing those means the app is never notified
+  when the call log changes, so nothing downstream re-queries it. Two small-ish targets, and it is
+  the mechanism that actually keeps the call log out of the app's hands over time rather than only at
+  first read.
+- **Patch B — the single reader.** `u63/k;.invokeSuspend` is the only method that reads it. It is a
+  1259-instruction coroutine, which is a poor edit target, so the return value is produced rather
+  than the body rewritten. Needs its return path identified before this is implementable.
+- **cv0/bar;.b()** remains the cheap defence-in-depth hook: it is 2 instructions and feeds any other
+  consumer, though on this build nothing besides the registerers reads it.
+
+### Open questions, stated plainly
+
+- **`u63/k;.invokeSuspend`'s return path is not yet identified.** Whether it returns `Unit`, `Boolean`,
+  or a list decides whether Patch B can be an early return or needs a wider edit. Not yet read.
+- `cv0/n` *deleting* from the system call log is unexpected and worth understanding — an app that
+  deletes call-log rows is doing something to the user's history. Left alone; noted as a finding.
+- `CallHistoryFullSyncWorker` (the backend sync) is untouched by both patches. It is the highest-value
+  target in the app and is still unaddressed.
+- Nothing here is implemented or verified.
+
+## Patch 2 — Stop call history sync
+
+`com/truecaller/callhistory/CallHistoryFullSyncWorker;.doWork` returns `Unit` immediately, so the
+sync never reads the system call log and never uploads it.
+
+### The chain, read from the dex
+
+```text
+TruecallerApp;.onCreate                 registers the worker under the name
+                                        "com.truecaller.callhistory.CallHistoryFullSyncWorker"
+Lcs0/bar;.invokeSuspend                1128-instruction coroutine that also enqueues it, by Class
+CallHistoryFullSyncWorker;.doWork       264 instructions, CoroutineWorker
+  -> state machine on field E (values 0..4), literal "hasMatchingEntries"
+  -> Lcv0/e;.invokeSuspend             the 48-instruction leaf
+       -> ns/l;.M(ContentResolver, k81/a;.w(),
+                   "conversation_id = ? AND date >= ?",
+                   "sequence_number DESC, date DESC, _id DESC",
+                   "COUNT(*)")                                    <- reads the call log
+       -> Lcv0/c0;.f(I J J)             "expCallLogSyncPartial", dv0/bar;.a(...) cursor,
+                                        then ContentResolver.applyBatch("com.truecaller", ...)
+                                        with a "call_log" argument <- writes it out
+```
+
+Two independent schedulers — `TruecallerApp.onCreate` (336 instructions, string-keyed registration)
+and `Lcs0/bar;.invokeSuspend` (1128 instructions, enqueues by `Class`) — so this is the main path
+rather than one of several.
+
+### Why the worker entry, not the query
+
+Stopping at the top means there is no read to cover and therefore nothing to upload, so no other
+consumer has to be enumerated. `u63/k;.invokeSuspend` (1259 instructions, the one genuine reader of
+`CallLog.Calls.CONTENT_URI`) and the two `registerContentObserver` registrations in `vn0/c;.a` and
+`jb0/a;.invokeSuspend` remain live as readers of the *system* call log; they simply have no sync
+result to hand upwards any more. Those are the remaining work, deliberately separate.
+
+### Return value
+
+`doWork` is declared `(Lzf3/bar;)Ljava/lang/Object;` on a `CoroutineWorker`. Its own success path
+goes through `Lsw0/r;.l(ILjava/lang/Object;)`, never returning a `ListenableWorker.Result` directly,
+and the leaf is resolved by `Lml3/p;.o(Boolean)Z`. Returning `Unit` is what that path yields for a
+`CoroutineWorker`, which WorkManager reads as `Result.success()`.
+
+`failure()` was deliberately **not** used: a failed `ListenableWorker` is re-enqueued, which would
+produce a retry loop against the backend instead of silence.
+
+```smali
+sget-object v0, Lkotlin/Unit;->a:Lkotlin/Unit;
+return-object v0
+```
+
+Registers: `.registers 31`, two parameters, so `v0`..`v28` are locals and `v0` is free.
+
+### The static checker earned its keep
+
+This block was first written with baksmali's `->member Type` spelling and
+`check_inline_smali.py` rejected it:
+
+```text
+FAILED: RuntimeException: Error occurred while compiling text
+  [35,49] ... insn_format21c_field, field_reference] missing COLON
+```
+
+The inline compiler is an ANTLR grammar that wants `->member:Type`. Corrected, and the block parses
+clean. This is the `v0.6.0-dev.12` failure mode the checker's own README describes.
+
+### Fingerprint
+
+Class plus name plus descriptor plus two `string` literals from the body: `"hasMatchingEntries"` and
+`"workerClass"`. The class name is additionally load-bearing, because the worker is constructed
+reflectively by name and resolved through a `WorkerFactory` (`Ltx/r;.a`, 759 instructions), so a
+rename would break scheduling independent of any patch. No type filter, for the reason recorded under
+the contact-list defect.
+
+### Not verified
+
+- **Not compiled and not run.** Smali parses and `patch_smali_checks.py` passes at 45 files, but
+  neither says the fingerprint resolves.
+- The app's own call log list will still populate from other paths; only the upload is stopped.
+- `cv0/n;.invokeSuspend` deletes rows from the *system* call log and is untouched. Unexplained.
+- Call recordings and their transcriptions (`call_recording`, `call_recording_feedback`) are a
+  separate store and a separate patch.
+
+## Device failure 2026-10-10 — `CallHistorySyncWorkerFingerprint` did not match
+
+Manager 1.35.0-dev.1, Patcher 1.15.1, target `com.truecaller` 26.31.6:
+
+```text
+app.morphe.patcher.patch.PatchException: Failed to match the fingerprint:
+  app.truecaller.patches.privacy.CallHistorySyncWorkerFingerprint@1ef6399
+```
+
+### Root cause: the two `string` filters are declared in reverse instruction order
+
+Morphe does **not** evaluate filters independently. `Fingerprint.matchOrNull$matchFilters` in
+`morphe-patcher-1.13.0.jar` walks the instruction list once with a forward-only cursor:
+
+- filter 0 is searched from instruction 0; on a match the cursor steps past it;
+- filter *k > 0* is searched only at indices **≥ that cursor**;
+- if it finds nothing and the filter's `InstructionLocation` is the default
+  `MatchAfterAnywhere` (what `string(x)` passes when no location is given), the method returns
+  `null` immediately — no backtracking, because `MatchAfterAnywhere.indexIsValidForMatching`
+  returns `true` for every index and the retry branch is only taken for the other location types.
+
+In `CallHistoryFullSyncWorker;.doWork` the two literals appear in this order:
+
+| instruction index | literal |
+| --- | --- |
+| 3 | `"workerClass"` |
+| 23 | `"hasMatchingEntries"` |
+
+The fingerprint declares `string("hasMatchingEntries")` first. It matches at index 23, so the
+cursor becomes 24, and `"workerClass"` — which occurs only at index 3 — can never be found at
+≥ 24. The match fails unconditionally, which is exactly the device error.
+
+### Why this was not caught
+
+`tools/checks/resolve_fp.py` models each filter as independent ("Every filter must be satisfied by
+at least one instruction"), so it reported PASS. The declaration order is not modelled at all.
+The three contact-list fingerprints, which did resolve on device, declare `"favoritesFilter"` then
+`"phonebookFilter"` — and in the dex those appear at instruction indices 0 and 2, i.e. declaration
+order equals instruction order. That ordering is why they passed and this one did not, not any
+difference in filter kind.
+
+### Fix applied
+
+Declared the filters in instruction order (commit on `dev`, 2026-10-10):
+
+```kotlin
+filters = listOf(
+    string("workerClass"),
+    string("hasMatchingEntries")
+)
+```
+
+Nothing else in the fingerprint changes; class, name, descriptor and both literals are correct for
+the cached build, and reordering is a no-op under the checker's current (weaker) model, so the fix
+cannot make a currently-matching fingerprint stop matching.
+
+### Caveats
+
+- The bytecode above was read from the locally cached `morphe-patcher-1.13.0.jar`, which is what
+  `gradle/libs.versions.toml` pins. The device ran Patcher 1.15.1; that version was not inspected
+  (the jar comes from GitHub Packages and no token is available here). If 1.15.1 relaxed matching
+  to independent filters, this ordering would not have been the cause — but the reorder is still
+  correct under either model.
+- `resolve_fp.py` still reports PASS for the broken order. Teaching it to model the forward-only
+  cursor is a separate change and was not made here.
+
+## Patch 3 — Spoof premium entitlement (investigation only, awaiting review)
+
+Make the app treat the logged-in account as an active premium subscriber, purely on the client:
+no paywalls, premium tier shown, expiry far in the future, and the premium feature set populated
+locally. Server-enforced premium (what Truecloud grants the account) is out of scope and cannot be
+patched from the client.
+
+Target pinned to `com.truecaller` 26.31.6, cache `~/apks/com.truecaller/26.31.6/` (base.apk SHA-256
+`f6454d90…3583a89d`). All findings below come from that dex via the `tools/` helpers; method
+instruction ordinals are as printed by `struse.py -l`.
+
+### The entitlement chain, read from the dex
+
+```text
+Ls92/p1;->b(qux)                       public refresh entry; launches Lqv2/c (opcode 27)
+  Lqv2/c;->n                           fetch -> Ls92/e1;->j(String,qux)  the subscription API
+    Ls92/p1;->c(Lga2/b;)Ls92/g0;       <- ONE mapper: server DTO -> local state g0
+    Ls92/p1;->e(Ls92/g0;qux)           persists g0 into prefs via Ld23/b, then builds
+                                       Ls92/x1;(r1,g0) and runs the paywall rules Lba2/qux;->a
+Ls92/p1;->a(p1,nc2/b,String,qux)       purchase/attach path; same c() then e(); error branches
+                                       return an empty g0() without touching prefs
+```
+
+`Ls92/g0;` is the local premium state (public final fields):
+
+| field | type | prefs key written by p1.e | meaning |
+| --- | --- | --- | --- |
+| a | J | `premiumExpiresTimestamp` | expiry, epoch millis |
+| b | J | `purchaseTime` | purchase time |
+| c | J | `premiumGraceExpiration` | grace expiry |
+| d | Z | `premiumRenewable` | renewable flag |
+| e | Boolean | `isFreeTrialActive` | free trial |
+| g | PremiumTierType | `premiumLevel` | tier id, e.g. `gold` |
+| h | List of PremiumFeature | `availableFeatures` (JSON) | feature entitlements |
+| i | ProductKind | `premiumKind` | product kind id |
+| j | InsuranceState | `insuranceState` | insurance |
+| k | String | `premiumScope` | scope remote id |
+| l | Z | `isPremiumExpired` | **the** active flag (true = not premium) |
+| m | Z | `isInGracePeriod` | grace |
+| n | Z | `isSubscriptionOnHoldOrPaused` | paused |
+| o | Z | `isInAppPurchaseAllowed` | iap allowed |
+| p | Store | `paymentProvider` | store |
+| q | String | `userCurrentSku` | sku |
+| r | I | `commitmentPeriod` | months (default 12) |
+| s | List of i92/n | `entitledCatalogItemIds` | catalog ids |
+
+Readers live on `Ls92/t1;` (prefs wrapper, extends `Ld23/bar`):
+
+- `G()Z` — `!prefs("isPremiumExpired", true)`, 134 call sites, incl. `TruecallerInit`. This is the
+  app-wide "is premium?" predicate; `t()Ls92/r1;` feeds its result into the rules engine snapshot.
+- `B()PremiumTierType` — `premiumLevel`, 47 call sites.
+- `x()J` — `premiumExpiresTimestamp`, 13 call sites.
+- `A()PremiumScope`, `z()ProductKind`, `F()Z` (grace+expired), `v()Z` (had premium before).
+
+Per-feature gating runs off `g0.h`: `p1.e` serialises it to the `availableFeatures` prefs key and
+`Laa2/j;` serves it to ~15-31 reader classes per feature (`NO_ADS` 15, `WHO_VIEWED_ME` 31,
+`INCOGNITO_MODE` 19, `GOLD_CALLER_ID` 15). An empty `h` therefore unlocks the premium *badge* but
+not the features, so `h` must be populated.
+
+### Proposed hook points (four, one patch)
+
+1. **`Ls92/p1;->c(Lga2/b;)Ls92/g0;`** (`classes6.dex`, 179 instructions, single `return-object v3`
+   at ordinal 178). Insert immediately before that return a block that builds a synthetic premium
+   `Ls92/g0;` and leaves it in `v3`; the original return then hands it back. Everything upstream
+   (the two prefs side writes at ordinals 22/31, the catalog parsing) is preserved. The
+   `invoke-direct/range` uses the same 23-register window the original uses (`v3..v25`), and the
+   method declares 29 registers with 2 params, so the block stays inside locals.
+   Synthetic values: a=`4102444800000` (2100-01-01), b=`1735689600000`, d=1, e=null, g=`GOLD`,
+   h=feature list (below), i=`SUBSCRIPTION_GOLD` (`goldyearly`), j=`UNKNOWN`, k=`"paid_premium"`
+   (→ `PremiumScope.PAID_PREMIUM`), l=0, m=0, n=0, o=1, p=`GOOGLE_PLAY`, q=null, r=12, s=null —
+   mirroring `g0.<init>()V`'s defaults (which already set o=1, r=12) with the premium fields swapped.
+   Feature list: all `PremiumFeature` enum constants except `UNKNOWN`, `FAMILY_SHARING`,
+   `FRAUD_INSURANCE` and `VERIFIED_BADGE` — family and insurance interact with separate state
+   (`p1.e` skips the family-key reset when `FAMILY_SHARING` is present, and `j` would disagree),
+   and the verified badge is a server-side identity claim.
+2. **`Ls92/t1;->G()Z`** (`classes6.dex`, 6 instructions, string at ordinal 0) — force
+   `const/4 v0, 1; return v0`, so the premium flag is true even before the first successful refresh
+   (fresh install, offline start). `registers 3 ins 1`, `v0` free.
+3. **`Ls92/t1;->B()PremiumTierType`** (`classes6.dex`, 11 instructions, string at ordinal 4) —
+   return `PremiumTierType.GOLD`. Without this the app would claim premium while the tier reader
+   still says `FREE` until a refresh lands. `registers 4 ins 1`, `v0` free.
+4. **`Ls92/t1;->x()J`** (`classes6.dex`, 5 instructions, string at ordinal 0) — return
+   `4102444800000`. Expiry comparisons pass before the refresh. `registers 4 ins 1`, `v0/v1` free.
+
+### Fingerprint candidates and stability
+
+All four targets sit in R8-minified packages (`Ls92/`, `Lga2/`), so no class or method name is
+stable on its own — the same position as the contact-list fingerprints, which are pinned by version
+(`Constants.COMPATIBILITY_TRUECALLER`, 26.31.6 only) and anchored by material renames do not touch:
+
+1. `definingClass "Ls92/p1;", name "c", returnType "Ls92/g0;", parameters ["Lga2/b;"]`, plus
+   `string("subscriptionStatusChangedReason")` then `string("familySubscriptionStatus")` — both
+   literals are from the method's own body, declared in instruction order (ordinals 22 then 31, so
+   the forward-only filter cursor is satisfied). The pair also occurs in `Ls92/b2;->a()V`, but the
+   class + name + descriptor exclude it; if `c` were ever repurposed the literals fail loudly.
+2. `definingClass "Ls92/t1;", name "G", returnType "Z", parameters []`, `string("isPremiumExpired")`.
+   The only other holders of that literal are the writer `p1.e` and the grace reader `F()Z`, both
+   excluded by class+name.
+3. Same class, `name "B"`, `returnType "Lcom/truecaller/premium/data/tier/PremiumTierType;"`,
+   `string("premiumLevel")` — the return type is app-owned and readable.
+4. Same class, `name "x", returnType "J", parameters []`, `string("premiumExpiresTimestamp")`.
+
+### What this cannot do / open questions
+
+- **Server-enforced premium is untouched.** Anything Truecaller's backend authorises for the
+  account (verified badge as seen by others, cloud-side quotas, carrier billing offers) stays free.
+  Expect premium-only *server* calls to fail with normal error handling, not to crash.
+- **First minutes after patching:** state flips only when a refresh runs (`p1.b` is called from
+  startup coroutines and the premium workers) — hooks 2-4 cover that window locally.
+- The premium tab may still render purchase/history sections that expect a real receipt (`q` sku,
+  `s` catalog ids are left empty). Device testing decides whether that is cosmetic or confusing.
+- Not read: exactly how `Laa2/j;` re-derives its list from prefs on cold start, and whether any
+  gate compares `g0.i` (`ProductKind`) against `NONE` in a way that an empty `q` sku breaks.
+- Nothing here is implemented, compiled or run. Per the two-phase rule this note is the review
+  gate; implementation waits for a go-ahead.
+
+## Phase 1 investigation — favorite contacts: stop retrieving them
+
+Behaviour, in one sentence: Truecaller never learns which of the user's phone-book contacts are
+favorites (starred), and — pending the open question below — may also be made to stop carrying its
+own Favorites feature data at all.
+
+**Status: awaiting review. No patch code written yet.** Target pinned to `com.truecaller` 26.31.6,
+cache `~/apks/com.truecaller/26.31.6/`. All findings below come from that dex via the `tools/`
+helpers; method ordinals are instruction ordinals as printed by `struse.py -l`.
+
+### "Favorites" means two independent things in this build
+
+1. **The system starred flag, ingested by contact sync.** The phonebook projection used by the
+   contact reader `Lm61/b` includes the `starred` column, and the row mapper stores it as a boolean
+   on the app's contact entity. There is **no dedicated favorites fetch**: no method references
+   `ContactsContract$Contacts.STARRED` (the only `STARRED` field refs in the APK are Truecaller's own
+   `SearchFilter.STARRED` for starred *messages*), there is no `starred=1` selection, and there is no
+   favorites content URI. The starred flag simply rides along with the general phonebook sync and is
+   persisted into the app DB column `contact_is_favorite`.
+2. **Truecaller's own Favorites feature** (the heart-marked list): Room table `favorite_contact`
+   (migration DDL in `Leq/m;.d`), entities `FavoriteContact` / `ContactFavoriteInfo` under
+   `com/truecaller/favorite_contacts_data/data/`, UI under
+   `com/truecaller/favourite_contacts/add_favourite_contact/` (`AddFavouriteContactActivity`),
+   repository `Ldp1/g`, store `Luo1/bar;->a(FavoriteContact)Unit`, and a periodic worker
+   `FavoriteContactsHeartbeatWorkAction` (`Lyo1/a;->a`). The heartbeat reads the local favorites list
+   (`Lu23/e` over `Luo1/bar`, dedup by `FavoriteContact.b : Long`) and emits one tracking event,
+   `Lmy2/w6`, whose payload is `ClientHeaderV2` plus **two integer counts** (`c`, `d`) — counts, not
+   numbers. No network path carrying the favorite numbers themselves was found; the feature is
+   local-storage plus count analytics.
+
+### Where the retrieval happens (system starred)
+
+```text
+Lk61/baz;->a(Z)V                     sync trigger
+  callers: Los0/e;.onReceive          a contact-change broadcast receiver
+           Lv72/d;.f(Context), Lss1/u;.invokeSuspend, Ltx/a1;.e(List),
+           Lk83/l;.invokeSuspend, QMActivity (QA)
+  -> Lm61/b;.d(Uri, J, String, String[])
+  -> Lm61/b;.c(Cursor, Uri, String, String[])     the cursor reader
+       projection built by Lm61/bar;.<init>(Cursor):
+         _id, contact_id, raw_contact_id, lookup, data_version, mimetype,
+         display_name, starred, is_super_primary, data1..data10, photo_uri
+  -> Lm61/b;.a(Lm61/bar;)Contact                  the row mapper
+       ordinals 22-36: read column "starred" (bar field i, KProperty index 7),
+       booleanize, iput-boolean -> Contact.e0 : Z   (ordinal 36, byte 134)
+```
+
+`Lm61/b;.a` has exactly **one** caller: `Lm61/b;.c` at byte 1354. `Lm61/b;.c` itself is called from
+`Lm61/b;.d` and from one fragment of the large coroutine class `Lgj2/o;.invokeSuspend`.
+
+### What `Contact.e0` is, and who reads it
+
+`Lcom/truecaller/data/entity/Contact;->e0 : Z` is the app's per-contact "is favorite" flag. Twelve
+methods touch it:
+
+| method | role |
+| --- | --- |
+| `Lm61/b;.a` | ingest: phonebook `starred` → e0 (the target above) |
+| `Ls81/qux;.b(Cursor)Contact` | app DB cursor → entity; also reads `contact_is_favorite` via readable `ContactFields.isFavorite()` |
+| `Ls81/c;.k(ArrayList, ArrayList, Contact, Z)` | applies app DB favorite columns to an entity |
+| `Contact;.<init>(Parcel)` / `writeToParcel` | parcel propagation |
+| `La00/b;.invokeSuspend` | **write-back**: sets `starred` on the *system* contact (`ContentResolver.update(getLookupUri, ContentValues("starred", bool))`, gated on `WRITE_CONTACTS`) |
+| `Le81/l;.invoke` | returns e0 as the `FavoritesFilter` partitioning key for the contacts list |
+| `Lfd1/e;.b`, `Lix1/baz;.h`, `La01/a;.invokeSuspend`, `Lfl1/baz;.invokeSuspend` | details-view / UI parameter building (read-only; `La01/a`, `Lfl1`, `Lfd1` not fully traced) |
+| `Lru0/h0;.y2(Lmu0/e; Z)` | puts e0 into an analytics map under the literal `"IsFavorite"` |
+
+The app DB persists it as `contact_is_favorite` (and `contact_favorite_position`): written by
+`La91/qux;.c(ContentValues, ContentValues, ContentValues)`, defined in the schema classes
+`Lf91/bar`/`Lf91/d`, constants in `Lk81/b;-><clinit>`.
+
+### Candidate hook, and why it is stable
+
+**`Lm61/b;.a(Lm61/bar;)Lcom/truecaller/data/entity/Contact;`** — insert `const/4 v6, 0` immediately
+before ordinal 36 so `Contact.e0` is always false when the row comes from the phonebook. `v6` is the
+temp holding the booleanized column value and is dead after the `iput-boolean`; the method has 29
+registers and 2 parameters, so the edit adds no register pressure and no new references.
+
+Fingerprint: `definingClass "Lm61/b;"`, `name "a"`, `parameters ["Lm61/bar;"]`,
+`returnType "Lcom/truecaller/data/entity/Contact;"`, plus two `string` filters **declared in
+instruction order** (the forward-only filter cursor cost CallHistorySyncWorkerFingerprint a device
+round): `"vnd.android.cursor.item/phone_v2"` (ordinal 97) then `"vnd.android.cursor.item/name"`
+(ordinal 304). Class plus name plus descriptor is already unique — `Lm61/b` has exactly one method
+named `a` — and the MIME-type literals are Android constants that survive any R8 pass; the two
+parameter/return types are app-owned descriptors that pin the method against a same-named sibling in
+a future version, which cannot happen here anyway because the patch is version-pinned to 26.31.6.
+
+### What this hook does not do
+
+- Contact sync still retrieves the **entire phonebook**; only the favorite flag is suppressed. A
+  patch that stops the phonebook read altogether is a different, larger feature (and Patch 1 only
+  empties the in-memory list handed to the UI — the sync keeps filling the app DB regardless).
+- Rows already stored with `contact_is_favorite=1` keep that value until a re-sync overwrites them.
+- The in-app Favorites feature is untouched: heart-marked favorites still store, list, toggle, fire
+  `AddFavorite`/`RemoveFavorite` analytics, and heartbeat their counts, because their write path sets
+  `Contact.e0` directly rather than through the phonebook ingest.
+- The write-back (`La00/b`) still writes `starred` into the system contacts when the user favorites
+  inside Truecaller.
+- Unknowns stated plainly: `La01/a`, `Lfl1/baz`, `Lfd1/e;.b` read e0 for reasons not fully traced
+  (all appear read-only); whether any caller *branches* on e0 in a way that changes control flow
+  beyond UI/analytics was not audited method-by-method.
+- Nothing compiled, nothing applied, nothing device-tested.
+
+### Open questions, stated plainly
+
+1. **Which "favorites" is the request about?** (a) the phone-book starred contacts Truecaller picks
+   up during contact sync — the candidate hook above; (b) Truecaller's own Favorites feature — the
+   heart-marked list it stores locally and heartbeats counts of; or (c) both. The two are
+   independent in the dex and need separate decisions.
+2. If (b): disable the feature outright (empty its list accessor and block adds), or keep it working
+   locally and only stop the heartbeat/analytics?
+3. The write-back direction: Truecaller *writes* `starred` into your system contacts when you
+   favorite in-app (`La00/b`, needs `WRITE_CONTACTS`). Stop that too, or leave it since it only fires
+   on a user action?
+
+### Related: the call-log retrieval the user reports
+
+Recorded separately per one-feature-per-task: Patch 2 stopped only the **sync worker upload**
+(`CallHistoryFullSyncWorker;.doWork`). The system call log is still **read** by
+`u63/k;.invokeSuspend` (the in-app history list, 1259 instructions) and still **observed** by
+`vn0/c;.a` and `jb0/a;.invokeSuspend` (`registerContentObserver`), which is the "remaining work,
+deliberately separate" the Patch 2 note already scoped (Patch A = the two observer registrations,
+Patch B = the single reader). That is the next feature after this one is confirmed.
+
+### Query-tooling gotchas found while investigating
+
+- `refs.py` caller rows key invoke targets exactly as androguard prints them, i.e. **with spaces**
+  after `;` inside descriptors (`Lm61/b;->c(Landroid/database/Cursor; Landroid/net/Uri; ...)`),
+  while `callees`/`ckey` strips spaces. `refs.py callers` with a pasted no-space descriptor reports
+  a false "no callers"; query the `refs.json.gz` directly when in doubt.
+- `struse.py -l` prints **instruction ordinals**; `struse.py <regex>` and `refs.py` rows store
+  **byte offsets** (sum of instruction lengths). The two numberings differ for any method with
+  wide/payload instructions — do not cross-reference them naively.
+
+# Spotify 9.1.90.2270 reference notes
+
+## Source and target record
+
+- Reference APK: `~/storage/0/Download/1DM/Programs/com.spotify.music_9.1.90.2270-147078674_minAPI24(arm64-v8a,armeabi-v7a,x86,x86_64)(nodpi)_apkmirror.com.apk`
+- Recorded cache copy: `~/apks/com.spotify.music/9.1.90.2270/com.spotify.music-9.1.90.2270-147078674_minAPI24_arm64-v8a_armeabi-v7a_x86_x86_64_nodpi_apkmirror.com.apk`
+- SHA-256: `5c05366de31788fd0eec6e046c3610311acf5e63c15345e5bdaca6e8f09fb3b4`
+- Size: `142,124,037` bytes.
+- Format: regular universal APK, 18 DEX files (`classes.dex` through `classes17.dex`).
+- Package: `com.spotify.music`. Version name: `9.1.90.2270`. Version code: `147078674`.
+- Minimum SDK: `24`. Target SDK: `37`. Main activity: `com.spotify.music.MainActivity`.
+- Query cache: `~/apks/com.spotify.music/9.1.90.2270/tools/` (dex index and struse index built).
+
+## First planned patch — Remove audio & UI ads
+
+- Behavior: never fetch or render Spotify's served ads; return an empty ad response at Spotify's ads RPC seam.
+- Target method: `Lp/x22;->a(Lcom/spotify/ads/esperanto/proto/GetAdsRequest;Lp/xel;)Ljava/lang/Object;`. This is the coroutine wrapper for `spotify.ads.esperanto.proto.Ads.GetAds`.
+- The method currently parses the server response into `GetAdsResponse`; returning `Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->r(empty byte array)` at method entry should present an ad payload with no ads. `DEFAULT_INSTANCE` is private, so it cannot be referenced directly from `Lp/x22;`.
+- `Lp/x22;` is constructed in `Lp/az60;->x(...)` and used as `Lp/rt51;->b` inside `Lp/rt51;`. UI/slot handling through `Lp/rt51;->b` is separate and will be revisited if ads still surface there.
+- Candidate fingerprint: defining class `Lp/x22;`, name `a`, return type `Ljava/lang/Object;`, parameters `Lcom/spotify/ads/esperanto/proto/GetAdsRequest;` and `Lp/xel;`, plus anchors for literals `"spotify.ads.esperanto.proto.Ads"` and `"GetAds"` and the `GetAdsResponse.r([B)` call. The literal occurrences were confirmed once each by struse in this DEX.
+- Earliest possible edit: prepend `sget-object v0, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE ...` plus `return-object v0` at instruction index `0`, without deleting existing instructions.
+- Uncertainty: this seam is only one of Spotify's ad paths; UI ads, cached/session ads, premium-upsell prompts, and playback slates may use other services. Runtime behavior is untested. The method is a suspend function, so an unconditional early return may interact with caller state-machine expectations and must be smoke-tested on a device.
+
+## Second planned patch — Make Smart Shuffle not the playlist default
+
+- Behavior: starting playback in a playlist or liked songs no longer selects Smart Shuffle as the default play mode, so the normal queue order is used.
+- Remote config seam: `Lp/ez4;` is the `android-system-smart-shuffle` remote config model. Its `models()` method records two booleans under names `smart_shuffle_as_default_for_liked_songs` (via `Lp/ez4;->r()Z`) and `smart_shuffle_as_default_for_playlist` (via `Lp/ez4;->s()Z`).
+- Patching both no-arg boolean accessors `Lp/ez4;->r()Z` and `Lp/ez4;->s()Z` to return `0` should make the client parse both defaults as false even when the server flag is enabled.
+- Struse confirmed each name occurs once in `models()` in the reference DEX, at instruction 96 (`r`) and 102 (`s`).
+- Verified method bodies in the pinned DEX (androguard dump via `tools/struse.py -l`): `Lp/ez4;->r()Z` calls `Lp/ez4;->h()Lp/ez4;`, recurses on the result, and otherwise returns `iget-boolean` of `Lp/ez4;->q:Z`; `Lp/ez4;->s()Z` has the same shape and reads `Lp/ez4;->r:Z`. Fingerprints now anchor on `fieldAccess(definingClass = "Lp/ez4;", name = "q"/"r", type = "Z")` in addition to defining class, name, return type, and the empty parameter list.
+- Fingerprint resolution lesson: `filters = emptyList()` never matches. In morphe-patcher 1.13.0 (compiled against) and current Morphe main, a non-null empty filter list makes `matchFilters` return `null`, and `matchOrNull` then reports no match; only omitting `filters` (null default) skips filter matching. A device run with the empty-list version failed with `Failed to match the fingerprint: app.spotify.patches.shuffle.SmartShuffleLikedSongsDefaultFingerprint@9cef173`, which this explains. Do not declare empty filter lists.
+- Uncertainty: this only changes parsed remote-config defaults. If Spotify reads the feature another way or applies a hard default, playback behavior may still smart-shuffle. Runtime behavior and whether other Smart Shuffle gating methods need patching are untested.

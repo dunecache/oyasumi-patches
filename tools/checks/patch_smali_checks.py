@@ -81,11 +81,15 @@ def string_concat_in(src: str) -> list[tuple[int, str]]:
     list matters.
     """
     out: list[tuple[int, str]] = []
-    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"', src):
-        pass
-    # fold adjacent "..." + "..." chains
-    for m in re.finditer(r'"((?:[^"\\\n]|\\.)*)"\s*(?:\+\s*\n?\s*"((?:[^"\\\n]|\\.)*)")+', src):
-        parts = re.findall(r'"((?:[^"\\\n]|\\.)*)"', m.group(0))
+    lit = r'"((?:[^"\\\n]|\\.)*)"'
+    # Between two concatenated literals the compiler allows whitespace and `//` comment
+    # lines. A regex that omits comments stops folding at the first one and silently drops
+    # every literal after it -- which is how a trailing smali label, the operand of a
+    # branch, vanishes from the check while still being emitted. The `+` stays mandatory:
+    # making it optional lets the pattern run across unrelated literals.
+    between = r"(?:\s|//[^\n]*\n)*"
+    for m in re.finditer(lit + "(?:" + between + r"\+" + between + lit + ")+", src):
+        parts = re.findall(lit, m.group(0))
         if len(parts) > 1:
             out.append((m.start(), "".join(unescape(p) for p in parts)))
     return out
@@ -171,6 +175,67 @@ def check_invoke_arity(path: Path, constants: dict[str, str] | None = None) -> l
                     f"{path.name}:{offset}: `{line[:64]}` names {len(named)} "
                     f"register(s) but {m.group(2)}->{m.group(3)} declares "
                     f"{len(params)} argument(s) and needs {required} ({shape})")
+    return problems
+
+
+#: Instructions that end a basic block, so the block cannot fall through into whatever
+#: follows them.
+TERMINATORS = ("return", "return-void", "return-object", "return-wide", "throw", "goto")
+
+#: `if-<cond> <regs...>, :label`, and the assignment forms, in the fragments this repo emits.
+COND_BRANCH = re.compile(r"^if-\w+\s+.*?,\s*(:\w+)\s*$")
+ASSIGN = re.compile(r"^\S+\s+(?:v\d+,\s*)?(v\d+)\b")
+WRITES = re.compile(r"\b(v\d+)\s*,")
+LABEL = re.compile(r"^(:\w+)\s*$")
+
+
+def check_branch_joins(path: Path) -> list[str]:
+    """A branch target inside the same fragment is a join, and a join must agree on types.
+
+    Dalvik's verifier tracks the type of every register, and where two paths meet it
+    requires them to agree. Giving the two paths different types for the same register is
+    a `VerifyError` at class-load time, not at patch time, so it survives every check that
+    only looks at the smali in isolation and takes the whole app down with a blank screen.
+    That is not hypothetical: gating the pedometer push on the channel name assigned a
+    `String` to `v0` on the skip path and an `Integer` to `v0` on the push path, the two
+    rejoined at the label, and the device reported
+
+        VerifyError: Verifier rejected class i5.c: i5.c.onListen failed to verify:
+        [0x2C] register v0 has type Conflict but expected Reference: i5.b
+
+    A join only exists when the label can also be *reached by falling through*. If the
+    skipped block ends in a terminator there is no second path and there is nothing to
+    reconcile, which is why the async hook's early return is fine and the gated one was
+    not. So the flag is: a conditional branch whose target is in this fragment, where the
+    block it skips does not end in a terminator, and that block reassigns a register the
+    branch had already assigned.
+    """
+    problems: list[str] = []
+    src = path.read_text(encoding="utf-8")
+    for offset, smali in string_concat_in(src):
+        lines = [ln.strip() for ln in smali.splitlines() if ln.strip()]
+        for i, line in enumerate(lines):
+            m = COND_BRANCH.match(line)
+            if not m:
+                continue
+            target = m.group(1)
+            try:
+                end = next(j for j in range(i + 1, len(lines)) if lines[j] == target)
+            except StopIteration:
+                continue  # target is in another method or another fragment
+            skipped = lines[i + 1:end]
+            if not skipped or skipped[-1].startswith(TERMINATORS):
+                continue  # no fall-through path, so no join
+            after_branch = set(WRITES.findall(" ".join(lines[:i + 1])))
+            for ln in skipped:
+                for reg in WRITES.findall(ln):
+                    if reg in after_branch:
+                        problems.append(
+                            f"{path.name}:{offset}: {line} rejoins at {target} with "
+                            f"{reg} assigned on both paths, so the two paths can give it "
+                            f"incompatible types and the verifier will reject the class. "
+                            f"End the skipped block with a return/throw/goto, or keep "
+                            f"{reg} out of it.")
     return problems
 
 
@@ -315,6 +380,170 @@ def _locals_defined(body: str) -> set[str]:
     return out
 
 
+#: `move-result v0` / `move-result-wide v0` -- an integer or float, never a reference.
+#: `move-result-object` and `move-result-wide-object` are deliberately absent.
+MOVE_RESULT_PRIMITIVE = re.compile(r"^move-result(?:-wide)?\s+(v\d+)$")
+
+#: `instance-of v0, v1, Lx;` also leaves an int, and forgetting that is the same defect:
+#: `HideIdeasSectionPatch` cast the result of one straight to a `check-cast`, and the device
+#: reported `[0x9] check-cast on non-reference in v0`.
+INSTANCE_OF_PRIMITIVE = re.compile(r"^instance-of\s+(v\d+)\s*,")
+
+#: `check-cast v0, Lx;` reads and writes one register, and both ends need a reference.
+CHECK_CAST = re.compile(r"^check-cast\s+(v\d+)\s*,")
+
+#: Opcodes whose first register operand is a destination, so they overwrite whatever the
+#: register held. Only used to *clear* a tracked register, so a false positive here is silent.
+WRITES_FIRST = re.compile(
+    r"^(?:move-|const|new-instance|iget-|sget-|array-length|instance-of|check-cast"
+    r"|int-to-|neg-|not-)"
+)
+
+#: An invoke that has a receiver: the first register in the list.
+INVOKE_WITH_RECEIVER = re.compile(r"^invoke-(?:virtual|direct|interface)\b")
+REGISTER_LIST = re.compile(r"\{([^}]*)\}")
+
+
+def injected_blocks(src: str) -> list[tuple[int, str]]:
+    """Every smali block a patch hands to `addInstructions`/`addInstructionsWithLabels`.
+
+    `string_concat_in` only folds two-or-more-part `"..." + ...` chains, and cannot see a
+    triple-quoted literal at all: its pattern forbids newlines and demands at least two parts.
+    Every injected block in this repo is written as one triple-quoted literal, so the checks
+    built on `string_concat_in` were reading a patch's `name`/`description` concatenation and no
+    smali whatsoever. That is why a `VerifyError` shipped through a suite that reported
+    "0 problem(s)".
+
+    Only `check_invoke_receiver_type` consumes this today, and that is deliberate. Pointing
+    `check_branch_joins` at it as well produces 25 findings across patches that ship and work,
+    because its premise -- that two paths giving a register different types at a join is fatal
+    -- is stricter than ART turns out to be. A merge conflict is evidently only fatal when the
+    register is read before being reassigned, which those blocks never do. Widening a check
+    until it cries wolf is worse than leaving a gap, so the gap stays and is documented.
+
+    So the literal is located relative to the call it is an argument of, and both spellings are
+    accepted. Blocks are returned with the offset of the call, which is what the diagnostics
+    report.
+    """
+    out: list[tuple[int, str]] = []
+    for m in re.finditer(r"\baddInstructions(?:WithLabels)?\s*\(", src):
+        rest = src[m.end():]
+        # The first argument is the insertion index (`0`, `4`, `Foo.method`), so the
+        # literal does not start immediately. Whichever quote form appears first is the
+        # literal; the index argument never contains one.
+        triple = rest.find('"""')
+        single = rest.find('"')
+        if triple != -1 and (single == -1 or triple <= single):
+            body = rest[triple + 3:]
+            close = body.find('"""')
+            if close == -1:
+                continue
+            out.append((m.start(), unescape(body[:close])))
+            continue
+        if single != -1:
+            for offset, folded in string_concat_in(src[m.end() - 1:]):
+                out.append((m.start() + offset, folded))
+                break
+    return out
+
+
+def check_invoke_receiver_type(path: Path) -> list[str]:
+    """A register holding an integer must not be used as an invoke's receiver.
+
+    Dalvik's verifier types every register, and an `invoke` on a primitive receiver is
+    rejected when the class loads:
+
+        VerifyError: Verifier rejected class a0.f: void a0.f.a0(...) failed to verify:
+        [0xE] tried to get class from non-reference register v0 (type=Boolean)
+
+    That shipped. The block loaded the id into `v0`, called `String.equals`, let the boolean
+    result overwrite `v0`, and then called `equals` a second time on `{v0, v1}` -- a boolean as
+    the receiver. smali assembles it, `compileKotlin` accepts it, and `check_inline_smali.py`
+    parses it, because none of those is a verifier. The fix is a separate flag register.
+
+    Analysis is straight-line within one block and deliberately stops at a label: a label is a
+    merge, and after a merge the register's type depends on which path arrived, so nothing can
+    be proven. Conditional branches do *not* stop it -- the shipped defect put an `if` between
+    the `move-result` and the bad invoke.
+    """
+    problems: list[str] = []
+    for offset, block in injected_blocks(path.read_text(encoding="utf-8")):
+        primitive: dict[str, int] = {}
+        for lineno, raw in enumerate(block.splitlines(), start=1):
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith(":"):
+                primitive.clear()  # merge point: type depends on the path taken
+                continue
+            if line.startswith("//") or line.startswith('"'):
+                continue
+
+            m = MOVE_RESULT_PRIMITIVE.match(line)
+            if m:
+                primitive[m.group(1)] = lineno
+                continue
+
+            m = INSTANCE_OF_PRIMITIVE.match(line)
+            if m:
+                primitive[m.group(1)] = lineno
+                continue
+
+            m = CHECK_CAST.match(line)
+            if m:
+                reg = m.group(1)
+                if reg in primitive:
+                    problems.append(
+                        f"{path.name}:{offset}+{lineno}: `{line}` casts {reg}, but {reg} was "
+                        f"last assigned a primitive at line {primitive[reg]}. Copy the "
+                        f"reference in first, e.g. `move-object/from16 {reg}, pN`."
+                    )
+                primitive.pop(reg, None)
+                continue
+
+            if INVOKE_WITH_RECEIVER.match(line):
+                regs = REGISTER_LIST.search(line)
+                if regs:
+                    first = next((r.strip() for r in regs.group(1).split(",") if r.strip()), "")
+                    if first in primitive:
+                        problems.append(
+                            f"{path.name}:{offset}+{lineno}: `{line}` uses {first} as its "
+                            f"receiver, but {first} was last assigned a primitive at line "
+                            f"{primitive[first]}. Keep it in another register."
+                        )
+                continue
+
+            if WRITES_FIRST.match(line):
+                dest = re.search(r"\bv\d+\b", line)
+                if dest:
+                    primitive.pop(dest.group(0), None)
+    return problems
+
+
+def check_kotlin_paren_balance(root: Path) -> list[str]:
+    """Flag unbalanced parentheses per Kotlin file.
+
+    Kotlin compiles on CI and nowhere else, so a stray paren costs a full release cycle to
+    find. This shipped once: an extra `)` at the end of CommentsFingerprints.kt made
+    `:patches:compileKotlin` fail on dev and took the release with it. Naive counting is
+    wrong on strings and comments, so a file is only reported when the imbalance survives
+    stripping both.
+    """
+    problems = []
+    for path in sorted(root.rglob("*.kt")):
+        text = path.read_text(encoding="utf-8")
+        stripped = re.sub(r'"(?:\\.|[^"\\])*"', '""', text)
+        stripped = re.sub(r'"""(?:.|\n)*?"""', '""', stripped, flags=re.DOTALL)
+        stripped = re.sub(r"//[^\n]*", "", stripped)
+        stripped = re.sub(r"/\*(?:.|\n)*?\*/", "", stripped)
+        opened = stripped.count("(")
+        closed = stripped.count(")")
+        if opened != closed:
+            rel = path.relative_to(root.parent.parent.parent)
+            problems.append(f"{rel}: unbalanced parentheses ({opened} open, {closed} close)")
+    return problems
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[2] / "patches/src/main/kotlin"
     if not root.is_dir():
@@ -324,8 +553,11 @@ def main() -> int:
     for path in sorted(root.rglob("*.kt")):
         problems += check_invoke_arity(path)
         problems += check_replace_instructions(path)
+        problems += check_branch_joins(path)
         problems += check_dollar_in_strings(path)
         problems += check_imports(path)
+        problems += check_invoke_receiver_type(path)
+    problems += check_kotlin_paren_balance(root)
     for p in problems:
         print("  FAIL", p)
     print(f"checked {len(list(root.rglob('*.kt')))} file(s): "

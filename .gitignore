@@ -139,3 +139,6 @@ local.properties
 # python bytecode from tools/
 __pycache__/
 *.pyc
+
+# Local agent config, not part of the patch bundle.
+opencode.json
