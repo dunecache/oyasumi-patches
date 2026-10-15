@@ -2796,3 +2796,11 @@ Patch B = the single reader). That is the next feature after this one is confirm
 - Candidate fingerprint: defining class `Lp/x22;`, name `a`, return type `Ljava/lang/Object;`, parameters `Lcom/spotify/ads/esperanto/proto/GetAdsRequest;` and `Lp/xel;`, plus anchors for literals `"spotify.ads.esperanto.proto.Ads"` and `"GetAds"` and the `GetAdsResponse.r([B)` call. The literal occurrences were confirmed once each by struse in this DEX.
 - Earliest possible edit: prepend `sget-object v0, Lcom/spotify/ads/esperanto/proto/GetAdsResponse;->DEFAULT_INSTANCE ...` plus `return-object v0` at instruction index `0`, without deleting existing instructions.
 - Uncertainty: this seam is only one of Spotify's ad paths; UI ads, cached/session ads, premium-upsell prompts, and playback slates may use other services. Runtime behavior is untested. The method is a suspend function, so an unconditional early return may interact with caller state-machine expectations and must be smoke-tested on a device.
+
+## Second planned patch — Make Smart Shuffle not the playlist default
+
+- Behavior: starting playback in a playlist or liked songs no longer selects Smart Shuffle as the default play mode, so the normal queue order is used.
+- Remote config seam: `Lp/ez4;` is the `android-system-smart-shuffle` remote config model. Its `models()` method records two booleans under names `smart_shuffle_as_default_for_liked_songs` (via `Lp/ez4;->r()Z`) and `smart_shuffle_as_default_for_playlist` (via `Lp/ez4;->s()Z`).
+- Patching both no-arg boolean accessors `Lp/ez4;->r()Z` and `Lp/ez4;->s()Z` to return `0` should make the client parse both defaults as false even when the server flag is enabled.
+- Struse confirmed each name occurs once in `models()` in the reference DEX, at instruction 96 (`r`) and 102 (`s`).
+- Uncertainty: this only changes parsed remote-config defaults. If Spotify reads the feature another way or applies a hard default, playback behavior may still smart-shuffle. Runtime behavior and whether other Smart Shuffle gating methods need patching are untested.
