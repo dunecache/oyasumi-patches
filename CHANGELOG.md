@@ -1,3 +1,9 @@
+## [0.6.0-dev.36](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.35...v0.6.0-dev.36) (2026-10-15)
+
+### ✨ New Features
+
+* **spotify:** add server-side ads patch for 9.1.90.2270 ([e5cb0fb](https://github.com/dunecache/oyasumi-patches/commit/e5cb0fb542174bc64cdc7b08094096d2d2c70321))
+
 ## [0.6.0-dev.35](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.34...v0.6.0-dev.35) (2026-10-10)
 
 ### 🐛 Bug Fixes
