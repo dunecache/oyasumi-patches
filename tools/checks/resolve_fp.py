@@ -70,12 +70,18 @@ def parse_fingerprints(package: str, only: str | None) -> list[dict]:
     # `app/<org>/patches`, which need not agree with the app's own package name.
     # The patch source package is `app/<short>/patches`: `com.truecaller` lives under
     # `app/truecaller/`, not `app/com/truecaller/`, so try the trailing segment too.
+    # Some apps use a middle segment instead: `com.spotify.music` lives under
+    # `app/spotify/patches`, so every segment is tried.
     short = package.rsplit(".", 1)[-1]
     candidates = [
         f"app/{package}/patches",
         f"app/{package.replace('.', '/')}/patches",
         f"app/{short}/patches",
     ]
+    for segment in package.split("."):
+        candidate = f"app/{segment}/patches"
+        if candidate not in candidates:
+            candidates.append(candidate)
     results = []
 
     for path in sorted(root.rglob("*.kt")):
