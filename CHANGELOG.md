@@ -1,3 +1,10 @@
+## [0.6.0-dev.40](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.39...v0.6.0-dev.40) (2026-10-15)
+
+### 🐛 Bug Fixes
+
+* **spotify:** anchor Smart Shuffle fingerprints with field filters ([1ded84b](https://github.com/dunecache/oyasumi-patches/commit/1ded84b8413eca83037bcd50b3be25f028c782d7))
+* **tools:** resolve fingerprints under any package segment ([b5530f9](https://github.com/dunecache/oyasumi-patches/commit/b5530f915f9a6c53a19f541df3bf15a1eddb0f11))
+
 ## [0.6.0-dev.39](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.38...v0.6.0-dev.39) (2026-10-15)
 
 ### 🐛 Bug Fixes
