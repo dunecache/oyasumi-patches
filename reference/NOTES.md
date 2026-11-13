@@ -2806,3 +2806,549 @@ Patch B = the single reader). That is the next feature after this one is confirm
 - Verified method bodies in the pinned DEX (androguard dump via `tools/struse.py -l`): `Lp/ez4;->r()Z` calls `Lp/ez4;->h()Lp/ez4;`, recurses on the result, and otherwise returns `iget-boolean` of `Lp/ez4;->q:Z`; `Lp/ez4;->s()Z` has the same shape and reads `Lp/ez4;->r:Z`. Fingerprints now anchor on `fieldAccess(definingClass = "Lp/ez4;", name = "q"/"r", type = "Z")` in addition to defining class, name, return type, and the empty parameter list.
 - Fingerprint resolution lesson: `filters = emptyList()` never matches. In morphe-patcher 1.13.0 (compiled against) and current Morphe main, a non-null empty filter list makes `matchFilters` return `null`, and `matchOrNull` then reports no match; only omitting `filters` (null default) skips filter matching. A device run with the empty-list version failed with `Failed to match the fingerprint: app.spotify.patches.shuffle.SmartShuffleLikedSongsDefaultFingerprint@9cef173`, which this explains. Do not declare empty filter lists.
 - Uncertainty: this only changes parsed remote-config defaults. If Spotify reads the feature another way or applies a hard default, playback behavior may still smart-shuffle. Runtime behavior and whether other Smart Shuffle gating methods need patching are untested.
+
+## Re-investigation — ads still audible after the GetAds patch
+
+Trigger: user reports audio ads still play between tracks with the latest CI build (patch 1, empty
+`GetAdsResponse`, applied). This re-checked patch 1's seam and traced where playback ads come from.
+
+### Patch 1 seam re-check
+
+- `"GetAds"` occurs exactly once in the build: `Lp/x22;->a(Lcom/spotify/ads/esperanto/proto/GetAdsRequest;Lp/xel;)Ljava/lang/Object;` (classes.dex). The patch is anchored to the only pull-based ads RPC, so the persistent audio ads are not a fingerprint miss — that RPC is simply not what carries playback ad audio.
+
+### `Ad` payloads in this build are display-only (no audio is read)
+
+- `com.spotify.ads.esperanto/proto/Ad` declares `audio_ : Lp/o770;` (a list of `AdMedia` with `url`/`mimeType`/`bitrate`/`duration`), but **nothing reads it**: no getter exists in the generated class (method list only has `n=adId`, `o=clickthroughUrl`, `p=companions`, `q=coverArt`, `s=display`, `t=format`, `u/v=dsa/dummy`, `w=requestId`, `x=slot`, `getMetadataMap`, `getVideoList`) and `refs.py classrefs` shows no `Ad;->audio_` field access anywhere in the 17 DEX files.
+- `Lp/cdk1;->m(Ad)` builds `Lp/wh0;` (app ad-track model, uri `"spotify:ad:" + Ad.n()` via `Lp/kp0;->e`) with a creative bundle `Lp/c8f0;` of cover art (`Ad.q()`), display (`Ad.s()`), and video (`Ad.getVideoList()`) via `cdk1.o`/`cdk1.p` (`dx50` image / `sue1` video). No audio entries.
+- `Lp/tjv;` is the only consumer of the `c8f0.c` display-creative list: HTML/carousel prerender checks — "HTML Ad Failed to Prerender: invalid dimensions", "HTML Ad Failed to Prerender: missing creative", "Ad Carousel Failed to Prerender" (`tjv.c` only asks whether a display creative exists).
+- `spotify:ad:` audit (all 13 struse sites): every builder turns an `Ad`/`wh0` into UI models (`e0d1` via `cbk1.w`, `uei0` via `juv0.invokeSuspend`, browse banners via `c881.invoke`, `s7b.a/b`, `nyj1.K`), and every `ContextTrack` site (`cbk1.v`, `ix20.b`, `pdr0.accept` URI classifier) only *reads* player-state tracks. No client code builds a player context/queue item with an ad URI.
+
+### Audio ads ride the server player state
+
+- Player-state `ContextTrack`s carry `is_advertisement`/`ad_id` (and duration) metadata that is only ever **read**, never written client-side: `Lp/p1r0;->V(ContextTrack)Z` (40 callers incl. widget metadata `Lp/jab1;->B`, media session `Lp/k62;->d`, now-playing ad UI `Lp/ece1;->p`, messaging `AdPlayingEventSource`), `Lp/y161`, `Lp/alh1`, `Lp/klj.emit`, `Lp/jfq0.test`, etc.
+- Skippability is UI-only: `ad.skippable_ad_delay` read in `Lp/op41;->emit` and `Lp/ece1;->p` to place a skip-ad button (`mobile-now-playing-skip-ad-button`, `mobile-ads-skip-ad-element`).
+- Conclusion: the audio ad is queued and played by the (server-facing) player; the UI just renders it. Intercepting ads-RPC responses cannot mute it.
+
+### Remaining ads RPC channels (present, display/UI-only per above)
+
+- `Slots/SubSlot`: `Lp/rt51;->b(Lp/fw0;)Lp/p1x0;` → `Lp/op41;->emit` (`AdSlotEvent{Ad}`); callers `vw0.invokeSuspend`, `ws0.c`, `y4b0.invokeSuspend`.
+- `InStream/SubInStream`: `Lp/wr20;->l()Lp/o410;` (only caller `Lp/tp0;->start()V`) → `Lp/cc40;->emit` → `Lp/ld60(wh0)`; `tp0` error path logs "Error fetching ad from InStreamApi" (`Lp/sp0;` case 3).
+- `InStream/SubBreakChanged`: `Lp/wr20;->r()Lp/o410;` → `Lp/g32;->start()V`, `Lp/k32;->start()V`.
+- Slot lifecycle `CreateSlot`/`PrepareSlot`/`TriggerSlot` via `Lp/rt51;->a(...)`: responses carry only an `error` field, no ad payload.
+
+### Options for actually suppressing audio ads (needs a decision; untested)
+
+- A. Auto-skip attempt: detect the current ad track (`p1r0.V` on the player state) and send a player skip/advance from the client. Feasibility unknown — Spotify normally rejects skipping unskippable ads, and skippable ones already have a delay; would need locating the client player-command seam and on-device testing.
+- B. Scope the patch to display/UI ads: keep patch 1, fix its description ("no server-provided audio ad" is wrong) and do not claim audio-ad removal.
+
+### Uncertainty
+
+The ad audio transport happens inside the native player / player service and is not observable from
+DEX alone; no device testing was performed in this investigation. The `audio_` field being unread
+is a strong static result but was not runtime-verified.
+
+# Substack 3.7.2 reference notes — theming (primary accent + background)
+
+Phase 1 investigation for the custom color scheme task (primary accent, then background).
+One feature per task; this note covers the accent investigation and maps the background path
+behind it. No patch code has been written yet.
+
+## Source and target record
+
+- Cache: `~/apks/com.substack.app/3.7.2/`
+- Reference bundle: `com.substack.app-3.7.2-109778_arm64_v8a_apkmirror.com.apkv`
+- SHA-256 `c595b86536054dd90f5c89c3c5a61118ede0108bcb0c8e19791ef499fb25f1b6` (in `apk.sha256`)
+- Format: APKV bundle (`formatVersion` 2). Only `base.apk` (43,847,522 bytes) was analysed;
+  the ABI, language, and density splits hold no DEX.
+- Package `com.substack.app`, versionName `3.7.2`, versionCode `109778`.
+- minSdk 32, targetSdk 36. Application class `com.substack.app.SubstackApp`.
+- DEX inventory: 4 dex files, 35,699 classes; app-owned `Lcom/substack/` = 2,539 classes,
+  split across `classes.dex` (374) and `classes3.dex` (2,161). App code is not in one DEX.
+- Tools: `~/apks/com.substack.app/3.7.2/tools/` (`dexidx.py`, `struse.py`, `refs.py`,
+  `strings.py`, `pkgs.py`) with `struse.json.gz`, `refs.json.gz`, `dexindex.pickle` built.
+  `disassembly/` and `mappings/` are empty: no baksmali/jadx, no deobfuscation mapping.
+  androguard 4.1.4. These paths and hashes are recorded here per AGENTS.md §8.
+
+**Version mismatch to flag to the user:** the APK currently in
+`~/storage/0/Download/1DM/Programs/` is 3.12.0 (versionCode 114329) with no `~/apks` cache.
+This note is 3.7.2 only. Fingerprints are version-specific; a 3.12.0 target would need its own
+extraction + note before anything is declared compatible with it.
+
+## Phase 1 behaviour definition
+
+- Patch P1 (accent): "Substack's primary accent color is replaced with a user-provided color
+  wherever the theme materializes the accent palette slot."
+- Patch P2 (background): "Substack's primary background color is replaced with a
+  user-provided color wherever the theme materializes the background palette slot."
+- The user has not yet supplied the two hex values.
+
+## The app has no local color palette (decisive)
+
+- `base.apk` contains **no `res/values/` directory at all.** Its 2,222 `res/` entries are
+  drawables (1,368), layouts (212), `res/color` selectors (183 + 21 + 9 + 3), anims, fonts,
+  xml, and menus; every literal value (colors, styles, dimens, strings) lives only in
+  `resources.arsc`.
+- Consequence: a resource patch that rewrites `res/values/colors.xml` is **not possible** for
+  this app. No androguard/pyaxmlparser ARSC parser is installed in this environment either,
+  so even reading the compiled table needs an extra tool.
+- The app's own theme is Jetpack Compose. The default theme object `Lyoe;-><init>()V`
+  constructs every slot from either zero or a generic constant: its accent group `Lj7` is
+  built from `Lhj3;->n`, which `<clinit>` shows is `Color(0f,0f,0f,0f, Lkk3;->u)`, i.e.
+  `Color.Unspecified`. The other `Lhj3` static fields are generic palette entries
+  (`b` `#FF000000`, `c` `#FF444444`, `d` `#FF888888`, `e` `#FFCCCCCC`, `f` `#FFFFFFFF`,
+  `g` `#FFFF0000`, `h` `#FF006003`, `i` `#FF00005F`, `j` `#FFFFFF00`, `k` `#FF00FFFF`,
+  `l` `#FFFF00FF`, `m` transparent), not a Substack brand palette.
+- **Conclusion: every visible accent/background color is fetched from the server at runtime
+  and applied through Compose. There is no local default color to override.** The patch must
+  be a bytecode patch on the theme materialization path.
+
+## Where the colors come from (verified chain)
+
+1. Server JSON → API models. All theme classes are `Lcom/substack/api/models/*`, all
+   kotlinx.serialization `@Serializable`: `ApiAccentColors`, `ApiAccentDarkColors`,
+   `ApiBackgroundColors`, `ApiBackgroundDarkColors`, `ApiForegroundColors`,
+   `ApiForegroundDarkColors`, `ApiColors`, `ApiProfileTheme`, `ApiProfileThemePalette`,
+   `ApiRenderedAppColors`, `ApiRenderedAppTheme`, `ApiPublicationTheme`, `ApiPostSelectionTheme`.
+   `toString` literals confirm `ApiAccentDarkColors(primary=...)`, `ApiBackgroundDarkColors(primary=...`,
+   `ApiForegroundColors(primary=...` — each palette has a `primary` color plus light/dark variants.
+2. JSON string → palette object `Lcdg` via `Lfd0;->v0(Ljava/lang/String;)Lcdg;`(`classes.dex`):
+   `Json.decodeFromString(LoadArgument...)`, logs `"Error deserializing ProfileTheme"` on
+   failure. 11 callers, all mapper/lambda code (`Lgp2;->k`, `Lhjg;->c/e/f/g`, `Lejg;->invoke`,
+   `Lfjg;->invoke`, `Llqf;->...`, `Lx4g;->invoke`), which build publication/user UI models
+   (`Lgig`, `Lool`) — the profile-theme path.
+3. API model → palette object via `Lbdg;->a(Lcom/substack/api/models/ApiProfileTheme;)Lcdg;`
+   (`Lbdg` is `Lcdg`'s `Companion`), called from `Leig;->a(Lcom/substack/api/models/ApiPublication;)`
+   ins 1792 and `Lnol;->a(Lcom/substack/api/models/ApiUserProfile;)` ins 1624.
+4. Palette object → Compose theme via `Lp48;->l0(Lcdg; Ldy3;)Lzoe;` (`classes3.dex`), a Compose
+   composable returning `Lzoe` = (light `Lyoe`, dark `Lyoe`). 11 Compose callers across the UI
+   (`Ldcj;->J`, `Ll94;->m`, `Ltf8;->y`, `Lgh8;->m`, `Lpk8;->s`, `Lkh8;->t`, `Lni8;->v`,
+   `Lxb8;->o`, `Lw48;->A`, …). This is the single materialization point that feeds themed UI.
+5. `ApiRenderedAppTheme` exists but is only round-tripped inside
+   `ApiSubscriptionQueueItem$ApiSubscriptionQueueDataItem` (field `theme`); no app class reads
+   its `colors`. The rendered-app theme therefore reaches UI through the same `Lfd0;->v0(String)`
+   → `Lcdg` → `l0` pipeline. Not verified further; see Uncertainty.
+
+## Palette structure (obfuscated → named from `toString` literals)
+
+`Lcdg` = profile palette record; fields `a` = accent colors, `b` = `Lx9g`, `c` = `Lrdg`.
+
+- `Lrk3` — the `Colors` record (`toString` = `Colors(accent=...`), `Lcdg->a`:
+  - `a : Lk7` = **AccentColors** (`AccentColors(name=...`): `a:String` name, `b..h` = 7× `Lfvh`,
+    `i : Ln7` = dark variant.
+  - `b : Lut7` = **ForegroundColors** (`ForegroundColors(`): `a..d` = 4× `Lfvh`, `e : Lxt7` = dark.
+  - `c : Lj81` = **BackgroundColors** (`BackgroundColors(`): `a:String` name, `b..j` = 9× `Lfvh`,
+    `k : Lm81` = dark.
+  - `d : Lfvh` = one standalone `Lfvh` (likely the wordmark background).
+- `Ln7` = **AccentDarkColors** (`AccentDarkColors(`) — dark accent slots `a`…`g`.
+- `Lm81` = **BackgroundDarkColors** (`BackgroundDarkColors(`) — dark background slots.
+- `Lxt7` = **ForegroundDarkColors** (`ForegroundDarkColors(`).
+- `Lx9g` = (`Lcdg->b`) name + two `int`s (`b`, `c`). Verified by refs: its ints are written only
+  by `Lbdg;->a` and by the `Lx9g` serializer, and read by nothing else. It is round-trip data.
+- `Lfvh` = the **leaf color**: `(F r, F g, F b, Float alpha)` with `a()Ljava/lang/String;`
+  (hex). Every palette slot of every variant is an `Lfvh`.
+
+## The hook point: `Lp48;->l0` and the choke point `Lz9n;->F`
+
+`l0` reads the current theme from a `CompositionLocal`, then, per Compose theme slot, runs a
+null-check chain ending in exactly one conversion:
+
+```
+iget-object v5, v8, Lrk3;->a Lk7;          # AccentColors
+iget-object v5, v5, Lk7;->i Ln7;           # dark variant
+iget-object v5, v5, Ln7;->a Lfvh;          # <-- the primary accent leaf
+invoke-static v5, Lz9n;->F(Lfvh;)J         # Lfvh -> Compose Color (long)
+```
+
+- `Lz9n;->F(Lfvh;)J` is the app-wide leaf→Compose-color choke point: 48 callers, 36 of them
+  inside `Lp48` (`l0` and siblings), the rest through `Lmge`, `Ll6l`, `Ldfh`, `Luo9`, `Lqrg`,
+  `Lm86`, `Lh5e`, `Ldkg`. Its body divides r/g/b by 256.0f, uses `alpha` or `1.0f`, and calls
+  `Liv4;->g(F F F F Lgk3;)J` with colorSpace `Lkk3;->e` (sRGB).
+- Verified slot mapping inside `l0` (instruction indices, `classes3.dex`):
+  - `Lyoe->a (Lxa1, foreground group)` ← `Lut7->e (Lxt7)->a/b/c` at ins 59–90.
+  - `Lyoe->b (Li81, BackgroundColors group)` ← `Lj81->k (Lm81)->a`, `->d`, `->f`, plus light
+    `Lj81->c`, at ins 137–182. **This is the background hook: `Lm81->a` is the dark primary
+    background leaf (ins 141–145).**
+  - `Lyoe->j (Lgok, accent group)` ← `Lk7->i (Ln7)->a`, `->d`, `->e`, `->f`, each falling back
+    to the corresponding light `Lk7->b/e/f` leaf, at ins 215–295. **Accent slot 0 is
+    `Ln7->a` (dark preferred) with `Lk7->b` as the light fallback, ins 216–235.**
+
+## Fingerprint candidates (accent, P1)
+
+The narrowest stable anchor for the primary accent is the load chain that ends in the
+conversion call, not the obfuscated class names:
+
+1. `iget ... Lcdg;->a Lrk3;` → `iget ... Lrk3;->a Lk7;` → `iget ... Lk7;->i Ln7;` →
+   `iget ... Ln7;->a Lfvh;` → `invoke-static ... Lz9n;->F(Lfvh;)J` (Class `Lp48`, method `l0`).
+   The chain `Lrk3;->a Lk7` + `Lk7;->i Ln7` + `Ln7;->a Lfvh` + `Lz9n->F` identifies the dark
+   primary accent slot uniquely; `Ln7->a` occurs once as a `Ln7` field in `l0`.
+2. The light fallback twin: `Lk7->b Lfvh` → `Lz9n->F` (ins 227–235). Same method, unique chain
+   `Lk7;->b Lfvh` (this field read occurs at only one other accent slot).
+3. Method-level fingerprint: `definingClass = Lp48;`, `name = l0`,
+   `returnType = Lzoe;`, `parameters = [Lcdg;, Ldy3;]`, plus filters on the ordered
+   `methodCall(Lz9n;->F)`, `opcode(IGET_OBJECT)` chains. No switch or payload in the method.
+
+## Proposed edit shape (for review, not implemented)
+
+Both sites convert a 3-code-unit `invoke-static` plus a 2-code-unit `move-result-wide` into a
+color. A `const-wide v_target, <argb>` is exactly 5 code units, so replacing the pair with a
+single `const-wide` into the destination register is width-preserving, keeps every address in
+the method unchanged, and touches no other instruction. Background (P2) is the identical
+pattern anchored on `Lj81;->k Lm81;` + `Lm81;->a Lfvh`.
+
+Edit operation must follow the NOTES.md audit lesson: express a 5-unit replacement as
+`removeInstruction` per index + `addInstructions`, never `replaceInstructions`, and resolve all
+indices before mutating, highest index first.
+
+## Uncertainty (stated plainly, per AGENTS.md rule 6)
+
+- Which of the 7 `Lk7`/`Ln7` accent slots is "primary" is **inferred**, not proven. Evidence:
+  `ApiAccentDarkColors(primary=...)`'s `toString` field order is `primary` first, and `Ln7->a`
+  is the first field of the dark record, and `l0` feeds it to accent slot 0. It is not proven
+  that accent slot 0 renders as the accent the user sees on buttons; that needs a device check.
+- Slot 0 is preferred from the **dark** variant with the light variant as fallback, in the
+  branch reviewed. Whether patching only the dark-preferred site (or both sites) covers light
+  mode depends on which branch the light/dark `Lyoe` construction takes; the full method is
+  702 instructions and was read only around the accent/background blocks.
+- The `Lfd0;->v0(String)` path is proven to be the JSON→palette entry point, but which remote
+  payload feeds the *global* app theme (as opposed to profile themes) was not traced to a
+  specific endpoint. `ApiRenderedAppTheme` has no app-side reader outside the serializer.
+- No hex values have been chosen by the user yet; nothing implies a specific color.
+- Nothing has been compiled, applied, or run on a device. All of the above is static reading
+  of the pinned 3.7.2 cache.
+
+# com.ansangha.drdriving 1.73 reference notes
+
+## Source and target record
+- Reference: `/storage/emulated/0/Documents/VInstall/Backups/com.ansangha.drdriving_1.73.apkv`
+- SHA-256 of the APKV: `c2d920df51859fec04042b572216f931bb98342088180b92e075f4d46018c1cf`
+- Size: `14,552,142` bytes. Format: APKV bundle (`formatVersion` 2), 5 members.
+- `base.apk` SHA-256: `76d35d2af8ca77460c71da9025385ce1ffbf14636804c8659966c55d8799efd6`, 21,096,379 bytes.
+- Package: `com.ansangha.drdriving`. Version name: `1.73`. Version code: `73`.
+- Label: "Dr. Driving". minSdk 23, targetSdk 36.
+- Launcher activity: `com.ansangha.drdriving.DrDrivingActivity`.
+- The reference is user-supplied and has not been independently verified as the original publisher build.
+- The ABI, language and density splits hold no DEX; only `base.apk` was analysed.
+
+## DEX inventory
+
+- `base.apk` carries 2 DEX files: `classes.dex` (8,148,912 bytes) and `classes2.dex` (2,467,476 bytes). 16,243 smali classes total.
+- App-owned classes: **79** under `com/ansangha/`, all in `classes.dex`.
+- `com/ansangha/drdriving/` (17 direct + ~23 `DrDrivingActivity$` inner classes) and `com/ansangha/drdriving/tool/` (19) and `com/ansangha/framework/impl/` (11).
+- App class names are **not obfuscated**: `DrDrivingActivity`, `o` (save state), `d` (game), `b`, `tool/m`, `framework/impl/GLGame`. This is a large advantage for fingerprinting.
+- Manifest: no app-owned services/receivers/providers; only framework ones (WorkManager, Firebase, GMS, AdMob). 13 permissions incl. `INTERNET`, `BILLING`, `AD_ID`, `FOREGROUND_SERVICE`.
+- Cached at `~/apks/com.ansangha.drdriving/1.73/` with `dex/`, `disassembly/` (baksmali 2.5.2), `base.apk`, `apk.sha256`, and the source APKV.
+
+## Ad surface — AdMob only
+
+The app uses **only** Google AdMob. A whole-APK scan for other networks (Appodeal, AdColony, Unity, IronSource, InMobi, Vungle, Facebook) returns nothing. Four ad objects exist, all on `DrDrivingActivity`:
+
+| field | type | role |
+| --- | --- | --- |
+| `gadView` | `Lcom/google/android/gms/ads/AdView;` | banner, shown by `ShowAd()` |
+| `interstitial` | `Lcom/google/android/gms/ads/interstitial/InterstitialAd;` | interstitial, shown by `showInterstitial(Z)` |
+| `rewardedAd` | `Lcom/google/android/gms/ads/rewarded/RewardedAd;` | rewarded video, shown by `showVideo()` |
+| `adlistener` | `Lcom/ansangha/drdriving/p;` | `AdListener` for the banner |
+
+### Startup path
+
+`initAds()` (`.registers 5`, 10 instructions) is the single entry. It sets `bAdmobAttached=false`, backs `lastInterstitialTime` off by 30000 ms, starts a `Thread` running `Lcom/ansangha/drdriving/h`, then calls `createAdMobBannerView()`. `initAds()` has exactly one caller: `onCreate` at line 10957.
+
+`h.run()` → `DrDrivingActivity.h()` (synthetic bridge) → `lambda$initAds$1()` → `MobileAds.initialize(Context, OnInitializationComplete)`. The `g` callback (`onInitializationComplete`) is a no-op.
+
+`createAdMobBannerView()` (`.registers 4`, 69 instructions) nulls `interstitial`, calls `requestNewInterstitial()`, nulls `rewardedAd`, builds the `AdView`, sets ad unit id from resource `0x7f0c0065`, ad size `BANNER`, installs `p` as `AdListener`, sets visibility `0`, and `loadAd`. The banner is created here regardless of any gate.
+
+### Display paths
+
+- `ShowAd()` (`.registers 3`, 22 instructions): if `gadView != null && visibility != 0`, sets visibility `0` and `resume()`. Called from the menu dispatch at line 5763.
+- `HideAd()`: sets the banner GONE and removes it.
+- `DestroyAds()`: hides/removes the banner, destroys it, nulls `gadView`, `interstitial` and `rewardedAd`.
+- `showInterstitial(Z)` (`.registers 5`): rate-limited by `lastInterstitialTime` (90 s / 120 s thresholds), then `InterstitialAd.show`. Called 3 times from `DrDrivingActivity$q` (lines 4919/4950/4981).
+- `requestNewInterstitial()`: loads an interstitial from ad unit `0x7f0c0063` with `DrDrivingActivity$e` callback.
+- `showVideo()`: if `rewardedAd != null`, shows it with `DrDrivingActivity$l` reward listener. Called once, at line 5017.
+- `requestNewReward()`: loads a rewarded ad from ad unit `0x7f0c0064` with `DrDrivingActivity$a` callback.
+- `onUserEarnedReward` → `H()` → `onVideoWatched()`, which only sets `bWatched` on a `adBalloon`; it does **not** grant coins.
+
+### Fingerprint candidates for "disable ads"
+
+All four display entry points are small, public, app-owned and unobfuscated, so each can be pinned by class + name + descriptor alone, with a `return-void` early return at index 0:
+
+1. `DrDrivingActivity;->ShowAd()V` — banner reveal.
+2. `DrDrivingActivity;->showInterstitial(Z)V` — interstitial reveal.
+3. `DrDrivingActivity;->showVideo()V` — rewarded video reveal.
+4. `DrDrivingActivity;->createAdMobBannerView()V` — banner creation (covers the case where `ShowAd` is never reached but the banner is built and loaded at startup).
+
+`initAds()` is deliberately **not** a target: returning early from it would skip the `MobileAds.initialize` thread, and `createAdMobBannerView` is the smaller, more targeted cut. `DestroyAds`, `HideAd`, `ShowLeaderboards`, `CheckAd` and the `p` listener are left intact.
+
+## Coin / Gold economy
+
+`Lcom/ansangha/drdriving/o;` is the persisted save state (`mSaveGame`). Relevant fields:
+
+| field | type | meaning |
+| --- | --- | --- |
+| `iCoin` | I | spendable coins |
+| `iCoinC` | I | coin "capacity"/reserve |
+| `iGold` | I | spendable gold |
+| `iGoldC` | I | gold reserve |
+| `iBoughtGold` | I | gold purchased count |
+
+`o.loadFromJson` reads `iCoin`, `iGold`, `iBoughtGold` from a JSON string; `o.save`/`o.zero` reset them.
+
+### The single purchase path
+
+`DrDrivingActivity.GoToPurchase(I)` (`.registers 5`) is the only route to a store SKU. It requires `1 <= p1 <= 3` and `isSignedIn()`, maps the int to a SKU string, then walks `skuLists`. The three SKUs are `drdriving.gold200`, `drdriving.gold600`, `drdriving.gold1500` (lines 2585/2625/2661 and again at 6949/6975/6983). Purchase result is consumed in `onBillingSetupFinished` / `onConsumeResponse` / `queryPurchases`.
+
+### The single coin-spend path
+
+`Lcom/ansangha/drdriving/d;->buyCoin(II)V` (`.registers 6`, 79 instructions, line 2104) is the **only** consumer of gold. Its logic:
+
+```
+iGold - rs  -> v0
+if p1 < 1        -> return      // p1 = coins to buy
+if p2 < 1        -> return      // p2 = gold cost
+if v0 < p2       -> return      // not enough gold
+iGoldC -= p2; iGold -= p2
+iCoinC += p1; iCoin += p1
+g_bNeedBackUp = true
+```
+
+`buyCoin` has exactly one call site: `d` at line 12976, reached from the dialog branch `v1 == 2`. `renderGold(II)V` and `renderGoldForMenu()V` only paint the UI.
+
+### Fingerprint candidate for "unlimited coins"
+
+`buyCoin` is already unique by class + name + descriptor. Its gold-balance guard is the single chokepoint:
+
+- `const/4 v1, 1` at index 8 and `if-ge p1, v1` at index 9 gate the coin argument.
+- `const/4 v1, 1` at index 13 and `if-ge p2, v1` at index 14 gate the gold cost.
+- `if-ge v0, p2` at index 15 is the balance check.
+
+The narrowest edit that makes the spend always succeed is to replace the balance comparison with a branch that never takes the early return. A safe, width-preserving option is to rewrite the `if-ge v0, p2` at index 15 to `if-eqz v0, :cond_11` — but that still fails when `v0 == 0`. The robust choice is to force `v0` high before the comparison: replace `sub-int/2addr v0, v1` (the `iGold - rs` at index 7) is not ideal because `rs` is a global.
+
+The cleanest single-instruction change: replace `if-ge v0, p2` (index 15) with `goto :cond_11`. This is a 3-code-unit `goto` over a 2-code-unit `if-ge`, so the widths match and no branch offset recomputation is needed. It makes every purchase succeed regardless of balance, which is the "unlimited coins" behaviour as requested.
+
+An alternative, even narrower read: the guard `if-ge p2, v1` at index 14 already rejects `p2 < 1`; the balance check is the only thing that can block a valid purchase, so removing it alone is sufficient.
+
+### What this does not do
+
+- It does **not** add coins. It removes the gold cost ceiling. `iGold` still decrements by `p2` on each purchase, so the balance still falls; the patch only stops the "not enough gold" early return.
+- If the intent is "coins never decrease / always succeed and stay high", that needs the `iGold -= p2` and `iCoinC += p1` writes changed too, which is a larger edit and is **not** what was requested. Flagged for the user before implementing.
+- Server-side purchase validation (`GoToPurchase` → Play Billing) is untouched; the patch is client-side only.
+
+## Organized cache
+
+Per `AGENTS.md`, created once from the available artifact and not re-extracted:
+
+```
+~/apks/com.ansangha.drdriving/1.73/
+  com.ansangha.drdriving-1.73-73_apkv.apkv   (source, 14,552,142 bytes)
+  base.apk                                  (21,096,379 bytes, sha256 76d35d2a...)
+  apk.sha256                                (c2d920df...)
+  dex/
+    classes.dex                             (8,148,912 bytes)
+    classes2.dex                            (2,467,476 bytes)
+  disassembly/                              (baksmali 2.5.2, 16,243 smali files)
+```
+
+`tools/` was not populated: the app is small enough that `rg` over `disassembly/` is sufficient and no index was built.
+
+## Phase 1 status — AWAITING REVIEW
+
+**No patch code has been written.** Two features were requested:
+
+1. **Disable ads** — target candidates are `DrDrivingActivity;->ShowAd()V`, `->showInterstitial(Z)V`, `->showVideo()V`, and `->createAdMobBannerView()V`, each an early `return-void` at index 0.
+2. **Unlimited coins** — target candidate is `d;->buyCoin(II)V`, replacing the balance guard `if-ge v0, p2` at index 15 with `goto :cond_11`.
+
+Open questions to settle before implementation:
+
+- For the coins patch: do you want the purchase to **always succeed** (removes the balance ceiling, gold still decrements), or do you want coins to **never decrease / always stay high** (also needs the `iGold -= p2` and `iCoin += p1` writes changed)? The candidate above does the first.
+- Should the rewarded video path be silenced even though it does not grant coins (it only sets a `bWatched` flag)?
+- Is `createAdMobBannerView` in scope, given the banner is built at startup regardless of whether `ShowAd` is ever called?
+
+## Phase 2 — implementation (2026-11-13)
+
+Both patches were written and their fingerprints resolved against the cached dex. Local
+Gradle compilation is unavailable here (the `app.morphe.patches` 1.3.4 plugin needs a
+`GITHUB_TOKEN` with `read:packages`), so compilation and bundle application are delegated
+to CI, exactly as the ADM, 1DM, Djezzy and Truecaller patches are.
+
+### Files
+
+```
+patches/src/main/kotlin/app/drdriving/patches/shared/Constants.kt
+patches/src/main/kotlin/app/drdriving/patches/ads/AdsFingerprints.kt
+patches/src/main/kotlin/app/drdriving/patches/ads/DisableAdsPatch.kt
+patches/src/main/kotlin/app/drdriving/patches/coins/CoinsFingerprints.kt
+patches/src/main/kotlin/app/drdriving/patches/coins/UnlimitedCoinsPatch.kt
+```
+
+### Verification performed
+
+- `python3 tools/checks/resolve_fp.py com.ansangha.drdriving 1.73` — all 5 fingerprints
+  resolve against the cached dex:
+  ```
+  PASS  ShowAdFingerprint          classes.dex, 11 instructions
+  PASS  ShowInterstitialFingerprint classes.dex, 19 instructions
+  PASS  ShowVideoFingerprint        classes.dex, 7 instructions
+  PASS  CreateBannerFingerprint     classes.dex, 31 instructions
+  PASS  BuyCoinFingerprint          classes.dex, 26 instructions
+  ```
+- `python3 tools/checks/patch_smali_checks.py` — `checked 29 file(s): 0 problem(s)`.
+- `check_inline_smali.py` — not applicable: both patches use `addInstructions` with a
+  single trivial instruction (`return-void`, `const/16 v0, 32767`), the same pattern the
+  ADM patches use, so there is no multi-instruction block for that checker to exercise.
+
+### Disable ads
+
+Four `addInstructions(0, "return-void")` calls, one per ad object. `createAdMobBannerView`
+is the load-bearing one: it is called from `initAds()` at startup and also triggers the
+first `requestNewInterstitial` and `requestNewReward` calls, so suppressing it leaves
+`gadView`, `interstitial` and `rewardedAd` all null. The three reveal methods are patched
+too because `requestNewInterstitial` has a second caller (`startOnlineGame`) that is not
+reachable from `createAdMobBannerView`. Each reveal null-checks its own ad object before
+index 0, so the early return is safe.
+
+### Unlimited coins
+
+`buyCoin(II)V` computes `v0 = o.iGold - DrDrivingActivity.rs` and rejects the purchase when
+`v0 < p2`. The patch replaces the `iget v0, v0, o;->iGold:I` (instruction position 1, the
+second filter match) with `const/16 v0, 32767`. Both instructions are 2 code units wide,
+so the method size is unchanged and the following `sub-int/2addr` is untouched. The balance
+then reads `32767 - rs`, far above any purchase cost, so the guard always falls through.
+
+This removes the cost ceiling only. `iGold` and `iGoldC` still decrement by `p2` on each
+purchase. If the intent was for coins to never decrease, the `iGold -= p2` and
+`iCoin += p1` writes in the purchase block would also need to change.
+
+### Not verified
+
+- **No local Gradle compile.** `:patches:compileKotlin` needs `GITHUB_TOKEN` +
+  `GITHUB_ACTOR` and a `./gradlew --stop` per AGENTS.md; neither is available in this
+  environment. CI is the verification path.
+- **No device application.** Applying successfully proves the fingerprints resolve and the
+  generated smali assembles; it does not prove ads are gone or that purchases always
+  succeed. That needs a bundle build + a device run.
+- The APKV is a user-supplied backup and has not been verified as the original publisher
+  build, same caveat the 1DM and ADM notes record for their apkmirror references.
+
+## Phase 2 — implementation, extended (2026-11-13)
+
+The coins patch was extended after review to make coins **non-decreasing** in addition to
+removing the purchase cost ceiling. The patch now touches all six coin-spend paths.
+
+### Files
+
+```
+patches/src/main/kotlin/app/drdriving/patches/shared/Constants.kt
+patches/src/main/kotlin/app/drdriving/patches/ads/AdsFingerprints.kt
+patches/src/main/kotlin/app/drdriving/patches/ads/DisableAdsPatch.kt
+patches/src/main/kotlin/app/drdriving/patches/coins/CoinsFingerprints.kt
+patches/src/main/kotlin/app/drdriving/patches/coins/UnlimitedCoinsPatch.kt
+```
+
+### Verification performed
+
+- `python3 tools/checks/resolve_fp.py com.ansangha.drdriving 1.73` — all 10 fingerprints
+  resolve against the cached dex:
+  ```
+  PASS  ShowAdFingerprint          classes.dex, 11 instructions
+  PASS  ShowInterstitialFingerprint classes.dex, 19 instructions
+  PASS  ShowVideoFingerprint        classes.dex, 7 instructions
+  PASS  CreateBannerFingerprint     classes.dex, 31 instructions
+  PASS  BuyCarFingerprint           classes.dex, 52 instructions
+  PASS  ProcessCarSelectFingerprint classes.dex, 123 instructions
+  PASS  ProcessMultiEndingFingerprint classes.dex, 186 instructions
+  PASS  RentCarFingerprint          classes.dex, 61 instructions
+  PASS  UpgradeCarFingerprint       classes.dex, 56 instructions
+  PASS  BuyCoinFingerprint          classes.dex, 26 instructions
+  ```
+- `python3 tools/checks/patch_smali_checks.py` — `checked 29 file(s): 0 problem(s)`.
+
+### Disable ads
+
+Four `addInstructions(0, "return-void")` calls, one per ad object. `createAdMobBannerView`
+is the load-bearing one: it is called from `initAds()` at startup and also triggers the first
+`requestNewInterstitial` and `requestNewReward` calls, so suppressing it leaves `gadView`,
+`interstitial` and `rewardedAd` all null. The three reveal methods are patched too because
+`requestNewInterstitial` has a second caller (`startOnlineGame`) that is not reachable from
+`createAdMobBannerView`. Each reveal null-checks its own ad object before index 0, so the
+early return is safe. `initAds()` itself is deliberately left alone.
+
+### Unlimited coins — non-decreasing
+
+Five coin-spend methods on `d` debit both the reserve (`iCoinC`) and the spendable balance
+(`iCoin`) by the same amount, using the same three-instruction pattern:
+
+```
+iget  vN, vR, o;->iCoinC:I
+sub-int/2addr vN, vS
+iput  vN, vR, o;->iCoinC:I
+iget  vN, vR, o;->iCoin:I
+sub-int/2addr vN, vS
+iput  vN, vR, o;->iCoin:I
+```
+
+Each fingerprint's two `fieldAccess` filters land on the two `iget` reads, so
+`instructionMatches[0]` is the `iCoinC` decrement and `instructionMatches[1]` is the
+`iCoin` decrement. Both `sub-int/2addr` are replaced with `add-int/2addr`, so the balance
+grows on every spend.
+
+A `check()` guard before each replacement re-reads the instruction at the matched index and
+asserts it is `SUB_INT_2ADDR` (or `IGET` for `buyCoin`). If a future version reorders a method
+so the matched index no longer points at the expected instruction, the patch fails at build
+time instead of silently applying a no-op or corrupting a different instruction.
+
+`buyCoin(II)V` is separate: it debits gold (`iGoldC` / `iGold`) and credits coins, so its
+`iCoin` write is already an increment. Only its gold balance guard changes. `iGold` is read
+twice in the method -- the guard read at instruction index 3 and the debit read later in the
+purchase block -- and `iCoin` is read once (the credit). The `iGold` filter therefore matches
+the guard read, so `instructionMatches[1]` is the balance guard. It is replaced with
+`const/16 v0, 32767`, which keeps the instruction width identical (both are 2 code units) and
+leaves the destination register and the following `sub-int/2addr` untouched. The balance then
+reads `32767 - rs`, far above any purchase cost, so the guard always falls through.
+
+`rs` is `random.nextInt(1000) + 1` (1..1000), so `32767 - rs` is 31767..32766.
+
+### Not verified
+
+- **No local Gradle compile.** `:patches:compileKotlin` needs `GITHUB_TOKEN` +
+  `GITHUB_ACTOR` and a `./gradlew --stop` per AGENTS.md; neither is available in this
+  environment. CI is the verification path.
+- **No device application.** Applying successfully proves the fingerprints resolve and the
+  generated smali assembles; it does not prove ads are gone or that purchases always
+  succeed and the balance never decreases. That needs a bundle build + a device run.
+- The APKV is a user-supplied backup and has not been verified as the original publisher
+  build, same caveat the 1DM and ADM notes record for their apkmirror references.
+
+### `buyCoin` guard-read index
+
+`BuyCoinFingerprint` has two filters: `iGold` then `iCoin`. `iGold` is read twice in the
+method -- the guard read at instruction index 3 and the debit read later in the purchase
+block -- and `iCoin` is read once (the credit). The patcher's forward cursor matches the
+first `iGold` read, so `instructionMatches[0]` is the balance guard and
+`instructionMatches[1]` is the `iCoin` credit read. The guard read is the one replaced.
+
+An earlier version of this note incorrectly said `instructionMatches[1]` was the guard read;
+that was caught and fixed before the fingerprint resolver was re-run.
+
+### Local compile — succeeded (2026-11-13)
+
+`./gradlew :patches:compileKotlin --offline` builds successfully once the daemon is
+stopped and dummy `GITHUB_TOKEN`/`GITHUB_ACTOR` values are exported. The plugin's
+`SettingsPlugin` requires those env vars to construct its credentials provider; with them
+unset it throws `IllegalArgumentException` before any task runs, and a stale daemon
+reuses the old environment, so both must be reset per AGENTS.md:
+
+```sh
+export GITHUB_TOKEN=dummy GITHUB_ACTOR=dummy
+export JAVA_HOME=/data/data/com.termux/files/usr/lib/jvm/java-17-openjdk
+./gradlew --stop
+./gradlew :patches:compileKotlin --offline
+```
+
+Result: `BUILD SUCCESSFUL`, all 12 compiled classes present under
+`patches/build/classes/kotlin/main/app/drdriving/` (2 patch classes + 10 fingerprint
+classes).
+
+`generatePatchesList` still fails offline because it needs the full Android build
+toolchain (apkzlib, apksig, smali, guava, bouncycastle, antlr, etc.), none of which are
+in the Gradle cache. That task produces `patches-list.json` and is run by CI's release
+workflow; it is not needed to validate the patch code itself.
