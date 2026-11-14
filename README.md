@@ -61,7 +61,7 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 ## Available patches
 
 <!-- PATCHES_START -->
-> **[v0.6.0-dev.40](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.40)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;9 patches total
+> **[v0.6.0-dev.41](https://github.com/dunecache/oyasumi-patches/releases/tag/v0.6.0-dev.41)**&nbsp;&nbsp;•&nbsp;&nbsp;`dev`&nbsp;&nbsp;•&nbsp;&nbsp;11 patches total
 <details open>
 <summary>📦 Spotify&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
 <br>
@@ -92,6 +92,22 @@ The built `.mpp` bundle is written under `patches/build/libs`. Test the bundle w
 | [Disable ads](#disable-ads) | Skip ADM's Appodeal and AppBrain ad setup and display routines, and the Telegram join prompt. |  |
 | [Disable rating prompts](#disable-rating-prompts) | Skip ADM's automatic rating prompt. The menu item that opens the same dialog on request is left intact. |  |
 | [Increase connection limits](#increase-connection-limits) | Raise the download ceilings to 32 simultaneous downloads and 64 connections per download, and set torrent defaults to 500 global and 100 per torrent. |  |
+
+</details>
+
+<details open>
+<summary>📦 Dr. Driving&nbsp;&nbsp;•&nbsp;&nbsp;2 patches</summary>
+<br>
+
+**🎯 Supported versions:**
+
+| 1.73 |
+| :---: |
+
+| 💊&nbsp;Patch | 📜&nbsp;Description | ⚙️&nbsp;Options |
+|----------|----------------|-----------|
+| [Disable ads](#disable-ads) | Skip AdMob banner creation and all three AdMob reveal paths, so no banner, interstitial or rewarded video is loaded or shown. |  |
+| [Unlimited coins](#unlimited-coins) | Make every coin purchase succeed regardless of how much gold is held, and make every coin spend add coins instead of removing them, so the balance never decreases. |  |
 
 </details>
 

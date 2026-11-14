@@ -1,3 +1,9 @@
+## [0.6.0-dev.41](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.40...v0.6.0-dev.41) (2026-11-14)
+
+### ✨ New Features
+
+* **drdriving:** add disable ads and unlimited non-decreasing coins patches for Dr. Driving 1.73 ([bb88241](https://github.com/dunecache/oyasumi-patches/commit/bb8824162f25230fa568793a8a726801d46d8a41))
+
 ## [0.6.0-dev.40](https://github.com/dunecache/oyasumi-patches/compare/v0.6.0-dev.39...v0.6.0-dev.40) (2026-10-15)
 
 ### 🐛 Bug Fixes
